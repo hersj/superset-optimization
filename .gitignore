@@ -137,3 +137,9 @@ PROJECT.md
 oxc-custom-build/
 *.code-workspace
 *.duckdb
+
+# superset-optimization local migration artifacts
+.migration-private/
+build_superset*.log
+*.bak.*
+*.orig.*
