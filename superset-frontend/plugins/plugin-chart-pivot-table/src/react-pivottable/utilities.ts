@@ -810,27 +810,54 @@ class PivotData {
     ) => Record<string, (vals: unknown) => (...args: unknown[]) => Aggregator>;
     const aggregatorName = this.props.aggregatorName as string;
     const vals = this.props.vals as string[];
-    this.aggregator = aggregatorsFactory(this.props.defaultFormatter)[
-      aggregatorName
-    ](vals);
-    this.formattedAggregators = this.props.customFormatters
-      ? Object.entries(
-          this.props.customFormatters as Record<
-            string,
-            Record<string, unknown>
-          >,
-        ).reduce(
+    const buildAggregator = (formatter: unknown, preferredName: string) => {
+      const aggregatorsByName = aggregatorsFactory(formatter);
+      const aggregateBuilder =
+        aggregatorsByName[preferredName] ||
+        aggregatorsByName[aggregatorName] ||
+        Object.values(aggregatorsByName)[0];
+      return aggregateBuilder(vals);
+    };
+    this.aggregator = buildAggregator(
+      this.props.defaultFormatter,
+      aggregatorName,
+    );
+
+    const customFormatters = (this.props.customFormatters || {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const customAggregatorNames = (this.props.customAggregatorNames ||
+      {}) as Record<string, Record<string, string>>;
+    const customGroups = Array.from(
+      new Set([
+        ...Object.keys(customFormatters),
+        ...Object.keys(customAggregatorNames),
+      ]),
+    );
+    this.formattedAggregators = customGroups.length
+      ? customGroups.reduce(
           (
             acc: Record<
               string,
               Record<string, (...args: unknown[]) => Aggregator>
             >,
-            [key, columnFormatter],
+            key,
           ) => {
+            const columnFormatters = customFormatters[key] || {};
+            const columnAggregatorNames = customAggregatorNames[key] || {};
+            const columns = Array.from(
+              new Set([
+                ...Object.keys(columnFormatters),
+                ...Object.keys(columnAggregatorNames),
+              ]),
+            );
             acc[key] = {};
-            Object.entries(columnFormatter).forEach(([column, formatter]) => {
-              acc[key][column] =
-                aggregatorsFactory(formatter)[aggregatorName](vals);
+            columns.forEach(column => {
+              acc[key][column] = buildAggregator(
+                columnFormatters[column] || this.props.defaultFormatter,
+                columnAggregatorNames[column] || aggregatorName,
+              );
             });
             return acc;
           },

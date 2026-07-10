@@ -44,7 +44,10 @@ import {
 import { styled } from '@apache-superset/core/theme';
 import { Constants } from '@superset-ui/core/components';
 import { useHistory } from 'react-router-dom';
-import { updateDataMask, removeDataMask } from 'src/dataMask/actions';
+import {
+  updateDataMasks,
+  removeDataMask,
+} from 'src/dataMask/actions';
 import {
   saveChartCustomization,
   clearAllPendingChartCustomizations,
@@ -72,7 +75,11 @@ import {
   useFilterUpdates,
   useInitialization,
 } from './state';
-import { createFilterKey, updateFilterKey } from './keyValue';
+import {
+  createFilterKey,
+  saveLastFilterValue,
+  updateFilterKey,
+} from './keyValue';
 import ActionButtons from './ActionButtons';
 import Horizontal from './Horizontal';
 import Vertical from './Vertical';
@@ -116,6 +123,8 @@ const publishDataMask = debounce(
     const nativeFiltersCacheKey = getUrlParam(URL_PARAMS.nativeFiltersKey);
     const dataMask = JSON.stringify(dataMaskSelected);
 
+    await saveLastFilterValue(dashboardId, dataMask);
+
     if (
       updateKey &&
       nativeFiltersCacheKey &&
@@ -156,6 +165,135 @@ const publishDataMask = debounce(
   },
   Constants.SLOW_DEBOUNCE,
 );
+
+export const shouldPublishDataMask = (
+  dataMaskText: string,
+  lastPublishedDataMaskText: string | null | undefined,
+) => dataMaskText !== lastPublishedDataMaskText;
+
+export const shouldPublishAppliedDataMask = ({
+  dataMaskText,
+  lastPublishedDataMaskText,
+  isInitialized,
+  hasPublishBaseline,
+}: {
+  dataMaskText: string;
+  lastPublishedDataMaskText: string | null | undefined;
+  isInitialized: boolean;
+  hasPublishBaseline: boolean;
+}) =>
+  isInitialized &&
+  hasPublishBaseline &&
+  shouldPublishDataMask(dataMaskText, lastPublishedDataMaskText);
+
+export const AUTO_APPLY_DEBOUNCE_MS = Constants.SLOW_DEBOUNCE;
+
+export const getDataMaskForRedux = (dataMask: Partial<DataMask>) => {
+  const { filterState, ...restDataMask } = dataMask;
+
+  if (!filterState) {
+    return dataMask;
+  }
+
+  const { validateStatus, ...filterStateForRedux } = filterState;
+
+  return {
+    ...restDataMask,
+    filterState: filterStateForRedux,
+  };
+};
+
+const getComparableDataMask = (dataMask: Partial<DataMask> | undefined) => {
+  if (!dataMask) {
+    return undefined;
+  }
+
+  const { id, ...dataMaskForComparison } = getDataMaskForRedux(dataMask) as
+    Partial<DataMask> & { id?: string | number };
+
+  return dataMaskForComparison;
+};
+
+export const shouldAutoApplyDataMask = (
+  selectedDataMask: Partial<DataMask>,
+  appliedDataMask: Partial<DataMask> | undefined,
+) =>
+  !isEqual(
+    getComparableDataMask(selectedDataMask),
+    getComparableDataMask(appliedDataMask),
+  );
+
+export const getAutoApplyDataMaskUpdates = (
+  entries: [string, Partial<DataMask>][],
+  dataMaskApplied: DataMaskStateWithId,
+  inScopeFilterIds: Set<string>,
+) =>
+  entries.reduce<Record<string, DataMask>>((updates, [filterId, dataMask]) => {
+    const dataMaskForRedux = getDataMaskForRedux(dataMask) as DataMask;
+
+    if (
+      inScopeFilterIds.has(filterId) &&
+      shouldAutoApplyDataMask(dataMaskForRedux, dataMaskApplied[filterId])
+    ) {
+      updates[filterId] = dataMaskForRedux;
+    }
+
+    return updates;
+  }, {});
+
+export const createDebouncedDataMaskApplier = (
+  apply: (entries: [string, Partial<DataMask>][]) => void,
+  delay = AUTO_APPLY_DEBOUNCE_MS,
+  setTimer: (
+    callback: () => void,
+    timeout: number,
+  ) => ReturnType<typeof setTimeout> = setTimeout,
+  clearTimer: (timer: ReturnType<typeof setTimeout>) => void = clearTimeout,
+) => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const pendingDataMasks = new Map<string, Partial<DataMask>>();
+
+  const clearTimerIfIdle = () => {
+    if (pendingDataMasks.size === 0 && timer) {
+      clearTimer(timer);
+      timer = null;
+    }
+  };
+
+  const flush = () => {
+    const entries = Array.from(pendingDataMasks.entries());
+    pendingDataMasks.clear();
+    timer = null;
+    apply(entries);
+  };
+
+  return {
+    schedule(filterId: string, dataMask: Partial<DataMask>) {
+      pendingDataMasks.set(filterId, dataMask);
+      if (timer) {
+        clearTimer(timer);
+      }
+      timer = setTimer(flush, delay);
+    },
+    clear(filterId: string) {
+      pendingDataMasks.delete(filterId);
+      clearTimerIfIdle();
+    },
+    cancel() {
+      pendingDataMasks.clear();
+      if (timer) {
+        clearTimer(timer);
+        timer = null;
+      }
+    },
+    flush() {
+      if (timer) {
+        clearTimer(timer);
+      }
+      flush();
+    },
+  };
+};
 
 const FilterBar: FC<FiltersBarProps> = ({
   orientation = FilterBarOrientation.Vertical,
@@ -219,55 +357,63 @@ const FilterBar: FC<FiltersBarProps> = ({
   );
   const [hasClearedChartCustomizations, setHasClearedChartCustomizations] =
     useState(false);
+  const isInitialized = useInitialization();
 
   const dataMaskSelectedRef = useRef(dataMaskSelected);
   dataMaskSelectedRef.current = dataMaskSelected;
+  const dataMaskAppliedRef = useRef(dataMaskApplied);
+  dataMaskAppliedRef.current = dataMaskApplied;
+  const autoApplyHandlerRef = useRef<
+    (entries: [string, Partial<DataMask>][]) => void
+  >(() => undefined);
+  const autoApplyApplierRef =
+    useRef<ReturnType<typeof createDebouncedDataMaskApplier>>();
+
+  autoApplyHandlerRef.current = entries => {
+    const dataMasksToApply = getAutoApplyDataMaskUpdates(
+      entries,
+      dataMaskAppliedRef.current,
+      inScopeFilterIds,
+    );
+
+    if (!isEmpty(dataMasksToApply)) {
+      dispatch(updateDataMasks(dataMasksToApply));
+    }
+  };
+
+  if (!autoApplyApplierRef.current) {
+    autoApplyApplierRef.current = createDebouncedDataMaskApplier(
+      entries => autoApplyHandlerRef.current(entries),
+    );
+  }
+
+  useEffect(
+    () => () => {
+      autoApplyApplierRef.current?.cancel();
+    },
+    [],
+  );
+
   const handleFilterSelectionChange = useCallback(
     (
       filter: Pick<Filter, 'id'> & Partial<Filter>,
       dataMask: Partial<DataMask>,
     ) => {
+      const dataMaskForRedux = getDataMaskForRedux(dataMask);
+
+      if (
+        inScopeFilterIds.has(filter.id) &&
+        shouldAutoApplyDataMask(
+          dataMaskForRedux,
+          dataMaskAppliedRef.current[filter.id],
+        )
+      ) {
+        autoApplyApplierRef.current?.schedule(filter.id, dataMaskForRedux);
+      } else {
+        autoApplyApplierRef.current?.clear(filter.id);
+      }
+
       setDataMaskSelected(draft => {
-        const appliedDataMask = dataMaskApplied[filter.id];
-        const isFirstTimeInitialization = !initializedFilters.has(filter.id);
-
-        // Auto-apply when filter has value but empty extraFormData in applied state
-        // This fixes the bug where defaultDataMask.filterState.value exists but extraFormData is empty
-        // Only auto-apply if: value matches what's applied AND extraFormData is missing in applied but present in incoming
-        const needsAutoApply =
-          appliedDataMask?.filterState?.value !== undefined &&
-          dataMask.filterState?.value !== undefined &&
-          isEqual(
-            appliedDataMask.filterState.value,
-            dataMask.filterState.value,
-          ) &&
-          (!appliedDataMask?.extraFormData ||
-            Object.keys(appliedDataMask.extraFormData || {}).length === 0) &&
-          dataMask.extraFormData &&
-          Object.keys(dataMask.extraFormData).length > 0;
-
-        // Force instant updating for requiredFirst filters or auto-apply when needed
-        const shouldDispatch =
-          dataMask.filterState?.value !== undefined &&
-          ((isFirstTimeInitialization && filter.requiredFirst) ||
-            needsAutoApply);
-
-        if (shouldDispatch) {
-          // Strip validateStatus before dispatching to Redux
-          // validateStatus is UI-only state and shouldn't persist in Redux
-          const { filterState, ...restDataMask } = dataMask;
-          const dataMaskForRedux = filterState
-            ? {
-                ...restDataMask,
-                filterState: {
-                  ...filterState,
-                  validateStatus: undefined,
-                },
-              }
-            : dataMask;
-          dispatch(updateDataMask(filter.id, dataMaskForRedux));
-        }
-
         // Mark filter as initialized after getting its first value WITH extraFormData
         // This ensures we don't mark it as initialized on the first sync (value but no extraFormData)
         // but do mark it after the second sync (value AND extraFormData)
@@ -306,11 +452,10 @@ const FilterBar: FC<FiltersBarProps> = ({
       });
     },
     [
-      dispatch,
       setDataMaskSelected,
       initializedFilters,
       setInitializedFilters,
-      dataMaskApplied,
+      inScopeFilterIds,
     ],
   );
 
@@ -346,6 +491,10 @@ const FilterBar: FC<FiltersBarProps> = ({
   }, [dashboardId, filters, previousDashboardId, setDataMaskSelected]);
 
   const dataMaskAppliedText = JSON.stringify(dataMaskApplied);
+  const lastPublishedDataMaskTextRef = useRef<string | null>(
+    dataMaskAppliedText,
+  );
+  const hasPublishBaselineRef = useRef(false);
   const prevDataMaskAppliedRef = useRef(dataMaskApplied);
 
   useEffect(() => {
@@ -392,11 +541,45 @@ const FilterBar: FC<FiltersBarProps> = ({
 
   useEffect(() => {
     // embedded users can't persist filter combinations
-    if (user?.userId) {
+    if (!user?.userId) {
+      return;
+    }
+
+    if (dashboardId !== previousDashboardId) {
+      hasPublishBaselineRef.current = false;
+      lastPublishedDataMaskTextRef.current = dataMaskAppliedText;
+      return;
+    }
+
+    if (!isInitialized || !hasPublishBaselineRef.current) {
+      lastPublishedDataMaskTextRef.current = dataMaskAppliedText;
+      if (isInitialized) {
+        hasPublishBaselineRef.current = true;
+      }
+      return;
+    }
+
+    if (
+      shouldPublishAppliedDataMask({
+        dataMaskText: dataMaskAppliedText,
+        lastPublishedDataMaskText: lastPublishedDataMaskTextRef.current,
+        isInitialized,
+        hasPublishBaseline: hasPublishBaselineRef.current,
+      })
+    ) {
+      lastPublishedDataMaskTextRef.current = dataMaskAppliedText;
       publishDataMask(history, dashboardId, updateKey, dataMaskApplied, tabId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardId, dataMaskAppliedText, history, updateKey, tabId]);
+  }, [
+    dashboardId,
+    dataMaskAppliedText,
+    history,
+    isInitialized,
+    previousDashboardId,
+    updateKey,
+    tabId,
+  ]);
 
   const pendingChartCustomizations = useSelector<
     RootState,
@@ -414,6 +597,7 @@ const FilterBar: FC<FiltersBarProps> = ({
   );
 
   const handleApply = useCallback(() => {
+    autoApplyApplierRef.current?.cancel();
     dispatch(logEvent(LOG_ACTIONS_CHANGE_DASHBOARD_FILTER, {}));
     setUpdateKey(1);
 
@@ -422,10 +606,11 @@ const FilterBar: FC<FiltersBarProps> = ({
       inScopeFilterIds,
     );
 
+    const dataMasksToApply: Record<string, DataMask> = {};
     filtersToApply.forEach(filterId => {
       const dataMask = dataMaskSelected[filterId];
       if (dataMask) {
-        dispatch(updateDataMask(filterId, dataMask));
+        dataMasksToApply[filterId] = getDataMaskForRedux(dataMask) as DataMask;
       }
     });
 
@@ -437,10 +622,14 @@ const FilterBar: FC<FiltersBarProps> = ({
         ([customizationId, dataMask]) => {
           const customizationFilterId = customizationId;
           if (dataMask) {
-            dispatch(updateDataMask(customizationFilterId, dataMask));
+            dataMasksToApply[customizationFilterId] = dataMask;
           }
         },
       );
+    }
+
+    if (!isEmpty(dataMasksToApply)) {
+      dispatch(updateDataMasks(dataMasksToApply));
     }
 
     if (
@@ -487,7 +676,9 @@ const FilterBar: FC<FiltersBarProps> = ({
   ]);
 
   const handleClearAll = useCallback(() => {
+    autoApplyApplierRef.current?.cancel();
     const newClearAllTriggers = { ...clearAllTriggers };
+    const dataMasksToClear: Record<string, DataMask> = {};
 
     nativeFilterValues.forEach(filter => {
       const { id, filterType } = filter;
@@ -503,7 +694,7 @@ const FilterBar: FC<FiltersBarProps> = ({
         extraFormData: {},
       };
       if (dataMaskSelected[id]) {
-        dispatch(updateDataMask(id, clearedDataMask));
+        dataMasksToClear[id] = clearedDataMask;
         setDataMaskSelected(draft => {
           if (draft[id].filterState?.value !== undefined) {
             draft[id].filterState!.value = clearedValue;
@@ -513,6 +704,10 @@ const FilterBar: FC<FiltersBarProps> = ({
         newClearAllTriggers[id] = true;
       }
     });
+
+    if (!isEmpty(dataMasksToClear)) {
+      dispatch(updateDataMasks(dataMasksToClear));
+    }
 
     const allDataMasks = { ...dataMaskSelected, ...dataMaskApplied };
     const hasCustomizationDataMasks = Object.keys(allDataMasks).some(key =>
@@ -593,8 +788,6 @@ const FilterBar: FC<FiltersBarProps> = ({
       !hasPendingChartCustomizations &&
       !hasClearedChartCustomizations) ||
     hasMissingRequiredChartCustomization;
-
-  const isInitialized = useInitialization();
 
   const actions = useMemo(
     () => (

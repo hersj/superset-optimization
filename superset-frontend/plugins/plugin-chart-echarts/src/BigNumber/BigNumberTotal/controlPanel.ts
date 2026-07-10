@@ -54,6 +54,51 @@ export default {
         ['currency_format'],
         [
           {
+            name: 'comparison_enabled',
+            config: {
+              type: 'CheckboxControl',
+              label: t('Show comparison'),
+              renderTrigger: true,
+              default: true,
+              description: t('Show period and year comparison for this chart'),
+            },
+          },
+        ],
+        [
+          {
+            name: 'comparison_modes',
+            config: {
+              type: 'SelectControl',
+              label: t('Comparison modes'),
+              multi: true,
+              renderTrigger: true,
+              default: ['previous', 'year'],
+              choices: [
+                ['previous', t('Previous period')],
+                ['year', t('Same period last year')],
+              ],
+              description: t('Comparison ranges saved with this chart'),
+            },
+          },
+        ],
+        [
+          {
+            name: 'comparison_display',
+            config: {
+              type: 'SelectControl',
+              label: t('Comparison display'),
+              clearable: false,
+              renderTrigger: true,
+              default: 'percent',
+              choices: [
+                ['percent', t('Percent change')],
+                ['delta_percent', t('Delta and percent change')],
+              ],
+            },
+          },
+        ],
+        [
+          {
             name: 'time_format',
             config: {
               type: 'SelectControl',

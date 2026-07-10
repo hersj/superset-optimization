@@ -42,6 +42,7 @@ from werkzeug.wsgi import FileWrapper
 from superset import db
 from superset.charts.schemas import ChartEntityResponseSchema
 from superset.commands.dashboard.copy import CopyDashboardCommand
+from superset.commands.dashboard.cascade_filter_options import GetCascadeFilterOptionsCommand
 from superset.commands.dashboard.create import CreateDashboardCommand
 from superset.commands.dashboard.delete import (
     DeleteDashboardCommand,
@@ -241,6 +242,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "thumbnail",
         "copy_dash",
         "cache_dashboard_screenshot",
+        "cascade_filter_options",
         "screenshot",
         "put_filters",
         "put_chart_customizations",
@@ -517,6 +519,32 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             dashboard_id=dash.id, action=f"{self.__class__.__name__}.get"
         )
         return self.response(200, result=result)
+
+
+    @expose("/<int:pk>/cascade_filter_options", methods=("POST",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @statsd_metrics
+    @requires_json
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.cascade_filter_options",
+        log_to_statsd=False,
+    )
+    def cascade_filter_options(self, pk: int) -> Response:
+        payload = request.json or {}
+        try:
+            result = GetCascadeFilterOptionsCommand(
+                dashboard_id=pk,
+                dataset_id=payload.get("dataset_id"),
+                columns=payload.get("columns") or [],
+                applied_filters=payload.get("applied_filters") or {},
+                time_range=payload.get("time_range"),
+                limit=payload.get("limit", 1000),
+            ).run()
+            return self.response(200, result=result)
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
 
     @expose("/<id_or_slug>/datasets", methods=("GET",))
     @protect()

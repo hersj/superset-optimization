@@ -33,98 +33,122 @@ import {
   ValueFormatter,
 } from '@superset-ui/core';
 
+function isWeekGrain(timeGrain: string): boolean {
+  return (
+    timeGrain === TimeGranularity.WEEK ||
+    timeGrain === TimeGranularity.WEEK_STARTING_SUNDAY ||
+    timeGrain === TimeGranularity.WEEK_STARTING_MONDAY ||
+    timeGrain === TimeGranularity.WEEK_ENDING_SATURDAY ||
+    timeGrain === TimeGranularity.WEEK_ENDING_SUNDAY ||
+    timeGrain === 'P1W_SUN'
+  );
+}
+
+function isQuarterGrain(timeGrain: string): boolean {
+  return (
+    timeGrain === TimeGranularity.QUARTER ||
+    timeGrain === 'P3M_FISCAL'
+  );
+}
+
+function isDayGrain(timeGrain: string): boolean {
+  return (
+    timeGrain === TimeGranularity.DAY ||
+    timeGrain === TimeGranularity.DATE
+  );
+}
+
+function isSubHourGrain(timeGrain: string): boolean {
+  return (
+    timeGrain === TimeGranularity.HOUR ||
+    timeGrain === TimeGranularity.THIRTY_MINUTES ||
+    timeGrain === TimeGranularity.FIFTEEN_MINUTES ||
+    timeGrain === TimeGranularity.TEN_MINUTES ||
+    timeGrain === TimeGranularity.FIVE_MINUTES ||
+    timeGrain === TimeGranularity.MINUTE ||
+    timeGrain === TimeGranularity.SECOND
+  );
+}
+
+function getSundayWeekNum(date: Date): number {
+  const year = date.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  const jan1Day = jan1.getDay();
+  const firstSunday = new Date(jan1.getTime());
+  firstSunday.setDate(jan1.getDate() + (jan1Day === 0 ? 0 : 7 - jan1Day));
+  if (date < firstSunday) return 0;
+  return Math.floor((date.getTime() - firstSunday.getTime()) / (7 * 86400000)) + 1;
+}
+
+function getFiscalQuarter(month: number): string {
+  if (month >= 3 && month <= 5) return 'Q1';
+  if (month >= 6 && month <= 8) return 'Q2';
+  if (month >= 9 && month <= 11) return 'Q3';
+  return 'Q4';
+}
+
+function formatByGrain(date: Date, timeGrain: string): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+
+  if (timeGrain === TimeGranularity.YEAR) {
+    return `${y}年`;
+  }
+  if (isQuarterGrain(timeGrain)) {
+    const q = getFiscalQuarter(date.getMonth());
+    return `${y}年${q}`;
+  }
+  if (timeGrain === TimeGranularity.MONTH) {
+    return `${y}年${m}月`;
+  }
+  if (isWeekGrain(timeGrain)) {
+    const wn = getSundayWeekNum(date);
+    return `${y}年第${wn}周`;
+  }
+  if (isDayGrain(timeGrain)) {
+    return `${y}-${m}-${d}`;
+  }
+  if (isSubHourGrain(timeGrain)) {
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d} ${h}:${min}`;
+  }
+  return `${y}-${m}-${d}`;
+}
+
 export const getSmartDateDetailedFormatter = () =>
   getTimeFormatter(SMART_DATE_DETAILED_ID);
 
 export const getSmartDateFormatter = (timeGrain?: string) => {
   const baseFormatter = getTimeFormatter(SMART_DATE_ID);
 
-  // If no time grain provided, use the standard smart date formatter
   if (!timeGrain) {
     return baseFormatter;
   }
 
-  // Create a wrapper that normalizes dates based on time grain
   return new TimeFormatter({
     id: SMART_DATE_ID,
-    label: baseFormatter.label,
-    formatFunc: (date: Date) => {
-      // Create a normalized date based on time grain to ensure consistent smart formatting
-      const normalizedDate = new Date(date);
-
-      // Always remove milliseconds to prevent .XXXms format
-      normalizedDate.setMilliseconds(0);
-
-      // For all time grains, normalize using UTC methods to avoid timezone issues
-      if (timeGrain === TimeGranularity.YEAR) {
-        // Set to January 1st at midnight UTC - smart formatter will show year
-        const year = normalizedDate.getUTCFullYear();
-        const cleanDate = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
-        return baseFormatter(cleanDate);
-      } else if (timeGrain === TimeGranularity.QUARTER) {
-        // Set to first month of quarter, first day, midnight UTC
-        const year = normalizedDate.getUTCFullYear();
-        const month = normalizedDate.getUTCMonth();
-        const quarterStartMonth = Math.floor(month / 3) * 3;
-        const cleanDate = new Date(
-          Date.UTC(year, quarterStartMonth, 1, 0, 0, 0, 0),
-        );
-        return baseFormatter(cleanDate);
-      } else if (timeGrain === TimeGranularity.MONTH) {
-        // Set to first of month at midnight UTC - smart formatter will show month name or year
-        const year = normalizedDate.getUTCFullYear();
-        const month = normalizedDate.getUTCMonth();
-        const cleanDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-        return baseFormatter(cleanDate);
-      } else if (
-        timeGrain === TimeGranularity.WEEK ||
-        timeGrain === TimeGranularity.WEEK_STARTING_SUNDAY ||
-        timeGrain === TimeGranularity.WEEK_STARTING_MONDAY ||
-        timeGrain === TimeGranularity.WEEK_ENDING_SATURDAY ||
-        timeGrain === TimeGranularity.WEEK_ENDING_SUNDAY
-      ) {
-        // Set to midnight UTC, keep the day
-        const year = normalizedDate.getUTCFullYear();
-        const month = normalizedDate.getUTCMonth();
-        const day = normalizedDate.getUTCDate();
-        const cleanDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-        return baseFormatter(cleanDate);
-      } else if (
-        timeGrain === TimeGranularity.DAY ||
-        timeGrain === TimeGranularity.DATE
-      ) {
-        // Set to midnight UTC
-        const year = normalizedDate.getUTCFullYear();
-        const month = normalizedDate.getUTCMonth();
-        const day = normalizedDate.getUTCDate();
-        const cleanDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-        return baseFormatter(cleanDate);
-      } else if (
-        timeGrain === TimeGranularity.HOUR ||
-        timeGrain === TimeGranularity.THIRTY_MINUTES ||
-        timeGrain === TimeGranularity.FIFTEEN_MINUTES ||
-        timeGrain === TimeGranularity.TEN_MINUTES ||
-        timeGrain === TimeGranularity.FIVE_MINUTES ||
-        timeGrain === TimeGranularity.MINUTE ||
-        timeGrain === TimeGranularity.SECOND
-      ) {
-        // Set to top of hour UTC
-        const year = normalizedDate.getUTCFullYear();
-        const month = normalizedDate.getUTCMonth();
-        const day = normalizedDate.getUTCDate();
-        const hour = normalizedDate.getUTCHours();
-        const cleanDate = new Date(Date.UTC(year, month, day, hour, 0, 0, 0));
-        return baseFormatter(cleanDate);
-      }
-
-      // Use the base formatter on the normalized date
-      return baseFormatter(normalizedDate);
-    },
+    label: 'Grain-aware smart date',
+    useLocalTime: true,
+    formatFunc: (date: Date) => formatByGrain(date, timeGrain),
   });
 };
 
-export const getSmartDateVerboseFormatter = () =>
-  getTimeFormatter(SMART_DATE_VERBOSE_ID);
+export const getSmartDateVerboseFormatter = (timeGrain?: string) => {
+  const baseFormatter = getTimeFormatter(SMART_DATE_VERBOSE_ID);
+
+  if (!timeGrain) {
+    return baseFormatter;
+  }
+
+  return new TimeFormatter({
+    id: SMART_DATE_VERBOSE_ID,
+    label: 'Grain-aware verbose date',
+    useLocalTime: true,
+    formatFunc: (date: Date) => formatByGrain(date, timeGrain),
+  });
+};
 
 export const getPercentFormatter = (format?: string) =>
   getNumberFormatter(
@@ -162,14 +186,15 @@ export const getYAxisFormatter = (
 
 export function getTooltipTimeFormatter(
   format?: string,
+  timeGrain?: string,
 ): TimeFormatter | StringConstructor {
-  if (format === SMART_DATE_ID) {
-    return getSmartDateVerboseFormatter();
+  if (timeGrain) {
+    return getSmartDateVerboseFormatter(timeGrain);
   }
-  if (format) {
-    return getTimeFormatter(format);
+  if (format === SMART_DATE_ID || !format) {
+    return getSmartDateVerboseFormatter(timeGrain);
   }
-  return String;
+  return getTimeFormatter(format);
 }
 
 export function getXAxisFormatter(

@@ -78,6 +78,45 @@ test('renders FormattingPopoverContent component', () => {
   expect(screen.getByText('Apply')).toBeInTheDocument();
 });
 
+test('renders a custom color input for conditional formatting rules', () => {
+  render(
+    <FormattingPopoverContent
+      onChange={mockOnChange}
+      columns={columns}
+      extraColorChoices={extraColorChoices}
+    />,
+  );
+
+  expect(screen.getByLabelText('Custom color')).toBeInTheDocument();
+});
+
+test('submits custom color with formatting config', async () => {
+  mockOnChange.mockClear();
+
+  render(
+    <FormattingPopoverContent
+      config={{
+        column: 'column1',
+        colorScheme: 'colorError',
+        customColor: '#7f1d1d',
+        operator: Comparator.GreaterThan,
+        targetValue: 50,
+      }}
+      onChange={mockOnChange}
+      columns={columns}
+      extraColorChoices={extraColorChoices}
+    />,
+  );
+
+  fireEvent.click(screen.getByText('Apply'));
+
+  await waitFor(() => {
+    expect(mockOnChange).toHaveBeenCalledWith(
+      expect.objectContaining({ customColor: '#7f1d1d' }),
+    );
+  });
+});
+
 test('calls onChange when Apply button is clicked', async () => {
   render(
     <FormattingPopoverContent

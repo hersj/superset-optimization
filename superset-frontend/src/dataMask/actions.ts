@@ -32,6 +32,12 @@ export interface UpdateDataMask {
   dataMask: DataMask;
 }
 
+export const UPDATE_DATA_MASKS = 'UPDATE_DATA_MASKS';
+export interface UpdateDataMasks {
+  type: typeof UPDATE_DATA_MASKS;
+  dataMasks: Record<string, DataMask>;
+}
+
 export const REMOVE_DATA_MASK = 'REMOVE_DATA_MASK';
 export interface RemoveDataMask {
   type: typeof REMOVE_DATA_MASK;
@@ -77,6 +83,15 @@ export function updateDataMask(
   };
 }
 
+export function updateDataMasks(
+  dataMasks: Record<string, DataMask>,
+): UpdateDataMasks {
+  return {
+    type: UPDATE_DATA_MASKS,
+    dataMasks,
+  };
+}
+
 export function clearDataMask(filterId: string | number) {
   return updateDataMask(filterId, getInitialDataMask(filterId));
 }
@@ -97,5 +112,6 @@ export function clearDataMaskState(): ClearDataMaskState {
 export type AnyDataMaskAction =
   | ClearDataMaskState
   | UpdateDataMask
+  | UpdateDataMasks
   | RemoveDataMask
   | SetDataMaskForFilterChangesComplete;

@@ -111,6 +111,104 @@ const createMockPivotData = (rowData: Record<string, number>) =>
     }),
   }) as unknown as PivotData;
 
+const createColorPivotSettings = (overrides: Record<string, unknown> = {}) => {
+  const makeAggregator = (value: number, isSubtotal = false) => ({
+    value: () => value,
+    format: (v: number) => String(v),
+    isSubtotal,
+  });
+
+  return {
+    rowAttrs: ['store'],
+    colAttrs: ['Metric'],
+    rowAttrSpans: [[1]],
+    visibleColKeys: [['purchase_cost_rate']],
+    pivotData: {
+      getAggregator: (rowKey: string[], colKey: string[]) => {
+        if (rowKey.length === 0 && colKey.length === 0) {
+          return makeAggregator(0.42);
+        }
+        if (rowKey.length === 0) {
+          return makeAggregator(0.41);
+        }
+        if (colKey.length === 0) {
+          return makeAggregator(0.4);
+        }
+        return makeAggregator(0.39, Boolean(overrides.isSubtotal));
+      },
+    },
+    rowTotals: true,
+    rowSubtotalDisplay: {
+      enabled: false,
+      displayOnTop: false,
+      hideOnExpand: false,
+    },
+    arrowExpanded: null,
+    arrowCollapsed: null,
+    cellCallbacks: { StoreA: { purchase_cost_rate: jest.fn() } },
+    rowTotalCallbacks: { StoreA: jest.fn() },
+    colTotalCallbacks: { purchase_cost_rate: jest.fn() },
+    grandTotalCallback: jest.fn(),
+    namesMapping: {},
+    allowRenderHtml: false,
+    ...overrides,
+  } as any;
+};
+
+const colorFormatterProps = {
+  ...mockProps,
+  tableOptions: {
+    cellColorFormatters: {
+      Metric: [
+        {
+          column: 'purchase_cost_rate',
+          getColorFromValue: (value: unknown) =>
+            typeof value === 'number' && value > 0.35 ? '#7f1d1d' : undefined,
+        },
+      ],
+    },
+  },
+};
+
+test('applies conditional formatting colors to pivot totals and subtotal cells', () => {
+  tableRenderer = new TableRenderer(colorFormatterProps);
+  const pivotSettings = createColorPivotSettings();
+
+  const row = tableRenderer.renderTableRow(['StoreA'], 0, pivotSettings) as any;
+  const rowTotalCell = row.props.children.at(-1);
+  expect(rowTotalCell.props.className).toBe('pvtTotal');
+  expect(rowTotalCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const totalsRow = tableRenderer.renderTotalsRow(pivotSettings) as any;
+  const totalValueCell = totalsRow.props.children[1];
+  expect(totalValueCell.props.className).toBe('pvtTotal pvtRowTotal');
+  expect(totalValueCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const grandTotalCell = totalsRow.props.children.at(-1);
+  expect(grandTotalCell.props.className).toBe('pvtGrandTotal pvtRowTotal');
+  expect(grandTotalCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const subtotalRow = tableRenderer.renderTableRow(
+    ['StoreA'],
+    0,
+    createColorPivotSettings({ isSubtotal: true }),
+  ) as any;
+  const subtotalValueCell = subtotalRow.props.children[2];
+  expect(subtotalValueCell.props.className).toBe('pvtVal');
+  expect(subtotalValueCell.props.style).toEqual(
+    expect.objectContaining({
+      backgroundColor: '#7f1d1d',
+      fontWeight: 'bold',
+    }),
+  );
+});
+
 test('should set initial ascending sort when no active sort column', () => {
   mockGetAggregatedData.mockReturnValue({
     A: { currentVal: 30 },

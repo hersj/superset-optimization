@@ -24,8 +24,11 @@ import {
   sharedControls,
 } from '@superset-ui/chart-controls';
 import { t } from '@apache-superset/core/translation';
+import { GenericDataType } from '@apache-superset/core/common';
 import {
   ensureIsArray,
+  getColumnLabel,
+  getMetricLabel,
   isAdhocColumn,
   isPhysicalColumn,
   QueryFormMetric,
@@ -34,6 +37,37 @@ import {
   QueryFormColumn,
 } from '@superset-ui/core';
 import { MetricsLayoutEnum } from '../types';
+
+const PIVOT_METRIC_AGGREGATE_OPTIONS = [
+  { value: '', label: t('Use chart default') },
+  { value: 'Count', label: t('Count') },
+  { value: 'Count Unique Values', label: t('Count Unique Values') },
+  { value: 'List Unique Values', label: t('List Unique Values') },
+  { value: 'Sum', label: t('Sum') },
+  { value: 'Average', label: t('Average') },
+  { value: 'Median', label: t('Median') },
+  { value: 'Sample Variance', label: t('Sample Variance') },
+  { value: 'Sample Standard Deviation', label: t('Sample Standard Deviation') },
+  { value: 'Minimum', label: t('Minimum') },
+  { value: 'Maximum', label: t('Maximum') },
+  { value: 'First', label: t('First') },
+  { value: 'Last', label: t('Last') },
+  { value: 'Sum as Fraction of Total', label: t('Sum as Fraction of Total') },
+  { value: 'Sum as Fraction of Rows', label: t('Sum as Fraction of Rows') },
+  {
+    value: 'Sum as Fraction of Columns',
+    label: t('Sum as Fraction of Columns'),
+  },
+  {
+    value: 'Count as Fraction of Total',
+    label: t('Count as Fraction of Total'),
+  },
+  { value: 'Count as Fraction of Rows', label: t('Count as Fraction of Rows') },
+  {
+    value: 'Count as Fraction of Columns',
+    label: t('Count as Fraction of Columns'),
+  },
+];
 
 const config: ControlPanelConfig = {
   controlPanelSections: [
@@ -398,6 +432,43 @@ const config: ControlPanelConfig = {
         ],
         [
           {
+            name: 'dimension_label_config',
+            config: {
+              type: 'ColumnConfigControl',
+              label: t('Customize dimension labels'),
+              description: t(
+                'Set display names for the selected row and column dimensions',
+              ),
+              width: 400,
+              height: 260,
+              renderTrigger: true,
+              configFormLayout: {
+                [GenericDataType.String]: [['customColumnName']],
+              },
+              shouldMapStateToProps() {
+                return true;
+              },
+              mapStateToProps(explore) {
+                const dimensions = [
+                  ...((explore?.controls?.groupbyRows
+                    ?.value as QueryFormColumn[]) ?? []),
+                  ...((explore?.controls?.groupbyColumns
+                    ?.value as QueryFormColumn[]) ?? []),
+                ].map(getColumnLabel);
+                const colnames = [...new Set(dimensions)];
+
+                return {
+                  columnsPropsObject: {
+                    colnames,
+                    coltypes: colnames.map(() => GenericDataType.String),
+                  },
+                };
+              },
+            },
+          },
+        ],
+        [
+          {
             name: 'conditional_formatting',
             config: {
               type: 'ConditionalFormattingControl',
@@ -448,6 +519,73 @@ const config: ControlPanelConfig = {
                   removeIrrelevantConditions: chartStatus === 'success',
                   columnOptions: metricColumn,
                   verboseMap,
+                };
+              },
+            },
+          },
+        ],
+        [
+          {
+            name: 'column_config',
+            config: {
+              type: 'ColumnConfigControl',
+              label: t('Customize metrics'),
+              description: t('Further customize how to display each metric'),
+              width: 400,
+              height: 260,
+              renderTrigger: true,
+              configFormLayout: {
+                [GenericDataType.Numeric]: [
+                  {
+                    tab: t('Number formatting'),
+                    children: [
+                      [
+                        {
+                          name: 'pivotAggregateFunction',
+                          config: {
+                            controlType: 'Select',
+                            label: t('Aggregation function'),
+                            description: t(
+                              'Override the chart-level aggregation for this metric. Use Average for ratio or percentage metrics that should not be summed in pivot totals.',
+                            ),
+                            options: PIVOT_METRIC_AGGREGATE_OPTIONS,
+                            defaultValue: '',
+                            minWidth: '14em',
+                            debounceDelay: 200,
+                          },
+                        },
+                      ],
+                      ['d3NumberFormat'],
+                      ['d3SmallNumberFormat'],
+                      ['currencyFormat'],
+                    ],
+                  },
+                ],
+              },
+              shouldMapStateToProps() {
+                return true;
+              },
+              mapStateToProps(explore, _, chart) {
+                const metrics =
+                  (explore?.controls?.metrics?.value as QueryFormMetric[]) ??
+                  [];
+                const { colnames = [], coltypes = [] } =
+                  chart?.queriesResponse?.[0] ?? {};
+                const metricColnames = metrics
+                  .map(metric => getMetricLabel(metric))
+                  .filter((metric): metric is string => Boolean(metric));
+                const metricColtypes = metricColnames.map(metric => {
+                  const colIndex = colnames.indexOf(metric);
+                  return colIndex >= 0
+                    ? coltypes[colIndex]
+                    : GenericDataType.Numeric;
+                });
+
+                return {
+                  columnsPropsObject: {
+                    colnames: metricColnames,
+                    coltypes: metricColtypes,
+                  },
                 };
               },
             },

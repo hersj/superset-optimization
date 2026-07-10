@@ -489,6 +489,7 @@ export type ConditionalFormattingConfig = {
   targetValueRight?: number;
   column?: string;
   colorScheme?: string;
+  customColor?: string;
   toAllRow?: boolean;
   toTextColor?: boolean;
   useGradient?: boolean;

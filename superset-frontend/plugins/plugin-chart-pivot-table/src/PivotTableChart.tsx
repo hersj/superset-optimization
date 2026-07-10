@@ -251,12 +251,15 @@ export default function PivotTableChart(props: PivotTableProps) {
     verboseMap,
     columnFormats,
     currencyFormats,
+    metricAggregateFunctions,
     metricsLayout,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
     timeGrainSqla,
     allowRenderHtml,
+    pivotNumberFormatRules,
+    dimensionLabelOverrides = {},
   } = props;
 
   const theme = useTheme();
@@ -299,6 +302,16 @@ export default function PivotTableChart(props: PivotTableProps) {
     [columnFormats, currencyFormat, currencyFormats, valueFormat],
   );
   const hasCustomMetricFormatters = customFormatsArray.length > 0;
+  const metricAggregatorNames = useMemo(() => {
+    const aggregateEntries = Object.entries(
+      metricAggregateFunctions || {},
+    ).filter(([, aggregateName]) => Boolean(aggregateName));
+    return aggregateEntries.length
+      ? {
+          [METRIC_KEY]: Object.fromEntries(aggregateEntries),
+        }
+      : undefined;
+  }, [metricAggregateFunctions]);
   const metricFormatters = useMemo(
     () =>
       hasCustomMetricFormatters
@@ -365,6 +378,10 @@ export default function PivotTableChart(props: PivotTableProps) {
   const groupbyColumns = useMemo(
     () => groupbyColumnsRaw.map(getColumnLabel),
     [groupbyColumnsRaw],
+  );
+  const namesMapping = useMemo(
+    () => ({ ...verboseMap, ...dimensionLabelOverrides }),
+    [dimensionLabelOverrides, verboseMap],
   );
 
   const sorters = useMemo(
@@ -576,6 +593,7 @@ export default function PivotTableChart(props: PivotTableProps) {
       omittedHighlightHeaderGroups: [METRIC_KEY],
       cellColorFormatters: { [METRIC_KEY]: metricColorFormatters },
       dateFormatters,
+      pivotNumberFormatRules,
     }),
     [
       colTotals,
@@ -583,6 +601,7 @@ export default function PivotTableChart(props: PivotTableProps) {
       dateFormatters,
       emitCrossFilters,
       metricColorFormatters,
+      pivotNumberFormatRules,
       rowTotals,
       rowSubTotals,
       selectedFilters,
@@ -679,6 +698,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           aggregatorsFactory={aggregatorsFactory}
           defaultFormatter={defaultFormatter}
           customFormatters={metricFormatters}
+          customAggregatorNames={metricAggregatorNames}
           aggregatorName={aggregateFunction}
           vals={vals}
           colOrder={colOrder}
@@ -686,7 +706,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           sorters={sorters}
           tableOptions={tableOptions}
           subtotalOptions={subtotalOptions}
-          namesMapping={verboseMap}
+          namesMapping={namesMapping}
           onContextMenu={handleContextMenu}
           allowRenderHtml={allowRenderHtml}
         />

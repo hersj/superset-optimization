@@ -913,7 +913,13 @@ class Superset(BaseSupersetView):
         file_path = safe_join(base_dir, lang, "LC_MESSAGES", "messages.json")
 
         if file_path and os.path.isfile(file_path):
-            return send_file(file_path, mimetype="application/json")
+            response = send_file(file_path, mimetype="application/json")
+            response.headers["Cache-Control"] = (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            )
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
 
         return json_error_response(
             "Language pack doesn't exist on the server", status=404

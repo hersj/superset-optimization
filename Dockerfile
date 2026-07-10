@@ -112,8 +112,9 @@ RUN useradd --user-group -d ${SUPERSET_HOME} -m --no-log-init --shell /bin/bash 
 
 # Some bash scripts needed throughout the layers
 COPY --chmod=755 docker/*.sh /app/docker/
-
-RUN pip install --no-cache-dir --upgrade uv
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+RUN pip install --default-timeout=1000 --no-cache-dir --upgrade uv
 
 # Using uv as it's faster/simpler than pip
 RUN uv venv /app/.venv

@@ -54,6 +54,8 @@ const d3Formatted: [string, string][] = [
 export const D3_FORMAT_OPTIONS: [string, string][] = [
   [NumberFormats.SMART_NUMBER, t('Adaptive formatting')],
   ['~g', t('Original value')],
+  ['CN_WAN', t('万 (中文: 12000 => 1.2万)')],
+  ['CN_WANYI', t('万/亿 (中文自动: 12000 => 1.2万, 1.2亿)')],
   ...d3Formatted,
   ['DURATION', t('Duration in ms (66000 => 1m 6s)')],
   ['DURATION_SUB', t('Duration in ms (1.40008 => 1ms 400µs 80ns)')],

@@ -217,7 +217,7 @@ export default function transformProps(
     sortSeriesTypeB,
     sortSeriesAscending,
     sortSeriesAscendingB,
-    timeGrainSqla,
+    timeGrainSqla: _timeGrainSqla,
     forceMaxInterval,
     percentageThreshold,
     showQueryIdentifiers = false,
@@ -569,13 +569,17 @@ export default function transformProps(
     if (maxSecondary === undefined) maxSecondary = 1;
   }
 
+  const timeGrainSqla = (formData as any).extra_form_data?.time_grain_sqla
+    || (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla
+    || (chartProps as any).rawFormData?.time_grain_sqla
+    || _timeGrainSqla;
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat)
+      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla)
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getXAxisFormatter(xAxisTimeFormat)
+      ? getXAxisFormatter(xAxisTimeFormat, timeGrainSqla)
       : String;
 
   const addYAxisTitleOffset =

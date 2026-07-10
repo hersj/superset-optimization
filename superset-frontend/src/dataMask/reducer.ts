@@ -52,6 +52,7 @@ import {
   REMOVE_DATA_MASK,
   SET_DATA_MASK_FOR_FILTER_CHANGES_COMPLETE,
   UPDATE_DATA_MASK,
+  UPDATE_DATA_MASKS,
 } from './actions';
 import { areObjectsEqual } from '../reduxUtils';
 
@@ -196,6 +197,18 @@ function updateDataMaskForFilterChanges(
   });
 }
 
+function getMergedDataMask(
+  filterId: string | number,
+  existingDataMask: DataMask | undefined,
+  dataMask: DataMask,
+) {
+  return {
+    ...getInitialDataMask(filterId),
+    ...existingDataMask,
+    ...dataMask,
+  };
+}
+
 const dataMaskReducer = produce(
   (
     draft: DataMaskStateWithId,
@@ -206,11 +219,28 @@ const dataMaskReducer = produce(
       case CLEAR_DATA_MASK_STATE:
         return cleanState;
       case UPDATE_DATA_MASK:
-        draft[action.filterId] = {
-          ...getInitialDataMask(action.filterId),
-          ...draft[action.filterId],
-          ...action.dataMask,
-        };
+        {
+          const nextDataMask = getMergedDataMask(
+            action.filterId,
+            draft[action.filterId],
+            action.dataMask,
+          );
+          if (!isEqual(draft[action.filterId], nextDataMask)) {
+            draft[action.filterId] = nextDataMask;
+          }
+        }
+        return draft;
+      case UPDATE_DATA_MASKS:
+        Object.entries(action.dataMasks).forEach(([filterId, dataMask]) => {
+          const nextDataMask = getMergedDataMask(
+            filterId,
+            draft[filterId],
+            dataMask,
+          );
+          if (!isEqual(draft[filterId], nextDataMask)) {
+            draft[filterId] = nextDataMask;
+          }
+        });
         return draft;
       case HYDRATE_DASHBOARD: {
         const hydrateDashboardAction = action as HydrateDashboardAction;

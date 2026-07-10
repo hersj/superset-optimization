@@ -26,6 +26,10 @@ import { FaSortDown as FaSortDesc } from 'react-icons/fa';
 import { FaSortUp as FaSortAsc } from 'react-icons/fa';
 import { PivotData, flatKey } from './utilities';
 import { Styles } from './Styles';
+import {
+  formatPivotValueWithRules,
+  type PivotNumberFormatRule,
+} from '../utils/numberFormatRules';
 
 interface CellColorFormatter {
   column: string;
@@ -61,6 +65,7 @@ interface TableOptions {
   highlightedHeaderCells?: Record<string, unknown[]>;
   cellColorFormatters?: Record<string, CellColorFormatter[]>;
   dateFormatters?: Record<string, ((val: unknown) => string) | undefined>;
+  pivotNumberFormatRules?: PivotNumberFormatRule[];
 }
 
 interface SubtotalDisplay {
@@ -181,20 +186,31 @@ function getCellColor(
 ): { backgroundColor: string | undefined } {
   if (!cellColorFormatters) return { backgroundColor: undefined };
 
-  let backgroundColor: string | undefined;
-
+  const formatters: CellColorFormatter[] = [];
   for (const cellColorFormatter of Object.values(cellColorFormatters)) {
-    if (!Array.isArray(cellColorFormatter)) continue;
+    if (Array.isArray(cellColorFormatter)) {
+      formatters.push(...cellColorFormatter);
+    }
+  }
 
-    for (const key of keys) {
-      for (const formatter of cellColorFormatter) {
-        if (formatter.column === key) {
-          const result = formatter.getColorFromValue(aggValue);
-          if (result) {
-            backgroundColor = result;
-          }
-        }
-      }
+  const keySet = new Set(keys);
+  const matchingFormatters = formatters.filter(formatter =>
+    keySet.has(formatter.column),
+  );
+  const formatterColumns = new Set(
+    formatters.map(formatter => formatter.column),
+  );
+  const candidateFormatters = matchingFormatters.length
+    ? matchingFormatters
+    : formatterColumns.size === 1
+      ? formatters
+      : [];
+
+  let backgroundColor: string | undefined;
+  for (const formatter of candidateFormatters) {
+    const result = formatter.getColorFromValue(aggValue);
+    if (result) {
+      backgroundColor = result;
     }
   }
 
@@ -1044,6 +1060,7 @@ export class TableRenderer extends Component<
       highlightedHeaderCells,
       cellColorFormatters,
       dateFormatters,
+      pivotNumberFormatRules,
     } = this.props.tableOptions;
     const flatRowKey = flatKey(rowKey);
 
@@ -1159,7 +1176,7 @@ export class TableRenderer extends Component<
       );
 
       const style = agg.isSubtotal
-        ? { fontWeight: 'bold' }
+        ? { fontWeight: 'bold', backgroundColor }
         : { backgroundColor };
 
       return (
@@ -1171,7 +1188,19 @@ export class TableRenderer extends Component<
           onContextMenu={e => this.props.onContextMenu(e, colKey, rowKey)}
           style={style}
         >
-          {displayCell(agg.format(aggValue, agg), allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey,
+              colAttrs,
+              colKey,
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            allowRenderHtml,
+          )}
         </td>
       );
     });
@@ -1180,6 +1209,11 @@ export class TableRenderer extends Component<
     if (rowTotals) {
       const agg = pivotData.getAggregator(rowKey, []);
       const aggValue = agg.value();
+      const { backgroundColor } = getCellColor(
+        rowKey,
+        aggValue,
+        cellColorFormatters,
+      );
       totalCell = (
         <td
           role="gridcell"
@@ -1187,8 +1221,21 @@ export class TableRenderer extends Component<
           className="pvtTotal"
           onClick={rowTotalCallbacks[flatRowKey]}
           onContextMenu={e => this.props.onContextMenu(e, undefined, rowKey)}
+          style={{ backgroundColor }}
         >
-          {displayCell(agg.format(aggValue, agg), allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey,
+              colAttrs,
+              colKey: [],
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            allowRenderHtml,
+          )}
         </td>
       );
     }
@@ -1220,6 +1267,9 @@ export class TableRenderer extends Component<
       return null;
     }
 
+    const { cellColorFormatters, dateFormatters, pivotNumberFormatRules } =
+      this.props.tableOptions;
+
     const totalLabelCell = (
       <th
         key="label"
@@ -1246,6 +1296,11 @@ export class TableRenderer extends Component<
       const flatColKey = flatKey(colKey);
       const agg = pivotData.getAggregator([], colKey);
       const aggValue = agg.value();
+      const { backgroundColor } = getCellColor(
+        colKey,
+        aggValue,
+        cellColorFormatters,
+      );
 
       return (
         <td
@@ -1254,9 +1309,21 @@ export class TableRenderer extends Component<
           key={`total-${flatColKey}`}
           onClick={colTotalCallbacks[flatColKey]}
           onContextMenu={e => this.props.onContextMenu(e, colKey, undefined)}
-          style={{ padding: '5px' }}
+          style={{ padding: '5px', backgroundColor }}
         >
-          {displayCell(agg.format(aggValue, agg), this.props.allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey: [],
+              colAttrs,
+              colKey,
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            this.props.allowRenderHtml,
+          )}
         </td>
       );
     });
@@ -1265,6 +1332,11 @@ export class TableRenderer extends Component<
     if (rowTotals) {
       const agg = pivotData.getAggregator([], []);
       const aggValue = agg.value();
+      const { backgroundColor } = getCellColor(
+        [],
+        aggValue,
+        cellColorFormatters,
+      );
       grandTotalCell = (
         <td
           role="gridcell"
@@ -1272,8 +1344,21 @@ export class TableRenderer extends Component<
           className="pvtGrandTotal pvtRowTotal"
           onClick={grandTotalCallback || undefined}
           onContextMenu={e => this.props.onContextMenu(e, undefined, undefined)}
+          style={{ backgroundColor }}
         >
-          {displayCell(agg.format(aggValue, agg), this.props.allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey: [],
+              colAttrs,
+              colKey: [],
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            this.props.allowRenderHtml,
+          )}
         </td>
       );
     }

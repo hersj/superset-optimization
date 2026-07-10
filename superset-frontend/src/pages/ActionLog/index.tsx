@@ -28,6 +28,7 @@ import {
   type ListViewFilter,
 } from 'src/components/ListView';
 import { Typography } from '@superset-ui/core/components';
+import { extendedDayjs } from '@superset-ui/core/utils/dates';
 import { fetchUserOptions } from 'src/features/groups/utils';
 
 export type ActionLogObject = {
@@ -47,6 +48,18 @@ export type ActionLogObject = {
 };
 
 const PAGE_SIZE = 25;
+const ACTION_LOG_TIMEZONE = 'Asia/Shanghai';
+
+export const formatActionLogDttm = (dttm: string | null): string => {
+  if (!dttm) {
+    return '';
+  }
+
+  const parsedDttm = extendedDayjs.utc(dttm);
+  return parsedDttm.isValid()
+    ? parsedDttm.tz(ACTION_LOG_TIMEZONE).format('YYYY-MM-DD HH:mm:ss')
+    : dttm;
+};
 
 function ActionLogList() {
   const { addDangerToast, addSuccessToast } = useToasts();
@@ -269,7 +282,7 @@ function ActionLogList() {
           row: {
             original: { dttm },
           },
-        }: any) => <span>{dttm}</span>,
+        }: any) => <span>{formatActionLogDttm(dttm)}</span>,
       },
     ],
     [],

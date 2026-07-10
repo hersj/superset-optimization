@@ -29,7 +29,15 @@ import {
 import fetchMock from 'fetch-mock';
 import { FilterBarOrientation } from 'src/dashboard/types';
 import { FILTER_BAR_TEST_ID } from './utils';
-import FilterBar from '.';
+import FilterBar, {
+  AUTO_APPLY_DEBOUNCE_MS,
+  createDebouncedDataMaskApplier,
+  getAutoApplyDataMaskUpdates,
+  getDataMaskForRedux,
+  shouldAutoApplyDataMask,
+  shouldPublishAppliedDataMask,
+  shouldPublishDataMask,
+} from '.';
 import { FILTERS_CONFIG_MODAL_TEST_ID } from '../FiltersConfigModal/FiltersConfigModal';
 import * as dataMaskActions from 'src/dataMask/actions';
 
@@ -74,6 +82,195 @@ fetchMock.get('glob:*/api/v1/dataset/7', {
 // Cleanup between tests
 beforeEach(() => {
   jest.clearAllMocks();
+});
+
+describe('shouldPublishDataMask', () => {
+  it('does not publish the just-hydrated applied data mask again', () => {
+    const restoredDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
+    });
+
+    expect(shouldPublishDataMask(restoredDataMask, restoredDataMask)).toBe(
+      false,
+    );
+  });
+
+  it('publishes when the applied data mask changes after hydration', () => {
+    const restoredDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
+    });
+    const changedDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-b'] } },
+    });
+
+    expect(shouldPublishDataMask(changedDataMask, restoredDataMask)).toBe(true);
+  });
+
+  it('does not publish while filter bar initialization is still adopting hydrated state', () => {
+    const restoredDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
+    });
+
+    expect(
+      shouldPublishAppliedDataMask({
+        dataMaskText: restoredDataMask,
+        lastPublishedDataMaskText: '{}',
+        isInitialized: false,
+        hasPublishBaseline: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not publish the first initialized data mask baseline', () => {
+    const restoredDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
+    });
+
+    expect(
+      shouldPublishAppliedDataMask({
+        dataMaskText: restoredDataMask,
+        lastPublishedDataMaskText: '{}',
+        isInitialized: true,
+        hasPublishBaseline: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('publishes changed data masks after initialization baseline is established', () => {
+    const restoredDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
+    });
+    const changedDataMask = JSON.stringify({
+      'NATIVE_FILTER-1': { filterState: { value: ['shop-b'] } },
+    });
+
+    expect(
+      shouldPublishAppliedDataMask({
+        dataMaskText: changedDataMask,
+        lastPublishedDataMaskText: restoredDataMask,
+        isInitialized: true,
+        hasPublishBaseline: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('automatic filter apply batching', () => {
+  it('dispatches only the final selected data mask after the debounce window', () => {
+    const apply = jest.fn();
+    const applier = createDebouncedDataMaskApplier(
+      apply,
+      AUTO_APPLY_DEBOUNCE_MS,
+    );
+
+    applier.schedule('NATIVE_FILTER-1', {
+      filterState: { value: ['shop-a'] },
+      extraFormData: {
+        filters: [{ col: 'shop_name', op: 'IN', val: ['shop-a'] }],
+      },
+    });
+    applier.schedule('NATIVE_FILTER-1', {
+      filterState: { value: ['shop-b'] },
+      extraFormData: {
+        filters: [{ col: 'shop_name', op: 'IN', val: ['shop-b'] }],
+      },
+    });
+
+    jest.advanceTimersByTime(AUTO_APPLY_DEBOUNCE_MS - 1);
+    expect(apply).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1);
+
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith([
+      [
+        'NATIVE_FILTER-1',
+        {
+          filterState: { value: ['shop-b'] },
+          extraFormData: {
+            filters: [{ col: 'shop_name', op: 'IN', val: ['shop-b'] }],
+          },
+        },
+      ],
+    ]);
+  });
+
+  it('does not auto apply restored or equivalent data masks', () => {
+    const selectedMask = {
+      id: 'NATIVE_FILTER-1',
+      filterState: { value: ['shop-a'], validateStatus: 'error' },
+      extraFormData: {
+        filters: [{ col: 'shop_name', op: 'IN', val: ['shop-a'] }],
+      },
+    } as any;
+    const appliedMask = {
+      id: 'NATIVE_FILTER-1',
+      filterState: { value: ['shop-a'] },
+      extraFormData: {
+        filters: [{ col: 'shop_name', op: 'IN', val: ['shop-a'] }],
+      },
+    } as any;
+
+    expect(getDataMaskForRedux(selectedMask)).toEqual(appliedMask);
+    expect(shouldAutoApplyDataMask(selectedMask, appliedMask)).toBe(false);
+  });
+
+  it('builds one bulk update payload from pending auto apply entries', () => {
+    const updates = getAutoApplyDataMaskUpdates(
+      [
+        [
+          'NATIVE_FILTER-1',
+          {
+            filterState: { value: ['shop-b'], validateStatus: 'error' },
+            extraFormData: {
+              filters: [{ col: 'shop_name', op: 'IN', val: ['shop-b'] }],
+            },
+          } as any,
+        ],
+        [
+          'NATIVE_FILTER-2',
+          {
+            filterState: { value: ['same'] },
+            extraFormData: {
+              filters: [{ col: 'country', op: 'IN', val: ['same'] }],
+            },
+          },
+        ],
+        [
+          'NATIVE_FILTER-out-of-scope',
+          {
+            filterState: { value: ['ignored'] },
+          },
+        ],
+      ],
+      {
+        'NATIVE_FILTER-1': {
+          id: 'NATIVE_FILTER-1',
+          filterState: { value: ['shop-a'] },
+          extraFormData: {
+            filters: [{ col: 'shop_name', op: 'IN', val: ['shop-a'] }],
+          },
+        },
+        'NATIVE_FILTER-2': {
+          id: 'NATIVE_FILTER-2',
+          filterState: { value: ['same'] },
+          extraFormData: {
+            filters: [{ col: 'country', op: 'IN', val: ['same'] }],
+          },
+        },
+      } as any,
+      new Set(['NATIVE_FILTER-1', 'NATIVE_FILTER-2']),
+    );
+
+    expect(updates).toEqual({
+      'NATIVE_FILTER-1': {
+        filterState: { value: ['shop-b'] },
+        extraFormData: {
+          filters: [{ col: 'shop_name', op: 'IN', val: ['shop-b'] }],
+        },
+      },
+    });
+  });
 });
 
 const getTestId = testWithId<string>(FILTER_BAR_TEST_ID, true);
@@ -471,9 +668,9 @@ test('FilterBar renders correctly when filter has complete extraFormData', async
   expect(screen.getByTestId(getTestId('filter-icon'))).toBeInTheDocument();
 });
 
-test('handleClearAll dispatches updateDataMask with value undefined for filter_select', async () => {
+test('handleClearAll dispatches one updateDataMasks payload with value undefined for filter_select', async () => {
   const filterId = 'NATIVE_FILTER-clear-select';
-  const updateDataMaskSpy = jest.spyOn(dataMaskActions, 'updateDataMask');
+  const updateDataMasksSpy = jest.spyOn(dataMaskActions, 'updateDataMasks');
   const selectFilter = createFilter({
     id: filterId,
     name: 'Region',
@@ -518,19 +715,21 @@ test('handleClearAll dispatches updateDataMask with value undefined for filter_s
     userEvent.click(clearBtn);
   });
 
-  expect(updateDataMaskSpy).toHaveBeenCalledWith(filterId, {
-    filterState: { value: undefined },
-    extraFormData: {},
+  expect(updateDataMasksSpy).toHaveBeenCalledWith({
+    [filterId]: {
+      filterState: { value: undefined },
+      extraFormData: {},
+    },
   });
-  updateDataMaskSpy.mockRestore();
+  updateDataMasksSpy.mockRestore();
 });
 
-test('handleClearAll dispatches updateDataMask with [null, null] for filter_range', async () => {
+test('handleClearAll dispatches one updateDataMasks payload with [null, null] for filter_range', async () => {
   fetchMock.post('glob:*/api/v1/chart/data', {
     result: [{ data: [{ min: 0, max: 100 }] }],
   });
   const filterId = 'NATIVE_FILTER-clear-range';
-  const updateDataMaskSpy = jest.spyOn(dataMaskActions, 'updateDataMask');
+  const updateDataMasksSpy = jest.spyOn(dataMaskActions, 'updateDataMasks');
   const rangeFilter = createFilter({
     id: filterId,
     name: 'Age',
@@ -575,17 +774,19 @@ test('handleClearAll dispatches updateDataMask with [null, null] for filter_rang
     userEvent.click(clearBtn);
   });
 
-  expect(updateDataMaskSpy).toHaveBeenCalledWith(filterId, {
-    filterState: { value: [null, null] },
-    extraFormData: {},
+  expect(updateDataMasksSpy).toHaveBeenCalledWith({
+    [filterId]: {
+      filterState: { value: [null, null] },
+      extraFormData: {},
+    },
   });
-  updateDataMaskSpy.mockRestore();
+  updateDataMasksSpy.mockRestore();
 });
 
-test('handleClearAll only dispatches for filters present in dataMask', async () => {
+test('handleClearAll only includes filters present in dataMask', async () => {
   const idInMask = 'NATIVE_FILTER-has-value';
   const idNotInMask = 'NATIVE_FILTER-no-value';
-  const updateDataMaskSpy = jest.spyOn(dataMaskActions, 'updateDataMask');
+  const updateDataMasksSpy = jest.spyOn(dataMaskActions, 'updateDataMasks');
   const filterInMask = createFilter({
     id: idInMask,
     name: 'A',
@@ -638,12 +839,19 @@ test('handleClearAll only dispatches for filters present in dataMask', async () 
     userEvent.click(clearBtn);
   });
 
-  expect(updateDataMaskSpy).toHaveBeenCalledTimes(1);
-  expect(updateDataMaskSpy).toHaveBeenCalledWith(idInMask, {
-    filterState: { value: undefined },
-    extraFormData: {},
+  expect(updateDataMasksSpy).toHaveBeenCalledTimes(1);
+  expect(updateDataMasksSpy).toHaveBeenCalledWith({
+    [idInMask]: {
+      filterState: { value: undefined },
+      extraFormData: {},
+    },
   });
-  updateDataMaskSpy.mockRestore();
+  expect(updateDataMasksSpy).not.toHaveBeenCalledWith(
+    expect.objectContaining({
+      [idNotInMask]: expect.anything(),
+    }),
+  );
+  updateDataMasksSpy.mockRestore();
 });
 
 test('FilterBar Clear All only clears in-scope filters, not out-of-scope ones', async () => {
@@ -651,7 +859,7 @@ test('FilterBar Clear All only clears in-scope filters, not out-of-scope ones', 
   const outOfScopeRequiredFilterId = 'NATIVE_FILTER-out-of-scope-required';
   const outOfScopeNonRequiredFilterId =
     'NATIVE_FILTER-out-of-scope-non-required';
-  const updateDataMaskSpy = jest.spyOn(dataMaskActions, 'updateDataMask');
+  const updateDataMasksSpy = jest.spyOn(dataMaskActions, 'updateDataMasks');
 
   const dashboardLayoutWithTabs = {
     ROOT_ID: { id: 'ROOT_ID', type: 'ROOT', children: ['TABS-1'] },
@@ -776,17 +984,22 @@ test('FilterBar Clear All only clears in-scope filters, not out-of-scope ones', 
     userEvent.click(clearButton);
   });
 
-  // Verify only the in-scope filter was cleared, not the out-of-scope ones
-  const clearedFilterIds = updateDataMaskSpy.mock.calls.map(call => call[0]);
-  expect(clearedFilterIds).toContain(inScopeFilterId);
-  expect(clearedFilterIds).not.toContain(outOfScopeRequiredFilterId);
-  expect(clearedFilterIds).not.toContain(outOfScopeNonRequiredFilterId);
+  const clearedDataMasks = updateDataMasksSpy.mock.calls[0][0];
+  expect(Object.keys(clearedDataMasks)).toContain(inScopeFilterId);
+  expect(Object.keys(clearedDataMasks)).not.toContain(
+    outOfScopeRequiredFilterId,
+  );
+  expect(Object.keys(clearedDataMasks)).not.toContain(
+    outOfScopeNonRequiredFilterId,
+  );
 
   // Verify the in-scope filter was cleared with the correct value
-  expect(updateDataMaskSpy).toHaveBeenCalledWith(inScopeFilterId, {
-    filterState: { value: undefined },
-    extraFormData: {},
+  expect(updateDataMasksSpy).toHaveBeenCalledWith({
+    [inScopeFilterId]: {
+      filterState: { value: undefined },
+      extraFormData: {},
+    },
   });
 
-  updateDataMaskSpy.mockRestore();
+  updateDataMasksSpy.mockRestore();
 });

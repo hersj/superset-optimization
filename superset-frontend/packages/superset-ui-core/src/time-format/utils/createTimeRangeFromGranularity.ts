@@ -57,11 +57,13 @@ function computeEndTimeFromGranularity(
     // because it will also handle daylight saving.
     case TimeGranularity.WEEK:
     case TimeGranularity.WEEK_STARTING_SUNDAY:
+    case TimeGranularity.WEEK_STARTING_SUNDAY_SELLERFOX:
     case TimeGranularity.WEEK_STARTING_MONDAY:
       return deductOneMs(createTime(mode, year, month, date + 7));
     case TimeGranularity.MONTH:
       return deductOneMs(createTime(mode, year, month + 1));
     case TimeGranularity.QUARTER:
+    case TimeGranularity.FISCAL_QUARTER:
       return deductOneMs(
         createTime(mode, year, (Math.floor(month / 3) + 1) * 3),
       );

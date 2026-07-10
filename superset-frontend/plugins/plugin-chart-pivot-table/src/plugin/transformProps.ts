@@ -18,6 +18,7 @@
  */
 import {
   ChartProps,
+  Currency,
   DataRecord,
   extractTimegrain,
   getTimeFormatter,
@@ -29,8 +30,11 @@ import {
 import { GenericDataType } from '@apache-superset/core/common';
 import { getColorFormatters } from '@superset-ui/chart-controls';
 import { DateFormatter } from '../types';
+import { getDimensionLabelOverrides } from '../utils/dimensionLabelConfig';
+import type { DimensionLabelConfig } from '../utils/dimensionLabelConfig';
 
 const { DATABASE_DATETIME } = TimeFormats;
+const NUMERIC_STRING_RE = /^-?\d+(\.\d+)?$/;
 
 function isNumeric(key: string, data: DataRecord[] = []) {
   return data.every(
@@ -38,6 +42,86 @@ function isNumeric(key: string, data: DataRecord[] = []) {
       record[key] === null ||
       record[key] === undefined ||
       typeof record[key] === 'number',
+  );
+}
+
+function normalizeTemporalValue(
+  value: unknown,
+): Date | number | string | null | undefined {
+  if (value === null || value === undefined || value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return NUMERIC_STRING_RE.test(trimmed) ? Number(trimmed) : trimmed;
+  }
+
+  if (typeof value === 'object' && typeof value.valueOf === 'function') {
+    const primitiveValue = value.valueOf();
+    if (primitiveValue !== value) {
+      return normalizeTemporalValue(primitiveValue);
+    }
+  }
+
+  return String(value);
+}
+
+function createSafeDateFormatter(formatter: DateFormatter): DateFormatter {
+  return value => {
+    const formattedValue = formatter(
+      normalizeTemporalValue(value) as Date | number | null | undefined,
+    );
+
+    return typeof formattedValue === 'string' && formattedValue.includes('NaN')
+      ? String(value)
+      : formattedValue;
+  };
+}
+
+type PivotColumnConfig = {
+  d3NumberFormat?: string;
+  currencyFormat?: Currency;
+  pivotAggregateFunction?: string;
+};
+
+function mergeColumnConfigMetricFormats(
+  savedColumnFormats: Record<string, unknown> = {},
+  savedCurrencyFormats: Record<string, Currency> = {},
+  columnConfig: Record<string, PivotColumnConfig> = {},
+) {
+  const mergedColumnFormats = { ...savedColumnFormats };
+  const mergedCurrencyFormats = { ...savedCurrencyFormats };
+
+  Object.entries(columnConfig).forEach(([metricName, config]) => {
+    if (config?.d3NumberFormat) {
+      mergedColumnFormats[metricName] = config.d3NumberFormat;
+    }
+    if (config?.currencyFormat?.symbol) {
+      mergedCurrencyFormats[metricName] = config.currencyFormat;
+    }
+  });
+
+  return {
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+  };
+}
+
+function getMetricAggregateFunctions(
+  columnConfig: Record<string, PivotColumnConfig> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(columnConfig)
+      .filter(([, config]) => Boolean(config?.pivotAggregateFunction))
+      .map(([metricName, config]) => [
+        metricName,
+        config.pivotAggregateFunction as string,
+      ]),
   );
 }
 
@@ -117,8 +201,32 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     timeGrainSqla,
     currencyFormat,
     allowRenderHtml,
+    pivotNumberFormatRules = [],
   } = formData;
   const { selectedFilters } = filterState;
+  const columnConfig =
+    (formData as { columnConfig?: Record<string, PivotColumnConfig> })
+      .columnConfig ||
+    (rawFormData as { column_config?: Record<string, PivotColumnConfig> })
+      .column_config ||
+    {};
+  const {
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+  } = mergeColumnConfigMetricFormats(
+    columnFormats,
+    currencyFormats,
+    columnConfig,
+  );
+  const metricAggregateFunctions = getMetricAggregateFunctions(columnConfig);
+  const dimensionLabelConfig =
+    (formData as { dimensionLabelConfig?: DimensionLabelConfig })
+      .dimensionLabelConfig ||
+    (rawFormData as { dimension_label_config?: DimensionLabelConfig })
+      .dimension_label_config;
+  const dimensionLabelOverrides = getDimensionLabelOverrides(
+    dimensionLabelConfig,
+  );
   const granularity = extractTimegrain(rawFormData);
 
   const dateFormatters = colnames
@@ -134,19 +242,17 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
         let formatter: DateFormatter | undefined;
         if (dateFormat === SMART_DATE_ID) {
           if (granularity) {
-            // time column use formats based on granularity
             formatter = getTimeFormatterForGranularity(granularity);
           } else if (isNumeric(temporalColname, data)) {
             formatter = getTimeFormatter(DATABASE_DATETIME);
           } else {
-            // if no column-specific format, print cell as is
-            formatter = String;
+            formatter = getTimeFormatter(SMART_DATE_ID);
           }
         } else if (dateFormat) {
           formatter = getTimeFormatter(dateFormat);
         }
         if (formatter) {
-          acc[temporalColname] = formatter;
+          acc[temporalColname] = createSafeDateFormatter(formatter);
         }
         return acc;
       },
@@ -187,13 +293,16 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     setDataMask,
     selectedFilters,
     verboseMap,
-    columnFormats,
-    currencyFormats,
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+    metricAggregateFunctions,
     metricsLayout,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
     timeGrainSqla,
     allowRenderHtml,
+    pivotNumberFormatRules,
+    dimensionLabelOverrides,
   };
 }

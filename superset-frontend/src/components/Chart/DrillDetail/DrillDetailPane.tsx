@@ -321,7 +321,7 @@ export default function DrillDetailPane({
             setPageIndex(pagination.current ? pagination.current - 1 : 0)
           }
           resizable
-          virtualize
+          scroll={{ x: "max-content" }}
           allowHTML={allowHTML}
         />
       </Resizable>

@@ -79,6 +79,25 @@ test('getOpacity', () => {
   expect(getOpacity(50, 75, NaN)).toEqual(1);
 });
 
+test('getColorFormatters prioritizes custom color over theme color scheme', () => {
+  const colorFormatters = getColorFormatters(
+    [
+      {
+        operator: Comparator.GreaterThan,
+        targetValue: 50,
+        colorScheme: 'colorError',
+        customColor: '#7f1d1d',
+        useGradient: false,
+        column: 'count',
+      },
+    ],
+    mockData,
+    { colorError: '#FF0000' },
+  );
+
+  expect(colorFormatters[0].getColorFromValue(100)).toEqual('#7f1d1d');
+});
+
 test('getColorFunction GREATER_THAN', () => {
   const colorFunction = getColorFunction(
     {
