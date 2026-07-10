@@ -1,152 +1,132 @@
-# Superset Optimization Public Project Design
+# Superset Optimization 公开项目设计
 
-## Status
+## 状态
 
-Approved project direction. This document defines the repository boundary and
-migration rules that must be reviewed before implementation starts.
+项目方向已确认。本文档定义代码仓库边界和迁移规则，在正式实施前由用户审阅。
 
-## Objective
+## 目标
 
-Create a public repository named `hersj/superset-optimization` that preserves
-Apache Superset history and contains reusable Superset product and performance
-improvements currently maintained on the Sellerfox production server.
+创建名为 `hersj/superset-optimization` 的公开仓库，保留 Apache Superset
+的完整历史，并收录目前维护在 Sellerfox 生产服务器上的、可以公开复用的
+Superset 产品功能和性能优化。
 
-The project must become the sole source repository for Superset application
-customizations. Sellerfox remains responsible for business data pipelines,
-warehouse schemas, and data correctness.
+该项目将成为 Superset 应用定制代码的唯一源代码仓库。Sellerfox 项目继续负责
+业务数据管道、数仓结构和数据正确性。
 
-## Repository Model
+## 仓库模式
 
-The repository is a full fork of Apache Superset rather than a patch-only
-overlay. Its Git remotes are:
+该仓库采用 Apache Superset 完整 fork，而不是只保存补丁文件。Git 远端配置为：
 
-- `origin`: `https://github.com/hersj/superset-optimization.git`
-- `upstream`: `https://github.com/apache/superset.git`
+- `origin`：`https://github.com/hersj/superset-optimization.git`
+- `upstream`：`https://github.com/apache/superset.git`
 
-Apache history is retained. The current production base commit,
-`cc066b3576`, is used as the migration baseline. Public customizations are
-rebuilt as focused commits on top of that baseline instead of publishing the
-production server's dirty working tree as one snapshot.
+仓库保留 Apache Superset 的原始提交历史。迁移以当前生产环境的基础提交
+`cc066b3576` 为起点。生产服务器工作区中的定制改动将按功能重新整理为多个
+独立提交，不会把服务器的脏工作区直接作为一个快照公开。
 
-The default branch remains `master` to simplify comparison and synchronization
-with Apache Superset. Migration work is prepared on a `codex/` branch and
-merged only after verification.
+默认分支继续使用 `master`，便于与 Apache Superset 的 `upstream/master`
+比较和同步。迁移工作在 `codex/` 前缀的开发分支完成，通过验证后再合并。
 
-## Ownership Boundary
+## 职责边界
 
-The public project owns:
+公开项目负责：
 
-- native-filter behavior, state persistence, cascade option loading, and
-  dashboard load-performance changes;
-- CustomTime and SmartDate user-interface and formatting behavior;
-- Pivot Table formatting, totals, conditional formatting, and public chart
-  properties;
-- Big Number comparison ranges and display properties;
-- reusable Superset backend APIs, cache behavior, translations, tests, and
-  generic deployment templates;
-- documentation for development, testing, upstream synchronization, release,
-  and rollback.
+- 原生筛选器行为、筛选状态保存、级联候选项加载和看板加载性能优化；
+- CustomTime 和 SmartDate 的交互及日期格式化行为；
+- 透视表的数字格式、总计、条件格式和公开图表属性；
+- 大数字图表的同环比区间和显示属性；
+- 可复用的 Superset 后端 API、缓存逻辑、中文翻译、测试和通用部署模板；
+- 开发、测试、上游同步、发布和回滚文档。
 
-Sellerfox continues to own:
+Sellerfox 项目继续负责：
 
-- ODS, DWD, DWS, profit calculations, synchronization jobs, and business data
-  repair;
-- warehouse table definitions and indexes for Sellerfox-owned tables;
-- private dashboard metadata, production credentials, RLS assignments tied to
-  internal users, and business-specific SQL or identifiers.
+- ODS、DWD、DWS、利润计算、同步任务和业务数据修复；
+- Sellerfox 业务表的表结构和数据库索引；
+- 私有看板元数据、生产凭据、绑定内部用户的 RLS 权限，以及业务专属 SQL
+  或内部标识。
 
-When a change spans both repositories, each repository contains only its owned
-half and the release notes link the two changes.
+当一个需求同时涉及两个仓库时，每个仓库只保存自己负责的部分，并在发布说明中
+关联对应改动。
 
-## Public-Safety Rules
+## 公开安全规则
 
-No production working-tree file may be copied wholesale into the public
-repository. Every candidate file is reviewed before staging.
+禁止把生产服务器工作区中的文件未经审查直接复制到公开仓库。每个候选文件必须在
+暂存前单独检查。
 
-The following are excluded:
+以下内容不得进入公开仓库：
 
-- passwords, secret keys, database URLs, tokens, private IP configuration, and
-  user identities;
-- `.env` files, live `superset_config.py` values, logs, compiled assets, cache
-  data, SQL dumps, and backup files;
-- dashboard parameter backups and business-specific chart or dataset metadata;
-- Sellerfox table samples, customer data, internal metric values, and private
-  operating procedures.
+- 密码、密钥、数据库连接地址、Token、私有 IP 配置和用户身份信息；
+- `.env` 文件、线上 `superset_config.py` 的真实配置值、日志、编译产物、缓存
+  数据、SQL 数据转储和备份文件；
+- 看板参数备份，以及包含业务信息的图表或数据集元数据；
+- Sellerfox 表数据样本、客户数据、内部指标值和私有运维流程。
 
-Configuration is published only as environment-variable-driven examples.
-Repository history and the staged diff are scanned for secrets before the
-first push.
+公开配置只能使用环境变量驱动的示例模板。首次推送前必须扫描暂存差异和 Git 历史，
+检查密钥及生产专属信息。
 
-## Migration Structure
+## 迁移结构
 
-Production changes are reconstructed in this order:
+生产环境中的改动按以下顺序重新整理：
 
-1. Generic runtime and configuration templates.
-2. Filter-state persistence and initialization behavior.
-3. Cascade-filter batching, caching, and request reduction.
-4. CustomTime and SmartDate behavior.
-5. Pivot Table public formatting properties.
-6. Big Number comparison properties.
-7. Chinese translation improvements.
-8. Tests, operational documentation, and release tooling.
+1. 通用运行环境和配置模板。
+2. 筛选状态保存和初始化行为。
+3. 级联筛选批量请求、缓存和请求收敛。
+4. CustomTime 和 SmartDate。
+5. 透视表公开格式化属性。
+6. 大数字图表同环比属性。
+7. 中文翻译优化。
+8. 测试、运维文档和发布工具。
 
-Each commit includes a concise description and the author. Temporary `.orig`,
-`.bak`, build-log, and generated translation files are not migrated.
+每个提交必须包含简洁的修改说明和作者信息。临时 `.orig`、`.bak`、构建日志和
+自动生成的翻译文件不迁移。
 
-## Sellerfox Cleanup
+## Sellerfox 清理
 
-Sellerfox cleanup happens only after the corresponding public files are
-committed and verified. Superset-specific design documents, temporary source
-copies, translation assets, and Superset metadata scripts are removed from the
-Sellerfox working tree when ownership has transferred.
+只有对应文件已经迁入公开仓库、完成提交并通过验证后，才能清理 Sellerfox 中的
+原文件。Superset 专属设计文档、临时源码副本、翻译资产和 Superset 元数据脚本
+在职责完成转移后从 Sellerfox 工作区移除。
 
-Data migrations remain in Sellerfox if they alter Sellerfox-owned warehouse
-objects. Superset metadb or application-only migrations move to
-`superset-optimization` after private identifiers are parameterized.
+如果数据迁移会修改 Sellerfox 所属的数仓对象，则继续保留在 Sellerfox 项目中。
+只涉及 Superset 元数据库或 Superset 应用的迁移，在内部标识完成参数化后转入
+`superset-optimization`。
 
-Uncommitted Sellerfox business changes are left untouched throughout the
-migration.
+迁移过程中不得修改或覆盖 Sellerfox 中尚未提交的业务改动。
 
-## Verification
+## 验证要求
 
-Before creating or pushing the public repository:
+创建或推送公开仓库前必须完成：
 
-- compare every migrated source file with the production working tree;
-- run focused frontend Jest and backend pytest suites for each customization;
-- run the Superset frontend production build;
-- start the Docker stack from sanitized configuration and verify health;
-- scan tracked files and Git history for secrets and production-only values;
-- confirm no Sellerfox customer data or private dashboard metadata is tracked.
+- 对比每个迁移文件与生产服务器工作区中的真实版本；
+- 针对每项定制运行前端 Jest 和后端 pytest 测试；
+- 完成 Superset 前端生产构建；
+- 使用脱敏配置启动 Docker 环境并验证服务健康；
+- 扫描已跟踪文件和 Git 历史中的密钥及生产专属值；
+- 确认仓库不包含 Sellerfox 客户数据或私有看板元数据。
 
-Before switching production deployment:
+切换生产部署来源前必须完成：
 
-- deploy the built revision to a staging or parallel container;
-- verify representative dashboards, native filters, CustomTime, Pivot Table,
-  Big Number, translations, and dashboard load behavior;
-- record the exact commit and image tag;
-- preserve the current production checkout and image as the rollback target.
+- 将构建版本部署到预发布环境或并行容器；
+- 验证代表性看板、原生筛选器、CustomTime、透视表、大数字图表、中文翻译和
+  看板加载行为；
+- 记录准确的 Git 提交和镜像标签；
+- 保留当前生产代码和镜像作为回滚目标。
 
-## Rollout and Failure Handling
+## 发布与失败处理
 
-Creating the public repository does not change the live Superset deployment.
-Production switches to the public repository only after all verification gates
-pass.
+创建公开仓库不会改变当前线上 Superset。只有全部验证门槛通过后，生产环境才会
+切换为从公开仓库部署。
 
-If a production customization cannot be generalized without exposing private
-business details, it stays outside the public repository and is documented as
-a private deployment extension. If a reconstructed commit changes behavior or
-fails its tests, that module is held back without blocking already verified
-modules.
+如果某项生产定制无法在不暴露私有业务信息的情况下通用化，该功能不进入公开仓库，
+并作为私有部署扩展单独记录。如果某个重构后的提交改变了原有行为或测试失败，则
+暂缓迁移该模块，不影响其他已验证模块继续推进。
 
-## Success Criteria
+## 完成标准
 
-The migration is complete when:
+满足以下条件后，迁移才算完成：
 
-- `hersj/superset-optimization` is public and has Apache Superset configured as
-  `upstream`;
-- all approved reusable production customizations exist as reviewed commits;
-- tests, build, container health, and secret scans pass;
-- Sellerfox no longer contains Superset application source or Superset-only
-  working artifacts;
-- production can be deployed and rolled back using documented versioned
-  revisions from the new repository.
+- `hersj/superset-optimization` 已创建为公开仓库，并配置 Apache Superset
+  为 `upstream`；
+- 所有确认可公开复用的生产定制已经整理为可审查的独立提交；
+- 测试、前端构建、容器健康检查和密钥扫描全部通过；
+- Sellerfox 不再包含 Superset 应用源码或 Superset 专属临时工作资产；
+- 生产环境可以依据新仓库中的版本化提交完成部署和回滚。
