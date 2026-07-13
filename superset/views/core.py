@@ -130,7 +130,14 @@ PARAMETER_MISSING_ERR = __(
 
 SqlResults = dict[str, Any]
 
-IMAGE_SUFFIXES = frozenset({".gif", ".jpeg", ".jpg", ".png", ".webp"})
+IMAGE_MIMETYPES = {
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+IMAGE_SUFFIXES = frozenset(IMAGE_MIMETYPES)
 
 
 class Superset(BaseSupersetView):
@@ -936,7 +943,10 @@ class Superset(BaseSupersetView):
         ):
             abort(404)
 
-        response = Response(status=200)
+        response = Response(
+            status=200,
+            mimetype=IMAGE_MIMETYPES[path.suffix.lower()],
+        )
         response.headers["X-Accel-Redirect"] = (
             f"/_protected-images/{parse.quote(image_key, safe='/')}"
         )

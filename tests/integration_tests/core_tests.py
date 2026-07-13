@@ -129,6 +129,7 @@ class TestCore(SupersetTestCase):
             "/_protected-images/203847_B0DZCK59RZ.jpg"
         )
         assert resp.headers["Cache-Control"] == "private, no-store"
+        assert resp.mimetype == "image/jpeg"
 
     def test_image_proxy_rejects_non_image_and_traversal_keys(self):
         self.create_user(ADMIN_USERNAME, "general", "Admin")
