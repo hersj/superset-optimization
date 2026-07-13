@@ -22,6 +22,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Any, Callable, cast
 from urllib import parse
 
@@ -128,6 +129,8 @@ PARAMETER_MISSING_ERR = __(
 )
 
 SqlResults = dict[str, Any]
+
+IMAGE_SUFFIXES = frozenset({".gif", ".jpeg", ".jpg", ".png", ".webp"})
 
 
 class Superset(BaseSupersetView):
@@ -918,6 +921,27 @@ class Superset(BaseSupersetView):
         return json_error_response(
             "Language pack doesn't exist on the server", status=404
         )
+
+    @event_logger.log_this
+    @expose("/image/<path:image_key>", methods=("GET",))
+    def image(self, image_key: str) -> FlaskResponse:
+        if not g.user or not get_user_id():
+            return redirect_to_login()
+
+        path = PurePosixPath(image_key)
+        if (
+            path.is_absolute()
+            or path.suffix.lower() not in IMAGE_SUFFIXES
+            or any(part in {".", ".."} or part.startswith(".") for part in path.parts)
+        ):
+            abort(404)
+
+        response = Response(status=200)
+        response.headers["X-Accel-Redirect"] = (
+            f"/_protected-images/{parse.quote(image_key, safe='/')}"
+        )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
 
     @event_logger.log_this
     @expose("/welcome/")

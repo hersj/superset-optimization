@@ -112,6 +112,31 @@ class TestCore(SupersetTestCase):
         resp = self.client.get("/superset/dashboard/-1/")
         assert resp.status_code == 404
 
+    def test_image_proxy_requires_login(self):
+        resp = self.client.get("/superset/image/203847_B0DZCK59RZ.jpg")
+
+        assert resp.status_code == 302
+        assert "/login/" in resp.headers["Location"]
+
+    def test_image_proxy_uses_internal_redirect_for_authenticated_user(self):
+        self.create_user(ADMIN_USERNAME, "general", "Admin")
+        self.login(ADMIN_USERNAME, "general")
+
+        resp = self.client.get("/superset/image/203847_B0DZCK59RZ.jpg")
+
+        assert resp.status_code == 200
+        assert resp.headers["X-Accel-Redirect"] == (
+            "/_protected-images/203847_B0DZCK59RZ.jpg"
+        )
+        assert resp.headers["Cache-Control"] == "private, no-store"
+
+    def test_image_proxy_rejects_non_image_and_traversal_keys(self):
+        self.create_user(ADMIN_USERNAME, "general", "Admin")
+        self.login(ADMIN_USERNAME, "general")
+
+        assert self.client.get("/superset/image/not-an-image.txt").status_code == 404
+        assert self.client.get("/superset/image/..%2Fsecret.jpg").status_code == 404
+
     @pytest.mark.usefixtures("load_birth_names_dashboard_with_slices")
     def test_slice_endpoint(self):
         self.login(ADMIN_USERNAME)
