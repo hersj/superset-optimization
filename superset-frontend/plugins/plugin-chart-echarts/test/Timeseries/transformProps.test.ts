@@ -1317,3 +1317,70 @@ test('should not apply axis bounds calculation when seriesType is not Bar for ho
   // Should not have explicit max set when seriesType is not Bar
   expect(xAxisRaw.max).toBeUndefined();
 });
+
+describe('click-to-focus tooltip series', () => {
+  const tooltipParams = [
+    {
+      seriesName: 'San Francisco',
+      seriesId: 'San Francisco',
+      value: [BASE_TIMESTAMP, 1],
+      marker: '<span>sf</span>',
+    },
+    {
+      seriesName: 'New York',
+      seriesId: 'New York',
+      value: [BASE_TIMESTAMP, 2],
+      marker: '<span>ny</span>',
+    },
+  ];
+
+  const getClickToFocusChart = (clickToFocusTooltipSeries: boolean) =>
+    transformProps(
+      createTestChartProps({
+        formData: {
+          richTooltip: true,
+          showTooltipTotal: true,
+          metrics: ['San Francisco', 'New York'] as any,
+          clickToFocusTooltipSeries,
+        } as Partial<EchartsTimeseriesFormData>,
+      }),
+    ) as ReturnType<typeof transformProps> & {
+      onTooltipSeriesClick: (seriesName: string) => void;
+    };
+
+  test('clicking a series filters the axis tooltip and clicking it again restores all series', () => {
+    const transformed = getClickToFocusChart(true);
+    const formatter = (transformed.echartOptions.tooltip as any).formatter;
+
+    expect(formatter(tooltipParams)).toContain('San Francisco');
+    expect(formatter(tooltipParams)).toContain('New York');
+    expect(formatter(tooltipParams)).toContain('Total');
+
+    transformed.onTooltipSeriesClick('San Francisco');
+    expect(formatter(tooltipParams)).toContain('San Francisco');
+    expect(formatter(tooltipParams)).not.toContain('New York');
+    expect(formatter(tooltipParams)).not.toContain('Total');
+
+    transformed.onTooltipSeriesClick('New York');
+    expect(formatter(tooltipParams)).not.toContain('San Francisco');
+    expect(formatter(tooltipParams)).toContain('New York');
+    expect(formatter(tooltipParams)).not.toContain('Total');
+
+    transformed.onTooltipSeriesClick('New York');
+    expect(formatter(tooltipParams)).toContain('San Francisco');
+    expect(formatter(tooltipParams)).toContain('New York');
+    expect(formatter(tooltipParams)).toContain('Total');
+
+  });
+
+  test('does not filter the tooltip when the feature is disabled', () => {
+    const transformed = getClickToFocusChart(false);
+    const formatter = (transformed.echartOptions.tooltip as any).formatter;
+
+    transformed.onTooltipSeriesClick('San Francisco');
+
+    expect(formatter(tooltipParams)).toContain('San Francisco');
+    expect(formatter(tooltipParams)).toContain('New York');
+    expect(formatter(tooltipParams)).toContain('Total');
+  });
+});

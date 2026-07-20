@@ -316,6 +316,25 @@ const tooltipPercentageControl: ControlSetItem = {
   },
 };
 
+/**
+ * 折线图专用开关：只有富提示框开启时才允许将点击事件解释为提示框系列聚焦，
+ * 以免与普通图表的交叉筛选点击语义混淆。
+ */
+export const clickToFocusTooltipSeriesControl: ControlSetItem = {
+  name: 'clickToFocusTooltipSeries',
+  config: {
+    type: 'CheckboxControl',
+    label: t('Click series to focus tooltip'),
+    renderTrigger: true,
+    default: false,
+    description: t(
+      'Click a series to show only that series in the tooltip. Click it again to restore all series.',
+    ),
+    visibility: ({ controls }: ControlPanelsContainerProps) =>
+      Boolean(controls?.rich_tooltip?.value),
+  },
+};
+
 export const richTooltipSection: ControlSetRow[] = [
   [<ControlSubSectionHeader>{t('Tooltip')}</ControlSubSectionHeader>],
   [richTooltipControl],

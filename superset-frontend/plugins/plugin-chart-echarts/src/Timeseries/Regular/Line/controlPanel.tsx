@@ -32,6 +32,7 @@ import {
   TIME_SERIES_DESCRIPTION_TEXT,
 } from '../../constants';
 import {
+  clickToFocusTooltipSeriesControl,
   legendSection,
   minorTicks,
   richTooltipSection,
@@ -153,6 +154,7 @@ const config: ControlPanelConfig = {
         [xAxisLabelInterval],
         [forceMaxInterval],
         ...richTooltipSection,
+        [clickToFocusTooltipSeriesControl],
         // eslint-disable-next-line react/jsx-key
         [<ControlSubSectionHeader>{t('Y Axis')}</ControlSubSectionHeader>],
         ['y_axis_format'],

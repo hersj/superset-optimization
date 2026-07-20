@@ -52,6 +52,7 @@ export default function EchartsTimeseries({
   onContextMenu,
   onLegendStateChanged,
   onFocusedSeries,
+  onTooltipSeriesClick,
   xValueFormatter,
   xAxis,
   refs,
@@ -59,7 +60,7 @@ export default function EchartsTimeseries({
   coltypeMapping,
   onLegendScroll,
 }: TimeseriesChartTransformedProps) {
-  const { stack } = formData;
+  const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const echartRef = useRef<EchartsHandler | null>(null);
   // eslint-disable-next-line no-param-reassign
   refs.echartRef = echartRef;
@@ -218,6 +219,24 @@ export default function EchartsTimeseries({
 
   const eventHandlers: EventHandlers = {
     click: props => {
+      // 仅在点到真实数据系列时接管点击；开启后不再落入交叉筛选路径。
+      if (
+        richTooltip &&
+        clickToFocusTooltipSeries &&
+        props.componentType === 'series' &&
+        props.seriesName
+      ) {
+        onTooltipSeriesClick(props.seriesName);
+        const chart = echartRef.current?.getEchartInstance();
+        // 先隐藏再显示可强制 ECharts 重新执行 formatter，使当前鼠标位置即时看到切换后的行。
+        chart?.dispatchAction({ type: 'hideTip' });
+        chart?.dispatchAction({
+          type: 'showTip',
+          seriesIndex: props.seriesIndex,
+          dataIndex: props.dataIndex,
+        });
+        return;
+      }
       // Allow cross-filter by dimensions OR by categorical X-axis (issue #25334)
       if (!hasDimensions && !canCrossFilterByXAxis) {
         return;

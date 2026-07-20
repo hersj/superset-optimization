@@ -116,6 +116,19 @@ import {
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
 
+/**
+ * 功能审计（可重写规格）：折线图点击聚焦富提示框系列
+ * - 功能目的与触发方式：为启用“点击系列聚焦提示框”的折线图提供可切换的单系列提示；用户点击图中的某条线触发，默认保持关闭。
+ * - 输入契约：表单字段 clickToFocusTooltipSeries 为可选布尔值，缺失时为 false；点击事件传入 ECharts 的非空 seriesName；提示框数据为当前横坐标下的 ECharts 系列参数。
+ * - 输出契约：开启后，首次点击某系列使该图实例的富提示框仅渲染该系列，再点击同一系列恢复全部系列，点击另一系列切换目标；选中时不显示 Total 行。
+ * - 处理流程：组件将有效系列点击传入 onTooltipSeriesClick；本函数切换内存中的选中系列；提示框 formatter 只过滤本次参数中存在的选中系列并重新生成行。
+ * - 业务规则：开关关闭时点击函数无副作用且提示框完全沿用旧行为；选中系列不在当前提示参数中时回退显示全部，避免空提示框；悬停高亮与点击选中相互独立。
+ * - 状态与副作用：状态仅存在当前 transformProps 闭包，既不发起查询、不写数据库，也不改变图例、交叉筛选、原始数据或仪表盘筛选状态。
+ * - 外部依赖：依赖 ECharts series click 事件和 axis tooltip formatter；依赖 EChartsTimeseries 组件在点击后请求提示框重新渲染。
+ * - 异常与边界：空 seriesName 不会调用切换；缺失或无效系列不隐藏已有数据；非富提示框或未开启配置时维持原样。
+ * - 不变量与约束：选择状态按单个图表实例隔离、不可持久化；仅在富提示框和开关都开启时点击聚焦优先于交叉筛选，其他组合必须保留原点击行为，且不得改变默认图表行为。
+ * - 验证方式：transformProps 单测覆盖选中、再次点击恢复及关闭开关；组件单测和生产页面验证点击不会触发交叉筛选且提示框即时刷新。
+ */
 export default function transformProps(
   chartProps: EchartsTimeseriesChartProps,
 ): TimeseriesChartTransformedProps {
@@ -135,6 +148,8 @@ export default function transformProps(
   } = chartProps;
 
   let focusedSeries: string | null = null;
+  // 点击选中状态独立于 hover 高亮，只服务当前图实例的富提示框渲染。
+  let selectedTooltipSeries: string | null = null;
 
   const {
     verboseMap = {},
@@ -190,6 +205,7 @@ export default function transformProps(
     tooltipSortByMetric,
     showTooltipTotal,
     showTooltipPercentage,
+    clickToFocusTooltipSeries,
     truncateXAxis,
     truncateYAxis,
     xAxis: xAxisOrig,
@@ -884,12 +900,27 @@ export default function transformProps(
           0,
         );
         const allowTotal = Boolean(isMultiSeries) && richTooltip && !isForecast;
-        const showPercentage =
-          allowTotal && !forcePercentFormatter && showTooltipPercentage;
         const keys = Object.keys(forecastValues);
+        const selectedSeriesName =
+          richTooltip &&
+          clickToFocusTooltipSeries &&
+          selectedTooltipSeries &&
+          keys.includes(selectedTooltipSeries)
+            ? selectedTooltipSeries
+            : null;
+        const isTooltipSeriesSelected = selectedSeriesName !== null;
+        const showPercentage =
+          allowTotal &&
+          !isTooltipSeriesSelected &&
+          !forcePercentFormatter &&
+          showTooltipPercentage;
         let focusedRow;
         sortedKeys
-          .filter(key => keys.includes(key))
+          .filter(
+            key =>
+              keys.includes(key) &&
+              (selectedSeriesName === null || key === selectedSeriesName),
+          )
           .forEach(key => {
             const value = forecastValues[key];
             if (value.observation === 0 && stack) {
@@ -925,7 +956,7 @@ export default function transformProps(
             focusedRow = rows.length - focusedRow - 1;
           }
         }
-        if (allowTotal && showTooltipTotal) {
+        if (allowTotal && showTooltipTotal && !isTooltipSeriesSelected) {
           const totalRow = ['Total', formatter.format(total)];
           if (showPercentage) {
             totalRow.push(percentFormatter.format(1));
@@ -1012,6 +1043,17 @@ export default function transformProps(
     focusedSeries = seriesName;
   };
 
+  /**
+   * 在功能开关开启时切换提示框的目标系列；重复点击同一系列必须恢复全部行。
+   */
+  const onTooltipSeriesClick = (seriesName: string) => {
+    if (!richTooltip || !clickToFocusTooltipSeries) {
+      return;
+    }
+    selectedTooltipSeries =
+      selectedTooltipSeries === seriesName ? null : seriesName;
+  };
+
   let customEchartOptions;
   try {
     // Parse custom EChart options safely using AST analysis
@@ -1056,6 +1098,7 @@ export default function transformProps(
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,
+    onTooltipSeriesClick,
     xValueFormatter: tooltipFormatter,
     xAxis: {
       label: xAxisLabel,

@@ -79,6 +79,7 @@ export type EchartsTimeseriesFormData = QueryFormData & {
   tooltipTimeFormat?: string;
   showTooltipTotal?: boolean;
   showTooltipPercentage?: boolean;
+  clickToFocusTooltipSeries?: boolean;
   truncateXAxis: boolean;
   truncateYAxis: boolean;
   yAxisFormat?: string;
@@ -118,4 +119,5 @@ export type TimeseriesChartTransformedProps =
         type: AxisType;
       };
       onFocusedSeries: (series: string | null) => void;
+      onTooltipSeriesClick: (series: string) => void;
     };

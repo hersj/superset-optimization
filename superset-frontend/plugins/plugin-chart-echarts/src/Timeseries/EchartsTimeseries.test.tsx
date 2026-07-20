@@ -39,11 +39,16 @@ import {
 } from './types';
 
 const mockEchart = jest.fn();
+const mockDispatchAction = jest.fn();
 
 jest.mock('../components/Echart', () => {
-  const { forwardRef } = jest.requireActual<typeof import('react')>('react');
+  const { forwardRef, useImperativeHandle } =
+    jest.requireActual<typeof import('react')>('react');
   const MockEchart = forwardRef<EchartsHandler | null, EchartsProps>(
-    (props, _ref) => {
+    (props, ref) => {
+      useImperativeHandle(ref, () => ({
+        getEchartInstance: () => ({ dispatchAction: mockDispatchAction }),
+      }));
       mockEchart(props);
       return null;
     },
@@ -93,6 +98,7 @@ afterAll(() => {
 afterEach(() => {
   cleanup();
   mockEchart.mockReset();
+  mockDispatchAction.mockReset();
   (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver =
     originalResizeObserver;
 });
@@ -130,6 +136,7 @@ const defaultFormData: EchartsTimeseriesFormData & {
   tooltipTimeFormat: undefined,
   showTooltipTotal: false,
   showTooltipPercentage: false,
+  clickToFocusTooltipSeries: false,
   truncateXAxis: false,
   truncateYAxis: false,
   yAxisFormat: undefined,
@@ -200,6 +207,7 @@ const defaultProps: TimeseriesChartTransformedProps = {
     type: AxisType.Time,
   },
   onFocusedSeries: jest.fn(),
+  onTooltipSeriesClick: jest.fn(),
 };
 
 function getLatestHeight() {
@@ -395,4 +403,82 @@ test('does not emit cross-filter when no dimensions and time-based X-axis', asyn
     await new Promise(resolve => setTimeout(resolve, 400));
     expect(setDataMaskMock).not.toHaveBeenCalled();
   }
+});
+
+test('clicking a series focuses the tooltip and does not emit a cross-filter', () => {
+  const onTooltipSeriesClick = jest.fn();
+  const setDataMask = jest.fn();
+  const propsWithClickFocus: TimeseriesChartTransformedProps = {
+    ...defaultProps,
+    formData: {
+      ...defaultFormData,
+      richTooltip: true,
+      clickToFocusTooltipSeries: true,
+    },
+    emitCrossFilters: true,
+    groupby: ['metric'],
+    labelMap: { 'Discount rate': ['Discount rate'] },
+    onTooltipSeriesClick,
+    setDataMask,
+  };
+
+  render(<EchartsTimeseries {...propsWithClickFocus} />);
+
+  const lastCall = mockEchart.mock.calls.at(-1);
+  expect(lastCall).toBeDefined();
+  const [props] = lastCall as [EchartsProps];
+  const clickHandler = props.eventHandlers?.click;
+
+  clickHandler?.({
+    componentType: 'series',
+    seriesName: 'Discount rate',
+    seriesIndex: 2,
+    dataIndex: 3,
+  });
+
+  expect(onTooltipSeriesClick).toHaveBeenCalledWith('Discount rate');
+  expect(mockDispatchAction).toHaveBeenNthCalledWith(1, { type: 'hideTip' });
+  expect(mockDispatchAction).toHaveBeenNthCalledWith(2, {
+    type: 'showTip',
+    seriesIndex: 2,
+    dataIndex: 3,
+  });
+  expect(setDataMask).not.toHaveBeenCalled();
+});
+
+test('keeps cross-filter clicks when rich tooltip is disabled', async () => {
+  const onTooltipSeriesClick = jest.fn();
+  const setDataMask = jest.fn();
+  const propsWithoutRichTooltip: TimeseriesChartTransformedProps = {
+    ...defaultProps,
+    formData: {
+      ...defaultFormData,
+      richTooltip: false,
+      clickToFocusTooltipSeries: true,
+    },
+    emitCrossFilters: true,
+    groupby: ['metric'],
+    labelMap: { 'Discount rate': ['Discount rate'] },
+    onTooltipSeriesClick,
+    setDataMask,
+  };
+
+  render(<EchartsTimeseries {...propsWithoutRichTooltip} />);
+
+  const lastCall = mockEchart.mock.calls.at(-1);
+  expect(lastCall).toBeDefined();
+  const [props] = lastCall as [EchartsProps];
+
+  props.eventHandlers?.click?.({
+    componentType: 'series',
+    seriesName: 'Discount rate',
+    seriesIndex: 2,
+    dataIndex: 3,
+  });
+
+  await waitFor(() => {
+    expect(setDataMask).toHaveBeenCalled();
+  });
+  expect(onTooltipSeriesClick).not.toHaveBeenCalled();
+  expect(mockDispatchAction).not.toHaveBeenCalled();
 });
