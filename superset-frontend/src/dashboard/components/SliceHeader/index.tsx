@@ -171,6 +171,9 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
       width,
       height,
       exportPivotExcel = () => ({}),
+      personalChartLayout,
+      onSavePersonalChartLayout,
+      isSavingPersonalChartLayout,
     },
     ref,
   ) => {
@@ -192,11 +195,11 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
     );
 
     const firstQueryResponse = useSelector<RootState, QueryData | undefined>(
-      state => state.charts[slice.slice_id].queriesResponse?.[0],
+      state => state.charts[slice.slice_id]?.queriesResponse?.[0],
     );
 
     const secondQueryResponse = useSelector<RootState, QueryData | undefined>(
-      state => state.charts[slice.slice_id].queriesResponse?.[1],
+      state => state.charts[slice.slice_id]?.queriesResponse?.[1],
     );
 
     const theme = useTheme();
@@ -374,6 +377,9 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
                   exploreUrl={exploreUrl}
                   crossFiltersEnabled={isCrossFiltersEnabled}
                   exportPivotExcel={exportPivotExcel}
+                  personalChartLayout={personalChartLayout}
+                  onSavePersonalChartLayout={onSavePersonalChartLayout}
+                  isSavingPersonalChartLayout={isSavingPersonalChartLayout}
                 />
               )}
             </>

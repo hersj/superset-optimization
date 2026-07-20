@@ -166,21 +166,63 @@ describe('TimeFormatterRegistrySingleton', () => {
             new Date(Date.UTC(2020, 3, 1)),
             TimeGranularity.MONTH,
           ),
-        ).toEqual('Apr 2020');
+        ).toEqual('2020年4月');
         expect(
           formatTime(
             undefined,
             new Date(Date.UTC(2020, 3, 1)),
             TimeGranularity.QUARTER,
           ),
-        ).toEqual('2020 Q2');
+        ).toEqual('2020年Q2');
         expect(
           formatTime(
             undefined,
             new Date(Date.UTC(2020, 0, 1)),
             TimeGranularity.YEAR,
           ),
-        ).toEqual('2020');
+        ).toEqual('2020年');
+        expect(
+          formatTime(
+            undefined,
+            new Date(Date.UTC(2026, 1, 8, 8)),
+            'P1W_SUN' as TimeGranularity,
+          ),
+        ).toEqual('2026年第6周');
+        expect(
+          formatTime(
+            undefined,
+            new Date(Date.UTC(2026, 6, 1, 8)),
+            'P3M_FISCAL' as TimeGranularity,
+          ),
+        ).toEqual('2026年Q2');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-01-01T00:00:00+08:00'),
+            TimeGranularity.DAY,
+          ),
+        ).toEqual('2026-01-01');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-04-01T00:00:00+08:00'),
+            TimeGranularity.MONTH,
+          ),
+        ).toEqual('2026年4月');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-07-01T00:00:00+08:00'),
+            'P3M_FISCAL' as TimeGranularity,
+          ),
+        ).toEqual('2026年Q2');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-01-01T00:00:00+08:00'),
+            TimeGranularity.YEAR,
+          ),
+        ).toEqual('2026年');
       });
     });
   });

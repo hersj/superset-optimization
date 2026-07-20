@@ -18,19 +18,38 @@
  */
 import {
   ChartProps,
+  Currency,
   DataRecord,
   extractTimegrain,
+  getMetricLabel,
   getTimeFormatter,
   getTimeFormatterForGranularity,
   QueryFormData,
+  QueryFormMetric,
   SMART_DATE_ID,
+  TimeFormatter,
   TimeFormats,
 } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import { getColorFormatters } from '@superset-ui/chart-controls';
 import { DateFormatter } from '../types';
+import {
+  buildMetricDescriptors,
+  reconcileMetricLayout,
+  type PivotMetricLayout,
+} from '../metricLayout';
+import { getDimensionLabelOverrides } from '../utils/dimensionLabelConfig';
+import type { DimensionLabelConfig } from '../utils/dimensionLabelConfig';
+import {
+  getPivotRatioConfiguration,
+  PIVOT_ABSOLUTE_RATIO_AGGREGATE_FUNCTION,
+  PIVOT_RATIO_AGGREGATE_FUNCTION,
+  type PivotRatioComponentLabels,
+  type PivotRatioColumnConfig,
+} from './pivotRatioMetrics';
 
 const { DATABASE_DATETIME } = TimeFormats;
+const NUMERIC_STRING_RE = /^-?\d+(\.\d+)?$/;
 
 function isNumeric(key: string, data: DataRecord[] = []) {
   return data.every(
@@ -38,6 +57,98 @@ function isNumeric(key: string, data: DataRecord[] = []) {
       record[key] === null ||
       record[key] === undefined ||
       typeof record[key] === 'number',
+  );
+}
+
+function normalizeTemporalValue(
+  value: unknown,
+): Date | number | string | null | undefined {
+  if (value === null || value === undefined || value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return NUMERIC_STRING_RE.test(trimmed) ? Number(trimmed) : trimmed;
+  }
+
+  if (typeof value === 'object' && typeof value.valueOf === 'function') {
+    const primitiveValue = value.valueOf();
+    if (primitiveValue !== value) {
+      return normalizeTemporalValue(primitiveValue);
+    }
+  }
+
+  return String(value);
+}
+
+function createSafeDateFormatter(formatter: TimeFormatter): DateFormatter {
+  return (value: unknown) => {
+    const normalizedValue = normalizeTemporalValue(value);
+    if (typeof normalizedValue === 'string') {
+      return String(value);
+    }
+
+    const formattedValue = formatter(normalizedValue);
+
+    return typeof formattedValue === 'string' && formattedValue.includes('NaN')
+      ? String(value)
+      : formattedValue;
+  };
+}
+
+type PivotColumnConfig = {
+  d3NumberFormat?: string;
+  currencyFormat?: Currency;
+  pivotAggregateFunction?: string;
+} & PivotRatioColumnConfig;
+
+function mergeColumnConfigMetricFormats(
+  savedColumnFormats: Record<string, unknown> = {},
+  savedCurrencyFormats: Record<string, Currency> = {},
+  columnConfig: Record<string, PivotColumnConfig> = {},
+) {
+  const mergedColumnFormats = { ...savedColumnFormats };
+  const mergedCurrencyFormats = { ...savedCurrencyFormats };
+
+  Object.entries(columnConfig).forEach(([metricName, config]) => {
+    if (config?.d3NumberFormat) {
+      mergedColumnFormats[metricName] = config.d3NumberFormat;
+    }
+    if (config?.currencyFormat?.symbol) {
+      mergedCurrencyFormats[metricName] = config.currencyFormat;
+    }
+  });
+
+  return {
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+  };
+}
+
+function getMetricAggregateFunctions(
+  columnConfig: Record<string, PivotColumnConfig> = {},
+  metricRatioComponents: Record<string, PivotRatioComponentLabels> = {},
+) {
+  return Object.fromEntries(
+    Object.entries(columnConfig)
+      .filter(
+        ([metricName, config]) =>
+          Boolean(config?.pivotAggregateFunction) ||
+          Boolean(metricRatioComponents[metricName]),
+      )
+      .map(([metricName, config]) => [
+        metricName,
+        metricRatioComponents[metricName]
+          ? config.pivotRatioUseAbsoluteNumerator
+            ? PIVOT_ABSOLUTE_RATIO_AGGREGATE_FUNCTION
+            : PIVOT_RATIO_AGGREGATE_FUNCTION
+          : (config.pivotAggregateFunction as string),
+      ]),
   );
 }
 
@@ -117,8 +228,40 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     timeGrainSqla,
     currencyFormat,
     allowRenderHtml,
+    pivotNumberFormatRules = [],
   } = formData;
   const { selectedFilters } = filterState;
+  const columnConfig =
+    (formData as { columnConfig?: Record<string, PivotColumnConfig> })
+      .columnConfig ||
+    (rawFormData as { column_config?: Record<string, PivotColumnConfig> })
+      .column_config ||
+    {};
+  const {
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+  } = mergeColumnConfigMetricFormats(
+    columnFormats,
+    currencyFormats,
+    columnConfig,
+  );
+  const { metricRatioComponents } = getPivotRatioConfiguration(
+    columnConfig,
+    metrics
+      .map((metric: QueryFormMetric) => getMetricLabel(metric))
+      .filter((name: string | undefined): name is string => Boolean(name)),
+  );
+  const metricAggregateFunctions = getMetricAggregateFunctions(
+    columnConfig,
+    metricRatioComponents,
+  );
+  const dimensionLabelConfig =
+    (formData as { dimensionLabelConfig?: DimensionLabelConfig })
+      .dimensionLabelConfig ||
+    (rawFormData as { dimension_label_config?: DimensionLabelConfig })
+      .dimension_label_config;
+  const dimensionLabelOverrides =
+    getDimensionLabelOverrides(dimensionLabelConfig);
   const granularity = extractTimegrain(rawFormData);
 
   const dateFormatters = colnames
@@ -131,22 +274,20 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
         acc: Record<string, DateFormatter | undefined>,
         temporalColname: string,
       ) => {
-        let formatter: DateFormatter | undefined;
+        let formatter: TimeFormatter | undefined;
         if (dateFormat === SMART_DATE_ID) {
           if (granularity) {
-            // time column use formats based on granularity
             formatter = getTimeFormatterForGranularity(granularity);
           } else if (isNumeric(temporalColname, data)) {
             formatter = getTimeFormatter(DATABASE_DATETIME);
           } else {
-            // if no column-specific format, print cell as is
-            formatter = String;
+            formatter = getTimeFormatter(SMART_DATE_ID);
           }
         } else if (dateFormat) {
           formatter = getTimeFormatter(dateFormat);
         }
         if (formatter) {
-          acc[temporalColname] = formatter;
+          acc[temporalColname] = createSafeDateFormatter(formatter);
         }
         return acc;
       },
@@ -156,6 +297,16 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     conditionalFormatting,
     data,
     theme,
+    false,
+  );
+  const savedMetricLayout = (
+    chartProps.ownState as
+      | { pivot_table_metric_layout?: PivotMetricLayout }
+      | undefined
+  )?.pivot_table_metric_layout;
+  const reconciledMetricLayout = reconcileMetricLayout(
+    buildMetricDescriptors(metrics),
+    savedMetricLayout,
   );
 
   // AUTO symbol passed through - PivotTableChart handles per-cell currency detection
@@ -166,7 +317,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     data,
     groupbyRows,
     groupbyColumns,
-    metrics,
+    metrics: reconciledMetricLayout.visibleMetrics.map(metric => metric.metric),
     tableRenderer,
     colOrder,
     rowOrder,
@@ -187,13 +338,21 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     setDataMask,
     selectedFilters,
     verboseMap,
-    columnFormats,
-    currencyFormats,
+    columnFormats: mergedColumnFormats,
+    currencyFormats: mergedCurrencyFormats,
+    metricAggregateFunctions,
+    metricRatioComponents,
+    metricLayoutState: {
+      ordered_metric_ids: reconciledMetricLayout.orderedMetricIds,
+      hidden_metric_ids: reconciledMetricLayout.hiddenMetricIds,
+    },
     metricsLayout,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
     timeGrainSqla,
     allowRenderHtml,
+    pivotNumberFormatRules,
+    dimensionLabelOverrides,
   };
 }

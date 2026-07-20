@@ -43,8 +43,14 @@ import { URL_PARAMS } from 'src/constants';
 import { getUrlParam } from 'src/utils/urlUtils';
 import { setDatasetsStatus } from 'src/dashboard/actions/dashboardState';
 import {
+  getDashboardChartLayouts,
+  setPersonalChartLayouts,
+} from 'src/dashboard/actions/personalChartLayout';
+import {
   getFilterValue,
+  getLastFilterValue,
   getPermalinkValue,
+  saveLastFilterValue,
 } from 'src/dashboard/components/nativeFilters/FilterBar/keyValue';
 import DashboardContainer from 'src/dashboard/containers/Dashboard';
 import CrudThemeProvider from 'src/components/CrudThemeProvider';
@@ -79,6 +85,49 @@ const DashboardBuilder = lazy(
 type PageProps = {
   idOrSlug: string;
 };
+
+export const loadDashboardDataMask = async (id: number) => {
+  const permalinkKey = getUrlParam(URL_PARAMS.permalinkKey);
+  const nativeFilterKeyValue = getUrlParam(URL_PARAMS.nativeFiltersKey);
+  const isOldRison = getUrlParam(URL_PARAMS.nativeFilters);
+
+  let dataMask = nativeFilterKeyValue || {};
+  let activeTabs: string[] | null | undefined;
+  let chartStates: DashboardChartStates | null | undefined;
+  let anchor: string | undefined;
+
+  if (permalinkKey) {
+    const permalinkValue = await getPermalinkValue(permalinkKey);
+    if (permalinkValue?.state) {
+      ({ dataMask, activeTabs, anchor } = permalinkValue.state);
+      chartStates = permalinkValue.state.chartStates as
+        | DashboardChartStates
+        | undefined;
+    }
+  } else if (nativeFilterKeyValue) {
+    dataMask = await getFilterValue(id, nativeFilterKeyValue);
+  } else if (!isOldRison) {
+    dataMask = (await getLastFilterValue(id)) || {};
+  }
+  if (isOldRison) {
+    dataMask = isOldRison;
+  }
+
+  return {
+    dataMask,
+    activeTabs: activeTabs ?? null,
+    chartStates: chartStates ?? null,
+    anchor,
+  };
+};
+
+export const serializeLastFilterState = (dataMask: unknown) =>
+  JSON.stringify(dataMask ?? {});
+
+export const shouldSaveLastFilterState = (
+  dataMask: unknown,
+  lastSavedDataMaskText: string | null | undefined,
+) => serializeLastFilterState(dataMask) !== lastSavedDataMaskText;
 
 // TODO: move to Dashboard.jsx when it's refactored to functional component
 const selectRelevantDatamask = createSelector(
@@ -134,6 +183,12 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     status,
   } = useDashboardDatasets(idOrSlug);
   const isDashboardHydrated = useRef(false);
+  const lastSavedDataMaskTextRef = useRef<string | null>(null);
+
+  const currentDataMask = useSelector(
+    (state: RootState) => state.dataMask,
+  );
+  const { userId } = useSelector((state: RootState) => state.user || {});
 
   const error = dashboardApiError || chartsApiError;
   const readyToRender = Boolean(dashboard && charts);
@@ -168,37 +223,46 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
   }, [dispatch, status]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    if (!id || !userId) {
+      dispatch(setPersonalChartLayouts({}));
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    dispatch(setPersonalChartLayouts({}));
+    getDashboardChartLayouts(id)
+      .then(layouts => {
+        if (isMounted) {
+          dispatch(setPersonalChartLayouts(layouts));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          dispatch(setPersonalChartLayouts({}));
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [dispatch, id, userId]);
+
+  useEffect(() => {
     // eslint-disable-next-line consistent-return
     async function getDataMaskApplied() {
-      const permalinkKey = getUrlParam(URL_PARAMS.permalinkKey);
-      const nativeFilterKeyValue = getUrlParam(URL_PARAMS.nativeFiltersKey);
-      const isOldRison = getUrlParam(URL_PARAMS.nativeFilters);
-
-      let dataMask = nativeFilterKeyValue || {};
       // activeTabs is initialized with undefined so that it doesn't override
       // the currently stored value when hydrating
-      let activeTabs: string[] | null | undefined;
-      let chartStates: DashboardChartStates | null | undefined;
-      let anchor: string | undefined;
-      if (permalinkKey) {
-        const permalinkValue = await getPermalinkValue(permalinkKey);
-        if (permalinkValue?.state) {
-          ({ dataMask, activeTabs, anchor } = permalinkValue.state);
-          chartStates = permalinkValue.state.chartStates as
-            | DashboardChartStates
-            | undefined;
-        }
-      } else if (nativeFilterKeyValue) {
-        dataMask = await getFilterValue(id, nativeFilterKeyValue);
-      }
-      if (isOldRison) {
-        dataMask = isOldRison;
-      }
+      const { dataMask, activeTabs, chartStates, anchor } =
+        await loadDashboardDataMask(id);
 
       if (readyToRender) {
         if (!isDashboardHydrated.current) {
           isDashboardHydrated.current = true;
         }
+        lastSavedDataMaskTextRef.current = serializeLastFilterState(dataMask);
         dispatch(
           hydrateDashboard({
             history,
@@ -226,6 +290,27 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     if (id) getDataMaskApplied();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readyToRender]);
+
+  // Save dataMask (including chart-level filters) for last-filter-state restoration
+  const dataMaskRef = useRef(currentDataMask);
+  dataMaskRef.current = currentDataMask;
+  useEffect(() => {
+    if (!id || !userId || !isDashboardHydrated.current) return;
+    const timer = setTimeout(() => {
+      const dataMaskText = serializeLastFilterState(dataMaskRef.current);
+      if (
+        shouldSaveLastFilterState(
+          dataMaskRef.current,
+          lastSavedDataMaskTextRef.current,
+        )
+      ) {
+        void saveLastFilterValue(id, dataMaskText).then(() => {
+          lastSavedDataMaskTextRef.current = dataMaskText;
+        });
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [id, currentDataMask, userId]);
 
   // Capture original title before any effects run
   const originalTitle = useMemo(() => document.title, []);

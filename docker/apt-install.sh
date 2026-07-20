@@ -1,4 +1,24 @@
 #!/usr/bin/env bash
+
+# Force Docker build apt sources to China mirrors
+if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+  sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources || true
+  sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources || true
+  sed -i 's|https://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources || true
+  sed -i 's|https://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources || true
+fi
+
+if [ -f /etc/apt/sources.list ]; then
+  sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list || true
+  sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list || true
+  sed -i 's|https://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list || true
+  sed -i 's|https://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list || true
+fi
+
+echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries || true
+echo 'Acquire::http::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries || true
+echo 'Acquire::https::Timeout "30";' >> /etc/apt/apt.conf.d/80-retries || true
+
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with

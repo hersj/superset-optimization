@@ -31,6 +31,8 @@ import {
   Currency,
 } from '@superset-ui/core';
 import { ColorFormatters } from '@superset-ui/chart-controls';
+import type { PivotNumberFormatRule } from './utils/numberFormatRules';
+import type { PivotRatioComponentLabels } from './plugin/pivotRatioMetrics';
 
 export interface PivotTableStylesProps {
   height: number;
@@ -76,6 +78,8 @@ interface PivotTableCustomizeProps {
   verboseMap: JsonObject;
   columnFormats: JsonObject;
   currencyFormats: Record<string, Currency>;
+  metricAggregateFunctions: Record<string, string>;
+  metricRatioComponents?: Record<string, PivotRatioComponentLabels>;
   metricsLayout?: MetricsLayoutEnum;
   metricColorFormatters: ColorFormatters;
   dateFormatters: Record<string, DateFormatter | undefined>;
@@ -90,6 +94,8 @@ interface PivotTableCustomizeProps {
   time_grain_sqla?: TimeGranularity;
   granularity_sqla?: string;
   allowRenderHtml?: boolean;
+  pivotNumberFormatRules?: PivotNumberFormatRule[];
+  dimensionLabelOverrides?: Record<string, string>;
 }
 
 export type PivotTableQueryFormData = QueryFormData &

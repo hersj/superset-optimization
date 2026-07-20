@@ -28,11 +28,11 @@ x-superset-user: &superset-user root
 x-superset-volumes: &superset-volumes
   # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
   - ./docker:/app/docker
-  - ./superset:/app/superset
-  - ./superset-core:/app/superset-core
-  - ./superset-frontend:/app/superset-frontend
+  - ./superset:/app/superset  # disabled for production: avoid covering built assets
+  - ./superset-core:/app/superset-core  # disabled for production
+  - ./superset-frontend:/app/superset-frontend  # disabled for production
   - superset_home:/app/superset_home
-  - ./tests:/app/tests
+  - ./tests:/app/tests  # disabled for production
   - superset_data:/app/data
 x-common-build: &common-build
   context: .
@@ -84,6 +84,9 @@ services:
       - db_home:/var/lib/postgresql/data
       - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
 
+  # ========================================================
+  # 核心 Superset 服务 (已切换生产 Gunicorn + 内存限制)
+  # ========================================================
   superset:
     env_file:
       - path: docker/.env # default
@@ -92,11 +95,10 @@ services:
         required: false
     build:
       <<: *common-build
-    command: ["/app/docker/docker-bootstrap.sh", "app"]
+    command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
     restart: unless-stopped
     ports:
       - ${SUPERSET_PORT:-8088}:8088
-      # When in cypress-mode ->
       - ${CYPRESS_PORT:-8081}:8081
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -105,6 +107,12 @@ services:
       superset-init:
         condition: service_completed_successfully
     volumes: *superset-volumes
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 2G
 
   superset-websocket:
     build: ./superset-websocket
@@ -114,23 +122,10 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
-    # Mount everything in superset-websocket into container and
-    # then exclude node_modules and dist with bogus volume mount.
-    # This is necessary because host and container need to have
-    # their own, separate versions of these files. .dockerignore
-    # does not seem to work when starting the service through
-    # docker compose.
-    #
-    # For example, node_modules may contain libs with native bindings.
-    # Those bindings need to be compiled for each OS and the container
-    # OS is not necessarily the same as host OS.
     volumes:
       - ./superset-websocket:/home/superset-websocket
       - /home/superset-websocket/node_modules
       - /home/superset-websocket/dist
-
-      # Mount config file. Create your own docker/superset-websocket/config.json
-      # for custom settings, then point to it here. Do not use this example in production.
       - ./docker/superset-websocket/config.example.json:/home/superset-websocket/config.json:ro
     environment:
       - PORT=8080
@@ -162,23 +157,16 @@ services:
       context: .
       target: superset-node
       args:
-        # This prevents building the frontend bundle since we'll mount local folder
-        # and build it on startup while firing docker-frontend.sh in dev mode, where
-        # it'll mount and watch local files and rebuild as you update them
         DEV_MODE: "true"
         BUILD_TRANSLATIONS: ${BUILD_TRANSLATIONS:-false}
     environment:
-      # set this to false if you have perf issues running the npm i; npm run dev in-docker
-      # if you do so, you have to run this manually on the host, which should perform better!
       BUILD_SUPERSET_FRONTEND_IN_DOCKER: true
       NPM_RUN_PRUNE: false
       SCARF_ANALYTICS: "${SCARF_ANALYTICS:-}"
-      # configuring the dev-server to use the host.docker.internal to connect to the backend
       superset: "http://superset:8088"
-      # Webpack dev server must bind to 0.0.0.0 to be accessible from outside the container
       WEBPACK_DEVSERVER_HOST: "0.0.0.0"
     ports:
-      - "127.0.0.1:${NODE_PORT:-9000}:9000"  # exposing the dynamic webpack dev server
+      - "127.0.0.1:${NODE_PORT:-9000}:9000"
     command: ["/app/docker/docker-frontend.sh"]
     env_file:
       - path: docker/.env # default
@@ -208,9 +196,6 @@ services:
       - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME"]
-    # Bump memory limit if processing selenium / thumbnails on superset-worker
-    # mem_limit: 2038m
-    # mem_reservation: 128M
 
   superset-worker-beat:
     build:
@@ -256,6 +241,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "celery inspect ping -A superset.tasks.celery_app:app -d celery@$$HOSTNAME"]
 
+# 必需的命名存储卷声明
 volumes:
   superset_home:
     external: false

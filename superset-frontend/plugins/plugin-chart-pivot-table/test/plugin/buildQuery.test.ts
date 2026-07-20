@@ -132,3 +132,93 @@ test('should not omit extras.time_grain_sqla from queryContext so dashboards app
   const [query] = queryContext.queries;
   expect(query.extras?.time_grain_sqla).toEqual(TimeGranularity.QUARTER);
 });
+
+test('adds hidden numerator and denominator metrics for ratio-of-sums totals', () => {
+  const queryContext = buildQuery({
+    ...formData,
+    column_config: {
+      metric1: {
+        pivotRatioNumerator: 'SUM(gross_profit)',
+        pivotRatioDenominator: 'SUM(shipped_sales)',
+      },
+      metric2: {
+        pivotRatioNumerator: 'SUM(shipping_fee)',
+        pivotRatioDenominator: 'SUM(shipped_sales)',
+      },
+    },
+  } as PivotTableQueryFormData);
+  const [query] = queryContext.queries;
+
+  expect(query.metrics).toEqual([
+    'metric1',
+    'metric2',
+    {
+      expressionType: 'SQL',
+      hasCustomLabel: true,
+      label: '__pivot_ratio_num_0',
+      sqlExpression: 'SUM(gross_profit)',
+    },
+    {
+      expressionType: 'SQL',
+      hasCustomLabel: true,
+      label: '__pivot_ratio_den_0',
+      sqlExpression: 'SUM(shipped_sales)',
+    },
+    {
+      expressionType: 'SQL',
+      hasCustomLabel: true,
+      label: '__pivot_ratio_num_1',
+      sqlExpression: 'SUM(shipping_fee)',
+    },
+  ]);
+  expect(query.orderby).toEqual([['metric1', false]]);
+});
+
+test('ignores stale ratio configuration for a metric no longer in the chart', () => {
+  const queryContext = buildQuery({
+    ...formData,
+    column_config: {
+      removed_metric: {
+        pivotRatioNumerator: 'SUM(gross_profit)',
+        pivotRatioDenominator: 'SUM(shipped_sales)',
+      },
+    },
+  } as PivotTableQueryFormData);
+  const [query] = queryContext.queries;
+
+  expect(query.metrics).toEqual(['metric1', 'metric2']);
+});
+
+test('does not expose internal ratio helpers in raw result downloads', () => {
+  const queryContext = buildQuery({
+    ...formData,
+    result_format: 'csv',
+    result_type: 'results',
+    column_config: {
+      metric1: {
+        pivotRatioNumerator: 'SUM(gross_profit)',
+        pivotRatioDenominator: 'SUM(shipped_sales)',
+      },
+    },
+  } as PivotTableQueryFormData);
+  const [query] = queryContext.queries;
+
+  expect(query.metrics).toEqual(['metric1', 'metric2']);
+});
+
+test('does not expose internal ratio helpers in post-processed JSON downloads', () => {
+  const queryContext = buildQuery({
+    ...formData,
+    result_format: 'json',
+    result_type: 'post_processed',
+    column_config: {
+      metric1: {
+        pivotRatioNumerator: 'SUM(gross_profit)',
+        pivotRatioDenominator: 'SUM(shipped_sales)',
+      },
+    },
+  } as PivotTableQueryFormData);
+  const [query] = queryContext.queries;
+
+  expect(query.metrics).toEqual(['metric1', 'metric2']);
+});

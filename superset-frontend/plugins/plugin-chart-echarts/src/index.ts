@@ -19,6 +19,7 @@
 export { default as EchartsBoxPlotChartPlugin } from './BoxPlot';
 export { default as EchartsTimeseriesChartPlugin } from './Timeseries';
 export { default as EchartsAreaChartPlugin } from './Timeseries/Area';
+export { default as EchartsBandChartPlugin } from './Timeseries/Band';
 export { default as EchartsTimeseriesBarChartPlugin } from './Timeseries/Regular/Bar';
 export { default as EchartsTimeseriesLineChartPlugin } from './Timeseries/Regular/Line';
 export { default as EchartsTimeseriesScatterChartPlugin } from './Timeseries/Regular/Scatter';

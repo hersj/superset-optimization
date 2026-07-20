@@ -32,8 +32,39 @@ function isPlainObject(value: unknown): value is PlainObject {
 }
 
 /**
+ * Index-wise deep merge for arrays.
+ * Each custom element is merged into the base element at the same index:
+ * plain objects merge recursively, primitives/arrays replace.
+ * Base elements beyond the custom array length are preserved untouched.
+ * This lets callers override a single series' style (e.g. areaStyle/lineStyle)
+ * without having to re-specify the whole — dynamically generated — series array.
+ */
+function mergeArraysByIndex(
+  baseArr: unknown[],
+  customArr: unknown[],
+): unknown[] {
+  const merged = [...baseArr];
+  customArr.forEach((customEl, i) => {
+    const baseEl = merged[i];
+    if (customEl === undefined) {
+      return;
+    }
+    if (isPlainObject(customEl) && isPlainObject(baseEl)) {
+      merged[i] = mergeCustomEChartOptions(
+        baseEl as EChartsCoreOption,
+        customEl as CustomEChartOptions,
+      );
+    } else {
+      merged[i] = customEl;
+    }
+  });
+  return merged;
+}
+
+/**
  * Deep merges custom EChart options into base options.
- * Arrays are replaced entirely, objects are merged recursively.
+ * Objects are merged recursively; arrays are merged element-wise by index
+ * (base elements past the custom length are kept).
  *
  * @param baseOptions - The base ECharts options object
  * @param customOptions - Custom options to merge (from safeParseEChartOptions)
@@ -67,8 +98,14 @@ export function mergeCustomEChartOptions<T extends EChartsCoreOption>(
         baseValue as EChartsCoreOption,
         customValue as CustomEChartOptions,
       );
+    } else if (Array.isArray(customValue) && Array.isArray(baseValue)) {
+      // Merge arrays element-wise by index (e.g. per-series style overrides)
+      (result as PlainObject)[key] = mergeArraysByIndex(
+        baseValue as unknown[],
+        customValue as unknown[],
+      );
     } else {
-      // Replace arrays and primitive values directly
+      // Replace remaining values directly
       (result as PlainObject)[key] = customValue;
     }
   }

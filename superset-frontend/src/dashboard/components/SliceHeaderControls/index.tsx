@@ -40,6 +40,7 @@ import {
 import { css, useTheme, styled } from '@apache-superset/core/theme';
 import { useSelector } from 'react-redux';
 import { Menu, MenuItem } from '@superset-ui/core/components/Menu';
+import type { PersonalChartLayout } from 'src/dashboard/actions/personalChartLayout';
 import {
   NoAnimationDropdown,
   Tooltip,
@@ -61,6 +62,7 @@ import { useDatasetDrillInfo } from 'src/hooks/apiResources/datasets';
 import { ResourceStatus } from 'src/hooks/apiResources/apiResources';
 import { useCrossFiltersScopingModal } from '../nativeFilters/FilterBar/CrossFilters/ScopingModal/useCrossFiltersScopingModal';
 import { ViewResultsModalTrigger } from './ViewResultsModalTrigger';
+import PivotMetricLayoutModal from './PivotMetricLayoutModal';
 
 const RefreshTooltip = styled.div`
   ${({ theme }) => css`
@@ -139,6 +141,11 @@ export interface SliceHeaderControlsProps {
   supersetCanCSV?: boolean;
 
   crossFiltersEnabled?: boolean;
+  personalChartLayout?: PersonalChartLayout;
+  onSavePersonalChartLayout?: (
+    layout: PersonalChartLayout | null,
+  ) => Promise<void> | void;
+  isSavingPersonalChartLayout?: boolean;
 }
 type SliceHeaderControlsPropsWithRouter = SliceHeaderControlsProps &
   RouteComponentProps;
@@ -154,6 +161,8 @@ const SliceHeaderControls = (
   props: SliceHeaderControlsPropsWithRouter | SliceHeaderControlsProps,
 ) => {
   const [drillModalIsOpen, setDrillModalIsOpen] = useState(false);
+  const [showPivotMetricLayoutModal, setShowPivotMetricLayoutModal] =
+    useState(false);
   // setting openKeys undefined falls back to uncontrolled behaviour
   const [isDropdownVisible, setIsDropdownVisible] = useState(false);
   const [openScopingModal, scopingModal] = useCrossFiltersScopingModal(
@@ -282,6 +291,10 @@ const SliceHeaderControls = (
         openScopingModal();
         break;
       }
+      case MenuKeys.CustomizePivotColumns: {
+        setShowPivotMetricLayoutModal(true);
+        break;
+      }
       case MenuKeys.ViewResults: {
         if (resultsMenuRef.current && !resultsMenuRef.current.showModal) {
           resultsMenuRef.current.open(domEvent);
@@ -319,6 +332,7 @@ const SliceHeaderControls = (
   } = props;
   const isTable = slice.viz_type === VizType.Table;
   const isPivotTable = slice.viz_type === VizType.PivotTable;
+  const canCustomizePivotColumns = isPivotTable;
   const cachedWhen = (cachedDttm || []).map(itemCachedDttm =>
     (extendedDayjs.utc(itemCachedDttm) as any).fromNow(),
   );
@@ -415,6 +429,14 @@ const SliceHeaderControls = (
   }
 
   if (canExplore || canEditCrossFilters) {
+    newMenuItems.push({ type: 'divider' });
+  }
+
+  if (canCustomizePivotColumns) {
+    newMenuItems.push({
+      key: MenuKeys.CustomizePivotColumns,
+      label: t('Customize columns'),
+    });
     newMenuItems.push({ type: 'divider' });
   }
 
@@ -603,6 +625,17 @@ const SliceHeaderControls = (
         showModal={drillModalIsOpen}
         dataset={datasetWithVerboseMap}
       />
+
+      {canCustomizePivotColumns && (
+        <PivotMetricLayoutModal
+          show={showPivotMetricLayoutModal}
+          metrics={props.formData.metrics || []}
+          initialLayout={props.personalChartLayout}
+          isSaving={props.isSavingPersonalChartLayout}
+          onHide={() => setShowPivotMetricLayoutModal(false)}
+          onSave={layout => props.onSavePersonalChartLayout?.(layout)}
+        />
+      )}
 
       {canEditCrossFilters && scopingModal}
     </>

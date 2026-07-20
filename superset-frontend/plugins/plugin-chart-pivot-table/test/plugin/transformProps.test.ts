@@ -17,9 +17,11 @@
  * under the License.
  */
 
-import { ChartProps, QueryFormData } from '@superset-ui/core';
+import { ChartProps, QueryFormData, SMART_DATE_ID } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
+import setupFormatters from 'src/setup/setupFormatters';
 import transformProps from '../../src/plugin/transformProps';
+import { buildMetricDescriptors } from '../../src/metricLayout';
 import { MetricsLayoutEnum } from '../../src/types';
 
 const setDataMask = jest.fn();
@@ -80,7 +82,9 @@ test('should transform chart props for viz', () => {
     rowSubtotalPosition: true,
     colSubtotalPosition: true,
     colTotals: true,
+    colSubTotals: undefined,
     rowTotals: true,
+    rowSubTotals: undefined,
     valueFormat: 'SMART_NUMBER',
     data: [{ name: 'Hulk', sum__num: 1, __timestamp: 599616000000 }],
     setDataMask,
@@ -88,12 +92,233 @@ test('should transform chart props for viz', () => {
     verboseMap: {},
     metricsLayout: MetricsLayoutEnum.COLUMNS,
     metricColorFormatters: [],
+    metricLayoutState: {
+      ordered_metric_ids: [
+        '{"metric":"metric1","type":"saved"}',
+        '{"metric":"metric2","type":"saved"}',
+      ],
+      hidden_metric_ids: [],
+    },
     dateFormatters: {},
     emitCrossFilters: false,
+    allowRenderHtml: undefined,
+    onContextMenu: undefined,
+    timeGrainSqla: undefined,
+    pivotNumberFormatRules: [],
+    dimensionLabelOverrides: {},
     columnFormats: {},
     currencyFormats: {},
+    metricAggregateFunctions: {},
+    metricRatioComponents: {},
     currencyFormat: { symbol: 'USD', symbolPosition: 'prefix' },
+    currencyCodeColumn: undefined,
+    detectedCurrency: undefined,
   });
+});
+
+test('should pass pivot number format rules through for chart-level formatting', () => {
+  const rules = [
+    {
+      axis: 'column',
+      field: 'Metric',
+      value: 'profit_rate',
+      format: '.1%',
+    },
+  ];
+  const ruleChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      pivotNumberFormatRules: rules,
+    },
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ name: 'Hulk', sum__num: 1, __timestamp: 599616000000 }],
+        colnames: ['name', 'sum__num', '__timestamp'],
+        coltypes: [1, 0, 2],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: { verboseMap: {}, columnFormats: {} },
+    theme: supersetTheme,
+  });
+
+  expect(transformProps(ruleChartProps).pivotNumberFormatRules).toEqual(rules);
+});
+
+test('should merge table column config number formats into metric formats', () => {
+  const configuredChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      columnConfig: {
+        metric1: {
+          d3NumberFormat: '.2f',
+          currencyFormat: { symbol: 'EUR', symbolPosition: 'suffix' },
+        },
+        metric2: {
+          d3NumberFormat: '.1%',
+        },
+      },
+    },
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ row1: 'A', metric1: 1234.5, metric2: 0.1234 }],
+        colnames: ['row1', 'metric1', 'metric2'],
+        coltypes: [1, 0, 0],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: {
+      verboseMap: {},
+      columnFormats: { metric2: '.3s' },
+      currencyFormats: {
+        metric2: { symbol: 'USD', symbolPosition: 'prefix' },
+      },
+    },
+    theme: supersetTheme,
+  });
+
+  const result = transformProps(configuredChartProps);
+
+  expect(result.columnFormats).toEqual({
+    metric2: '.1%',
+    metric1: '.2f',
+  });
+  expect(result.currencyFormats).toEqual({
+    metric2: { symbol: 'USD', symbolPosition: 'prefix' },
+    metric1: { symbol: 'EUR', symbolPosition: 'suffix' },
+  });
+});
+
+test('should merge table column config aggregate functions into metric aggregate functions', () => {
+  const configuredChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      columnConfig: {
+        metric1: {
+          pivotAggregateFunction: 'Sum',
+        },
+        metric2: {
+          pivotAggregateFunction: 'Average',
+        },
+      },
+    },
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ row1: 'A', metric1: 100, metric2: 0.1 }],
+        colnames: ['row1', 'metric1', 'metric2'],
+        coltypes: [1, 0, 0],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: {
+      verboseMap: {},
+      columnFormats: {},
+      currencyFormats: {},
+    },
+    theme: supersetTheme,
+  });
+
+  const result = transformProps(configuredChartProps);
+
+  expect(result.metricAggregateFunctions).toEqual({
+    metric1: 'Sum',
+    metric2: 'Average',
+  });
+});
+
+test('uses ratio-of-sums aggregation when a metric declares component SQL', () => {
+  const configuredChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      columnConfig: {
+        metric1: {
+          pivotAggregateFunction: 'Average',
+          pivotRatioNumerator: 'SUM(gross_profit)',
+          pivotRatioDenominator: 'SUM(shipped_sales)',
+        },
+      },
+    },
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [
+          {
+            row1: 'A',
+            metric1: 0.1,
+            __pivot_ratio_num_0: 10,
+            __pivot_ratio_den_0: 100,
+          },
+        ],
+        colnames: [
+          'row1',
+          'metric1',
+          '__pivot_ratio_num_0',
+          '__pivot_ratio_den_0',
+        ],
+        coltypes: [1, 0, 0, 0],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: { verboseMap: {}, columnFormats: {} },
+    theme: supersetTheme,
+  });
+
+  const result = transformProps(configuredChartProps);
+
+  expect(result.metricAggregateFunctions).toEqual({
+    metric1: 'Ratio of sums',
+  });
+  expect(result.metricRatioComponents).toEqual({
+    metric1: {
+      numeratorLabel: '__pivot_ratio_num_0',
+      denominatorLabel: '__pivot_ratio_den_0',
+    },
+  });
+});
+
+test('applies numerator ABS only after summing signed ratio components', () => {
+  const configuredChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      columnConfig: {
+        metric1: {
+          pivotRatioNumerator: 'SUM(shipping_fee)',
+          pivotRatioDenominator: 'SUM(shipped_sales)',
+          pivotRatioUseAbsoluteNumerator: true,
+        },
+      },
+    },
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ metric1: 0.2 }],
+        colnames: ['metric1'],
+        coltypes: [0],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: { verboseMap: {}, columnFormats: {} },
+    theme: supersetTheme,
+  });
+
+  expect(transformProps(configuredChartProps).metricAggregateFunctions).toEqual(
+    {
+      metric1: 'Absolute ratio of sums',
+    },
+  );
 });
 
 test('should pass AUTO mode through for per-cell detection (single currency data)', () => {
@@ -334,4 +559,153 @@ test('should map conditional formatting rules to metricColorFormatters with corr
   expect(
     result.metricColorFormatters[1].getColorFromValue(column2Formatting),
   ).toEqual('#5ac189FF');
+});
+
+test('should format numeric-string temporal values the same as epoch numbers', () => {
+  const dateFormData = {
+    ...formData,
+    dateFormat: '%Y-%m-%d %H:%M:%S',
+  };
+  const dateChartProps = new ChartProps<QueryFormData>({
+    formData: dateFormData,
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ earliest_ship_date: 1764604800000 }],
+        colnames: ['earliest_ship_date'],
+        coltypes: [2],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: { verboseMap: {}, columnFormats: {} },
+    theme: supersetTheme,
+  });
+
+  const result = transformProps(dateChartProps);
+  const formatter = result.dateFormatters.earliest_ship_date;
+
+  expect(formatter).toBeDefined();
+  expect(formatter?.('1764604800000' as any)).toBe(
+    formatter?.(1764604800000 as any),
+  );
+  expect(formatter?.('1764604800000' as any)).not.toContain('NaN');
+});
+
+test.each([
+  ['P1D', new Date(Date.UTC(2026, 1, 1, 8)), '2026-02-01'],
+  ['P1D', new Date(Date.UTC(2026, 1, 8, 8)), '2026-02-08'],
+  ['P1D', new Date(Date.UTC(2026, 6, 1, 8)), '2026-07-01'],
+  ['P1W_SUN', new Date(Date.UTC(2026, 1, 8, 8)), '2026年第6周'],
+  ['P1M', new Date(Date.UTC(2026, 3, 1, 8)), '2026年4月'],
+  ['P1M', new Date(Date.UTC(2026, 6, 1, 8)), '2026年7月'],
+  ['P3M_FISCAL', new Date(Date.UTC(2026, 3, 1, 8)), '2026年Q1'],
+  ['P3M_FISCAL', new Date(Date.UTC(2026, 6, 1, 8)), '2026年Q2'],
+  ['P1Y', new Date(Date.UTC(2026, 0, 1, 8)), '2026年'],
+  ['P1D', new Date('2026-01-01T00:00:00+08:00'), '2026-01-01'],
+  ['P1M', new Date('2026-04-01T00:00:00+08:00'), '2026年4月'],
+  ['P3M_FISCAL', new Date('2026-07-01T00:00:00+08:00'), '2026年Q2'],
+  ['P1Y', new Date('2026-01-01T00:00:00+08:00'), '2026年'],
+])(
+  'should format smart date values using the custom time grain display for %s',
+  (timeGrainSqla, value, expectedLabel) => {
+    setupFormatters({}, {});
+
+    const dateChartProps = new ChartProps<QueryFormData>({
+      formData: {
+        ...formData,
+        date_format: SMART_DATE_ID,
+        time_grain_sqla: timeGrainSqla,
+      } as any,
+      width: 800,
+      height: 600,
+      queriesData: [
+        {
+          data: [{ earliest_ship_date: value }],
+          colnames: ['earliest_ship_date'],
+          coltypes: [2],
+        },
+      ],
+      hooks: { setDataMask },
+      filterState: { selectedFilters: {} },
+      datasource: { verboseMap: {}, columnFormats: {} },
+      theme: supersetTheme,
+    });
+
+    const result = transformProps(dateChartProps);
+    const formatter = result.dateFormatters.earliest_ship_date;
+
+    expect(formatter).toBeDefined();
+    expect(formatter?.(value as any)).toBe(expectedLabel);
+  },
+);
+
+test('passes chart-level dimension label overrides to the Pivot Table', () => {
+  const labelChartProps = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      dimensionLabelConfig: {
+        earliest_ship_date: { customColumnName: '发货日期' },
+        lt: { customColumnName: '' },
+      },
+    } as any,
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ earliest_ship_date: 1764604800000, lt: 'L1' }],
+        colnames: ['earliest_ship_date', 'lt'],
+        coltypes: [2, 1],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: {
+      verboseMap: { earliest_ship_date: '原始日期', lt: '生命周期' },
+      columnFormats: {},
+    },
+    theme: supersetTheme,
+  });
+
+  expect(
+    (transformProps(labelChartProps) as any).dimensionLabelOverrides,
+  ).toEqual({
+    earliest_ship_date: '发货日期',
+  });
+});
+
+test('applies personal metric layout from ownState', () => {
+  const descriptors = buildMetricDescriptors(formData.metrics ?? []);
+  const chartPropsWithLayout = new ChartProps<QueryFormData>({
+    formData,
+    width: 800,
+    height: 600,
+    queriesData: [
+      {
+        data: [{ metric1: 10, metric2: 20 }],
+        colnames: ['metric1', 'metric2'],
+        coltypes: [0, 0],
+      },
+    ],
+    hooks: { setDataMask },
+    filterState: { selectedFilters: {} },
+    datasource: { verboseMap: {}, columnFormats: {} },
+    ownState: {
+      pivot_table_metric_layout: {
+        ordered_metric_ids: [descriptors[1].id, descriptors[0].id],
+        hidden_metric_ids: [descriptors[0].id],
+        version: 1,
+      },
+    },
+    theme: supersetTheme,
+  });
+
+  const result = transformProps(chartPropsWithLayout) as any;
+
+  expect(result.metrics).toEqual(['metric2']);
+  expect(result.metricLayoutState).toEqual({
+    ordered_metric_ids: [descriptors[1].id, descriptors[0].id],
+    hidden_metric_ids: [descriptors[0].id],
+  });
 });

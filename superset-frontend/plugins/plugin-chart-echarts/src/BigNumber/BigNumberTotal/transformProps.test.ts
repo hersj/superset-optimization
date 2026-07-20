@@ -253,4 +253,57 @@ describe('BigNumberTotal transformProps', () => {
     );
     expect(result.colorThresholdFormatters).toEqual(mockFormatters);
   });
+
+  test('adds default period and year comparisons when comparison query results exist', () => {
+    const result = transformProps({
+      ...baseChartProps,
+      queriesData: [
+        { data: [{ value: '100' }], coltypes: [0] },
+        { data: [{ value: '80' }], coltypes: [0] },
+        { data: [{ value: '50' }], coltypes: [0] },
+      ],
+      formData: baseFormData,
+    } as unknown as BigNumberTotalChartProps);
+
+    expect(result.bigNumber).toBe(100);
+    expect(result.subheader).toBe('环比 +25.0% | 同比 +100.0%');
+  });
+
+  test('renders only configured year comparison', () => {
+    const result = transformProps({
+      ...baseChartProps,
+      queriesData: [
+        { data: [{ value: '100' }], coltypes: [0] },
+        { data: [{ value: '50' }], coltypes: [0] },
+      ],
+      formData: { ...baseFormData, comparisonModes: ['year'] },
+    } as unknown as BigNumberTotalChartProps);
+
+    expect(result.subheader).toBe('同比 +100.0%');
+  });
+
+  test('preserves configured subheader when comparison is disabled', () => {
+    const result = transformProps({
+      ...baseChartProps,
+      queriesData: [{ data: [{ value: '100' }], coltypes: [0] }],
+      formData: {
+        ...baseFormData,
+        comparisonEnabled: false,
+        subheader: 'Manual subheader',
+      },
+    } as unknown as BigNumberTotalChartProps);
+
+    expect(result.subheader).toBe('Manual subheader');
+  });
+
+  test('preserves configured subheader when comparison query results are absent', () => {
+    const result = transformProps({
+      ...baseChartProps,
+      queriesData: [{ data: [{ value: '100' }], coltypes: [0] }],
+      formData: baseFormData,
+    } as unknown as BigNumberTotalChartProps);
+
+    expect(result.bigNumber).toBe(100);
+    expect(result.subheader).toBe(baseFormData.subheader);
+  });
 });

@@ -20,6 +20,9 @@ import { SupersetClient } from '@superset-ui/core';
 import { logging } from '@apache-superset/core/utils';
 import { DashboardPermalinkValue } from 'src/dashboard/types';
 
+const assembleLastFilterStateEndpoint = (dashId: string | number) =>
+  `/api/v1/dashboard/${dashId}/last_filter_state`;
+
 const assembleEndpoint = (
   dashId: string | number,
   key?: string | null,
@@ -73,6 +76,29 @@ export const getFilterValue = (dashId: string | number, key?: string | null) =>
     .then(({ json }) => JSON.parse(json.value))
     .catch(err => {
       logging.error(err);
+      return null;
+    });
+
+export const saveLastFilterValue = (dashId: string | number, value: string) =>
+  SupersetClient.put({
+    endpoint: assembleLastFilterStateEndpoint(dashId),
+    jsonPayload: { value },
+  })
+    .then(r => r.json.message)
+    .catch(err => {
+      logging.error(err);
+      return null;
+    });
+
+export const getLastFilterValue = (dashId: string | number) =>
+  SupersetClient.get({
+    endpoint: assembleLastFilterStateEndpoint(dashId),
+  })
+    .then(({ json }) => JSON.parse(json.value))
+    .catch(err => {
+      if (err?.status !== 404) {
+        logging.error(err);
+      }
       return null;
     });
 

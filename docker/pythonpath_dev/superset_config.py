@@ -70,7 +70,7 @@ RESULTS_BACKEND = FileSystemCache("/app/superset_home/sqllab")
 
 CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
-    "CACHE_DEFAULT_TIMEOUT": 300,
+    "CACHE_DEFAULT_TIMEOUT": 1800,
     "CACHE_KEY_PREFIX": "superset_",
     "CACHE_REDIS_HOST": REDIS_HOST,
     "CACHE_REDIS_PORT": REDIS_PORT,
@@ -105,7 +105,7 @@ class CeleryConfig:
 
 CELERY_CONFIG = CeleryConfig
 
-FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATASET_FOLDERS": True}
+FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATASET_FOLDERS": True, "ENABLE_TEMPLATE_PROCESSING": True,}
 ALERT_REPORTS_NOTIFICATION_DRY_RUN = True
 WEBDRIVER_BASEURL = f"http://superset_app{os.environ.get('SUPERSET_APP_ROOT', '/')}/"  # When using docker compose baseurl should be http://superset_nginx{ENV{BASEPATH}}/  # noqa: E501
 # The base URL for the email report hyperlinks.
@@ -142,3 +142,140 @@ try:
     )
 except ImportError:
     logger.info("Using default Docker config...")
+BABEL_DEFAULT_LOCALE = "zh"
+LANGUAGES = {
+    "zh": {"flag": "cn", "name": "Chinese"},
+    "en": {"flag": "us", "name": "English"},
+}
+TIME_GRAIN_ADDONS = {
+    "P1W_SUN": "一周（周日开始）",
+}
+
+TIME_GRAIN_ADDON_EXPRESSIONS = {
+    "postgresql": {
+        "P1W_SUN": "DATE_TRUNC('week', {col} + INTERVAL '1 day') - INTERVAL '1 day'",
+    }
+}
+
+
+# =========================
+# Timezone
+# =========================
+BABEL_DEFAULT_TIMEZONE = "Asia/Shanghai"
+SUPERSET_DEFAULT_TIMEZONE = "Asia/Shanghai"
+os.environ["TZ"] = "Asia/Shanghai"
+
+try:
+    import time
+    time.tzset()
+except Exception:
+    pass
+# ============================================
+# 自定义时间粒度：财年季度（4月起始）
+# Q1: 4-6月, Q2: 7-9月, Q3: 10-12月, Q4: 次年1-3月
+# ============================================
+TIME_GRAIN_ADDONS = {
+    'P3M_FISCAL': 'Fiscal Quarter (Apr start)',
+}
+
+TIME_GRAIN_FUNCTIONS = {
+    'postgresql': {
+        'P3M_FISCAL': "DATE_TRUNC('quarter', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
+    },
+}
+
+# ============================================
+# 自定义时间粒度
+# ============================================
+TIME_GRAIN_ADDONS = {
+    "P3M_FISCAL": "Fiscal Quarter (Apr start)",
+    "P1W_SUN": "Week (Sunday start)",
+}
+
+TIME_GRAIN_FUNCTIONS = {
+    "postgresql": {
+        "P3M_FISCAL": "DATE_TRUNC('quarter', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
+        "P1W_SUN": "DATE_TRUNC('week', {col} + INTERVAL '1 day') - INTERVAL '1 day'",
+    },
+}
+
+# ============================================
+# 自定义时间粒度
+# ============================================
+TIME_GRAIN_ADDONS = {
+    "P3M_FISCAL": "Fiscal Quarter (Apr start)",
+    "P1W_SUN": "Week (Sunday start)",
+}
+
+TIME_GRAIN_FUNCTIONS = {
+    "postgresql": {
+        "P3M_FISCAL": "DATE_TRUNC('quarter', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
+        "P1W_SUN": "DATE_TRUNC('week', {col} + INTERVAL '1 day') - INTERVAL '1 day'",
+    },
+}
+
+# ============================================
+# 自定义时间粒度
+# ============================================
+TIME_GRAIN_ADDONS = {
+    "P3M_FISCAL": "Fiscal Quarter (Apr start)",
+    "P1W_SUN": "Week (Sunday start)",
+}
+
+TIME_GRAIN_ADDON_EXPRESSIONS = {
+    "postgresql": {
+        "P3M_FISCAL": "DATE_TRUNC('quarter', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
+        "P1W_SUN": "DATE_TRUNC('week', {col} + INTERVAL '1 day') - INTERVAL '1 day'",
+    },
+}
+
+# 默认时间格式（中文友好，纯数字不依赖 locale）
+D3_TIME_FORMAT = "%Y-%m-%d"
+
+# Allow img tags in table chart HTML rendering
+HTML_SANITIZATION_SCHEMA_EXTENSIONS = {
+    "attributes": {
+        "img": ["src", "style", "width", "height", "alt"],
+    },
+    "tags": ["img"],
+}
+
+# Allow server images in Content Security Policy
+TALISMAN_CONFIG = {
+    "content_security_policy": {
+        "default-src": ["'self'"],
+        "img-src": ["'self'", "data:", "blob:", "http://8.163.67.219"],
+        "script-src": ["'self'", "'strict-dynamic'"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        "font-src": ["'self'", "data:", "https://fonts.googleapis.com"],
+        "connect-src": ["'self'", "https://api.mapbox.com"],
+        "worker-src": ["'self'", "blob:"],
+        "object-src": "'none'",
+    },
+    "content_security_policy_nonce_in": ["script-src"],
+    "force_https": False,
+    "session_cookie_secure": False,
+}
+
+# === Cache warm-up (added 2026-06-26) ===
+from superset.tasks.types import ExecutorType, FixedExecutor
+
+# Warm as the chart owner, falling back to admin for owner-less charts (e.g. 590)
+CACHE_WARMUP_EXECUTORS = [ExecutorType.OWNER, FixedExecutor("admin")]
+
+# The worker must be able to reach the web app to fetch charts; the default
+# "superset_app" host is unresolvable inside this compose network.
+WEBDRIVER_BASEURL = "http://superset:8088/"
+
+# Periodically pre-run the most-used dashboards so the result cache stays warm
+# and first-open is fast (every 30 min).
+CeleryConfig.beat_schedule["cache-warmup"] = {
+    "task": "cache-warmup",
+    "schedule": crontab(minute="*/30"),
+    "kwargs": {
+        "strategy_name": "top_n_dashboards",
+        "top_n": 10,
+        "since": "7 days ago",
+    },
+}
+CELERY_CONFIG = CeleryConfig

@@ -16,17 +16,29 @@
 # under the License.
 import logging
 
-from flask import Response
+from flask import request, Response
+from marshmallow import ValidationError
 from flask_appbuilder.api import expose, protect, safe
 from flask_appbuilder.security.decorators import has_access_api
 
 from superset.commands.dashboard.filter_state.create import CreateFilterStateCommand
 from superset.commands.dashboard.filter_state.delete import DeleteFilterStateCommand
 from superset.commands.dashboard.filter_state.get import GetFilterStateCommand
+from superset.commands.dashboard.filter_state.last import (
+    DeleteLastFilterStateCommand,
+    GetLastFilterStateCommand,
+    UpsertLastFilterStateCommand,
+)
 from superset.commands.dashboard.filter_state.update import UpdateFilterStateCommand
+from superset.commands.temporary_cache.exceptions import (
+    TemporaryCacheAccessDeniedError,
+    TemporaryCacheResourceNotFoundError,
+)
+from superset.commands.temporary_cache.parameters import CommandParameters
 from superset.extensions import event_logger
-from superset.temporary_cache.api import TemporaryCacheRestApi
+from superset.temporary_cache.api import CODEC, TemporaryCacheRestApi
 from superset.views.base import api
+from superset.views.base_api import requires_json
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +47,17 @@ class DashboardFilterStateRestApi(TemporaryCacheRestApi):
     class_permission_name = "DashboardFilterStateRestApi"
     resource_name = "dashboard"
     openapi_spec_tag = "Dashboard Filter State"
+    include_route_methods = TemporaryCacheRestApi.include_route_methods | {
+        "put_last",
+        "get_last",
+        "delete_last",
+    }
+    method_permission_name = {
+        **TemporaryCacheRestApi.method_permission_name,
+        "put_last": "write",
+        "get_last": "read",
+        "delete_last": "write",
+    }
 
     def get_create_command(self) -> type[CreateFilterStateCommand]:
         return CreateFilterStateCommand
@@ -47,6 +70,67 @@ class DashboardFilterStateRestApi(TemporaryCacheRestApi):
 
     def get_delete_command(self) -> type[DeleteFilterStateCommand]:
         return DeleteFilterStateCommand
+
+    @api
+    @has_access_api
+    @expose("/<int:pk>/last_filter_state", methods=("PUT",))
+    @protect()
+    @safe
+    @requires_json
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.put_last",
+        log_to_statsd=False,
+    )
+    def put_last(self, pk: int) -> Response:
+        try:
+            item = self.edit_model_schema.load(request.json)
+            args = CommandParameters(resource_id=pk, value=item["value"], codec=CODEC)
+            UpsertLastFilterStateCommand(args).run()
+            return self.response(200, message="Saved successfully")
+        except ValidationError as ex:
+            return self.response(400, message=ex.messages)
+        except TemporaryCacheAccessDeniedError as ex:
+            return self.response(403, message=str(ex))
+        except TemporaryCacheResourceNotFoundError as ex:
+            return self.response(404, message=str(ex))
+
+    @expose("/<int:pk>/last_filter_state", methods=("GET",))
+    @protect()
+    @safe
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.get_last",
+        log_to_statsd=False,
+    )
+    def get_last(self, pk: int) -> Response:
+        try:
+            args = CommandParameters(resource_id=pk, codec=CODEC)
+            value = GetLastFilterStateCommand(args).run()
+            if not value:
+                return self.response_404()
+            return self.response(200, value=value)
+        except TemporaryCacheAccessDeniedError as ex:
+            return self.response(403, message=str(ex))
+        except TemporaryCacheResourceNotFoundError as ex:
+            return self.response(404, message=str(ex))
+
+    @expose("/<int:pk>/last_filter_state", methods=("DELETE",))
+    @protect()
+    @safe
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.delete_last",
+        log_to_statsd=False,
+    )
+    def delete_last(self, pk: int) -> Response:
+        try:
+            args = CommandParameters(resource_id=pk)
+            result = DeleteLastFilterStateCommand(args).run()
+            if not result:
+                return self.response_404()
+            return self.response(200, message="Deleted successfully")
+        except TemporaryCacheAccessDeniedError as ex:
+            return self.response(403, message=str(ex))
+        except TemporaryCacheResourceNotFoundError as ex:
+            return self.response(404, message=str(ex))
 
     @api
     @has_access_api

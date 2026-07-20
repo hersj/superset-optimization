@@ -41,7 +41,13 @@ from werkzeug.wsgi import FileWrapper
 
 from superset import db
 from superset.charts.schemas import ChartEntityResponseSchema
+from superset.commands.dashboard.chart_layouts import (
+    DeleteDashboardChartLayoutCommand,
+    GetDashboardChartLayoutsCommand,
+    UpsertDashboardChartLayoutCommand,
+)
 from superset.commands.dashboard.copy import CopyDashboardCommand
+from superset.commands.dashboard.cascade_filter_options import GetCascadeFilterOptionsCommand
 from superset.commands.dashboard.create import CreateDashboardCommand
 from superset.commands.dashboard.delete import (
     DeleteDashboardCommand,
@@ -93,6 +99,7 @@ from superset.dashboards.permalink.types import DashboardPermalinkState
 from superset.dashboards.schemas import (
     CacheScreenshotSchema,
     DashboardCacheScreenshotResponseSchema,
+    DashboardChartLayoutSchema,
     DashboardChartCustomizationsConfigUpdateSchema,
     DashboardColorsConfigUpdateSchema,
     DashboardCopySchema,
@@ -241,9 +248,13 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "thumbnail",
         "copy_dash",
         "cache_dashboard_screenshot",
+        "cascade_filter_options",
         "screenshot",
         "put_filters",
         "put_chart_customizations",
+        "get_chart_layouts",
+        "put_chart_layout",
+        "delete_chart_layout",
         "put_colors",
         "export_as_example",
     }
@@ -384,6 +395,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
     update_chart_customizations_model_schema = (
         DashboardChartCustomizationsConfigUpdateSchema()
     )
+    chart_layout_model_schema = DashboardChartLayoutSchema()
     update_colors_model_schema = DashboardColorsConfigUpdateSchema()
     chart_entity_response_schema = ChartEntityResponseSchema()
     dashboard_get_response_schema = DashboardGetResponseSchema()
@@ -517,6 +529,32 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             dashboard_id=dash.id, action=f"{self.__class__.__name__}.get"
         )
         return self.response(200, result=result)
+
+
+    @expose("/<int:pk>/cascade_filter_options", methods=("POST",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @statsd_metrics
+    @requires_json
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.cascade_filter_options",
+        log_to_statsd=False,
+    )
+    def cascade_filter_options(self, pk: int) -> Response:
+        payload = request.json or {}
+        try:
+            result = GetCascadeFilterOptionsCommand(
+                dashboard_id=pk,
+                dataset_id=payload.get("dataset_id"),
+                columns=payload.get("columns") or [],
+                applied_filters=payload.get("applied_filters") or {},
+                time_range=payload.get("time_range"),
+                limit=payload.get("limit", 1000),
+            ).run()
+            return self.response(200, result=result)
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
 
     @expose("/<id_or_slug>/datasets", methods=("GET",))
     @protect()
@@ -989,6 +1027,75 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
                 exc_info=True,
             )
             response = self.response_422(message=str(ex))
+        return response
+
+    @expose("/<pk>/chart_layouts", methods=("GET",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.get_chart_layouts"
+        ),
+        log_to_statsd=False,
+    )
+    def get_chart_layouts(self, pk: int) -> Response:
+        try:
+            result = GetDashboardChartLayoutsCommand(pk).run()
+            response = self.response(200, result=result)
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            response = self.response_404()
+        return response
+
+    @expose("/<pk>/chart_layouts/<int:chart_id>", methods=("PUT",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.put_chart_layout"
+        ),
+        log_to_statsd=False,
+    )
+    @requires_json
+    def put_chart_layout(self, pk: int, chart_id: int) -> Response:
+        try:
+            item = self.chart_layout_model_schema.load(request.json)
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
+
+        try:
+            result = UpsertDashboardChartLayoutCommand(pk, chart_id, item).run()
+            response = self.response(200, result=result)
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            response = self.response_404()
+        except ValueError as ex:
+            response = self.response_400(message=str(ex))
+        return response
+
+    @expose("/<pk>/chart_layouts/<int:chart_id>", methods=("DELETE",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.delete_chart_layout"
+        ),
+        log_to_statsd=False,
+    )
+    def delete_chart_layout(self, pk: int, chart_id: int) -> Response:
+        try:
+            deleted = DeleteDashboardChartLayoutCommand(pk, chart_id).run()
+            if not deleted:
+                return self.response_404()
+            response = self.response(200, message="Deleted successfully")
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            response = self.response_404()
+        except ValueError as ex:
+            response = self.response_400(message=str(ex))
         return response
 
     @expose("/<pk>/colors", methods=("PUT",))

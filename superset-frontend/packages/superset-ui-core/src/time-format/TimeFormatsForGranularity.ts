@@ -22,6 +22,10 @@ import { TimeGranularity } from './types';
 
 const { DATABASE_DATE, DATABASE_DATETIME } = TimeFormats;
 const MINUTE = '%Y-%m-%d %H:%M';
+const MONTH = '%Y年%-m月';
+const QUARTER = '%Y年Q%q';
+const YEAR = '%Y年';
+const WEEK_NUMBER = '%Y年第%-U周';
 
 /**
  * Map time granularity to d3-format string
@@ -37,13 +41,15 @@ const TimeFormatsForGranularity: Record<TimeGranularity, string> = {
   [TimeGranularity.HOUR]: '%Y-%m-%d %H:00',
   [TimeGranularity.DAY]: DATABASE_DATE,
   [TimeGranularity.WEEK]: DATABASE_DATE,
-  [TimeGranularity.MONTH]: '%b %Y',
-  [TimeGranularity.QUARTER]: '%Y Q%q',
-  [TimeGranularity.YEAR]: '%Y',
+  [TimeGranularity.MONTH]: MONTH,
+  [TimeGranularity.QUARTER]: QUARTER,
+  [TimeGranularity.YEAR]: YEAR,
   [TimeGranularity.WEEK_STARTING_SUNDAY]: DATABASE_DATE,
+  [TimeGranularity.WEEK_STARTING_SUNDAY_SELLERFOX]: WEEK_NUMBER,
   [TimeGranularity.WEEK_STARTING_MONDAY]: DATABASE_DATE,
   [TimeGranularity.WEEK_ENDING_SATURDAY]: DATABASE_DATE,
   [TimeGranularity.WEEK_ENDING_SUNDAY]: DATABASE_DATE,
+  [TimeGranularity.FISCAL_QUARTER]: QUARTER,
 };
 
 export default TimeFormatsForGranularity;

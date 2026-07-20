@@ -56,15 +56,18 @@ const useFilterFocusHighlightStyles = (chartId: number) => {
     nativeFilters?.focusedFilterId || nativeFilters?.hoveredFilterId;
   const highlightedChartCustomizationId = (nativeFilters as any)
     ?.hoveredChartCustomizationId;
+  const highlightedFilter = highlightedFilterId
+    ? (nativeFilters.filters[highlightedFilterId] as Filter | undefined)
+    : undefined;
 
-  if (!highlightedFilterId && !highlightedChartCustomizationId) {
+  if (!highlightedFilter && !highlightedChartCustomizationId) {
     return EMPTY;
   }
 
-  if (highlightedFilterId) {
+  if (highlightedFilter) {
     const relatedCharts = getRelatedCharts(
-      highlightedFilterId as string,
-      nativeFilters.filters[highlightedFilterId as string] as Filter,
+      highlightedFilterId,
+      highlightedFilter,
       slices,
     );
 

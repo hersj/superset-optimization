@@ -137,6 +137,7 @@ const FilterControl = ({
           onFilterSelectionChange={onFilterSelectionChange}
           inView={inView}
           parentRef={parentRef}
+          isFilterActive={isFilterActive}
           setFilterActive={setIsFilterActive}
           orientation={orientation}
           overflow={overflow}

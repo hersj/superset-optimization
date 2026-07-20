@@ -20,6 +20,7 @@
 import reducer, { getInitialDataMask } from './reducer';
 import {
   SET_DATA_MASK_FOR_FILTER_CHANGES_COMPLETE,
+  updateDataMasks,
   type SetDataMaskForFilterChangesComplete,
 } from './actions';
 import {
@@ -115,4 +116,73 @@ test('when user edits a filter without changing targets, their selection is pres
   expect(result['NATIVE_FILTER-1']?.extraFormData?.time_range).toEqual(
     '1 year ago',
   );
+});
+
+test('updateDataMasks updates multiple filters in one reducer action', () => {
+  const initialState: DataMaskStateWithId = {
+    'NATIVE_FILTER-1': {
+      id: 'NATIVE_FILTER-1',
+      ...getInitialDataMask('NATIVE_FILTER-1'),
+      extraFormData: { filters: [{ col: 'region', op: 'IN', val: ['East'] }] },
+      filterState: { value: ['East'] },
+      ownState: { previous: true },
+    },
+    'NATIVE_FILTER-2': {
+      id: 'NATIVE_FILTER-2',
+      ...getInitialDataMask('NATIVE_FILTER-2'),
+      filterState: { value: ['Old'] },
+    },
+  };
+
+  const result = reducer(
+    initialState,
+    updateDataMasks({
+      'NATIVE_FILTER-1': {
+        filterState: { value: ['West'] },
+      },
+      'NATIVE_FILTER-3': {
+        filterState: { value: ['New'] },
+        extraFormData: { filters: [{ col: 'sku', op: 'IN', val: ['New'] }] },
+      },
+    }),
+  );
+
+  expect(result['NATIVE_FILTER-1']).toEqual({
+    id: 'NATIVE_FILTER-1',
+    extraFormData: { filters: [{ col: 'region', op: 'IN', val: ['East'] }] },
+    filterState: { value: ['West'] },
+    ownState: { previous: true },
+  });
+  expect(result['NATIVE_FILTER-2']?.filterState?.value).toEqual(['Old']);
+  expect(result['NATIVE_FILTER-3']).toEqual({
+    id: 'NATIVE_FILTER-3',
+    extraFormData: { filters: [{ col: 'sku', op: 'IN', val: ['New'] }] },
+    filterState: { value: ['New'] },
+    ownState: {},
+  });
+});
+
+test('updateDataMasks returns the existing state when every update is equivalent', () => {
+  const initialState: DataMaskStateWithId = {
+    'NATIVE_FILTER-1': {
+      id: 'NATIVE_FILTER-1',
+      ...getInitialDataMask('NATIVE_FILTER-1'),
+      extraFormData: { filters: [{ col: 'region', op: 'IN', val: ['East'] }] },
+      filterState: { value: ['East'] },
+      ownState: { previous: true },
+    },
+  };
+
+  const result = reducer(
+    initialState,
+    updateDataMasks({
+      'NATIVE_FILTER-1': {
+        extraFormData: { filters: [{ col: 'region', op: 'IN', val: ['East'] }] },
+        filterState: { value: ['East'] },
+        ownState: { previous: true },
+      },
+    }),
+  );
+
+  expect(result).toBe(initialState);
 });

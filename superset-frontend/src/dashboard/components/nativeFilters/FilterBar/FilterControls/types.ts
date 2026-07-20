@@ -51,6 +51,7 @@ export interface FilterControlProps extends BaseFilterProps {
   inView?: boolean;
   showOverflow?: boolean;
   parentRef?: RefObject<any>;
+  isFilterActive?: boolean;
   setFilterActive?: (isActive: boolean) => void;
   validateStatus?: string;
   clearAllTrigger?: boolean;

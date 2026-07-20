@@ -26,6 +26,10 @@ import { FaSortDown as FaSortDesc } from 'react-icons/fa';
 import { FaSortUp as FaSortAsc } from 'react-icons/fa';
 import { PivotData, flatKey } from './utilities';
 import { Styles } from './Styles';
+import {
+  formatPivotValueWithRules,
+  type PivotNumberFormatRule,
+} from '../utils/numberFormatRules';
 
 interface CellColorFormatter {
   column: string;
@@ -61,6 +65,7 @@ interface TableOptions {
   highlightedHeaderCells?: Record<string, unknown[]>;
   cellColorFormatters?: Record<string, CellColorFormatter[]>;
   dateFormatters?: Record<string, ((val: unknown) => string) | undefined>;
+  pivotNumberFormatRules?: PivotNumberFormatRule[];
 }
 
 interface SubtotalDisplay {
@@ -98,6 +103,9 @@ interface TableRendererState {
   collapsedCols: Record<string, boolean>;
   sortingOrder: string[];
   activeSortColumn?: number | null;
+  // 行维度排序与指标列排序分开记录，避免两个入口的图标状态相互污染。
+  rowSortingOrder: string[];
+  activeSortRowDimension?: number | null;
 }
 
 interface PivotSettings {
@@ -178,27 +186,38 @@ function getCellColor(
   keys: string[],
   aggValue: string | number | null,
   cellColorFormatters: Record<string, CellColorFormatter[]> | undefined,
-): { backgroundColor: string | undefined } {
-  if (!cellColorFormatters) return { backgroundColor: undefined };
+): { backgroundColor: string | undefined; color: string | undefined } {
+  if (!cellColorFormatters)
+    return { backgroundColor: undefined, color: undefined };
 
-  let backgroundColor: string | undefined;
-
+  const formatters: CellColorFormatter[] = [];
   for (const cellColorFormatter of Object.values(cellColorFormatters)) {
-    if (!Array.isArray(cellColorFormatter)) continue;
-
-    for (const key of keys) {
-      for (const formatter of cellColorFormatter) {
-        if (formatter.column === key) {
-          const result = formatter.getColorFromValue(aggValue);
-          if (result) {
-            backgroundColor = result;
-          }
-        }
-      }
+    if (Array.isArray(cellColorFormatter)) {
+      formatters.push(...cellColorFormatter);
     }
   }
 
-  return { backgroundColor };
+  const keySet = new Set(keys);
+  const matchingFormatters = formatters.filter(formatter =>
+    keySet.has(formatter.column),
+  );
+  const formatterColumns = new Set(
+    formatters.map(formatter => formatter.column),
+  );
+  const candidateFormatters = matchingFormatters.length
+    ? matchingFormatters
+    : formatterColumns.size === 1
+      ? formatters
+      : [];
+  let backgroundColor: string | undefined;
+  for (const formatter of candidateFormatters) {
+    const result = formatter.getColorFromValue(aggValue);
+    if (result) {
+      backgroundColor = result;
+    }
+  }
+
+  return { backgroundColor, color: undefined };
 }
 
 interface HierarchicalNode {
@@ -316,7 +335,13 @@ export class TableRenderer extends Component<
     // We need state to record which entries are collapsed and which aren't.
     // This is an object with flat-keys indicating if the corresponding rows
     // should be collapsed.
-    this.state = { collapsedRows: {}, collapsedCols: {}, sortingOrder: [] };
+    // 指标列和顶层行维度使用独立排序状态，切换入口时由对应处理函数重置另一组状态。
+    this.state = {
+      collapsedRows: {},
+      collapsedCols: {},
+      sortingOrder: [],
+      rowSortingOrder: [],
+    };
     this.sortCache = new Map();
     this.cachedProps = null;
     this.cachedBasePivotSettings = null;
@@ -659,16 +684,61 @@ export class TableRenderer extends Component<
     );
   }
 
+  sortRowDimension(dimensionIndex: number, rowKeys: string[][]) {
+    // 只按选中的行维度原始值排序；值相同时保留原索引，使同一配送日期下的
+    // LT 明细和小计维持既有相对顺序，不会被拆散到其他日期分组。
+    this.setState(state => {
+      const { activeSortRowDimension, rowSortingOrder } = state;
+      // 透视表默认已按行键升序展示，因此首次点击直接切为降序，避免用户看到
+      // 箭头变化但日期顺序没有变化；再次点击同一维度时再恢复升序。
+      const newDirection =
+        activeSortRowDimension === dimensionIndex &&
+        rowSortingOrder[dimensionIndex] === 'desc'
+          ? 'asc'
+          : 'desc';
+
+      const sortedRowKeys = rowKeys
+        .map((rowKey, originalIndex) => ({ rowKey, originalIndex }))
+        .sort((left, right) => {
+          const leftValue = String(left.rowKey[dimensionIndex] ?? '');
+          const rightValue = String(right.rowKey[dimensionIndex] ?? '');
+          const comparison = leftValue.localeCompare(rightValue, undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          });
+          if (comparison === 0) {
+            return left.originalIndex - right.originalIndex;
+          }
+          return newDirection === 'asc' ? comparison : -comparison;
+        })
+        .map(({ rowKey }) => rowKey);
+
+      this.cachedBasePivotSettings = {
+        ...this.cachedBasePivotSettings!,
+        rowKeys: sortedRowKeys,
+      };
+
+      const newRowSortingOrder: string[] = [];
+      newRowSortingOrder[dimensionIndex] = newDirection;
+
+      return {
+        rowSortingOrder: newRowSortingOrder,
+        activeSortRowDimension: dimensionIndex,
+        // 用户改按日期维度排序后，清除指标列高亮，确保界面只显示一个生效排序。
+        sortingOrder: [],
+        activeSortColumn: null,
+      };
+    });
+  }
+
   sortData(
     columnIndex: number,
     visibleColKeys: string[][],
     pivotData: InstanceType<typeof PivotData>,
     maxRowIndex: number,
   ) {
-    // Handles column sorting with direction toggling (asc/desc) and implements
-    // caching mechanism to avoid redundant sorting operations. When sorting the same
-    // column multiple times, it cycles through sorting directions. Uses composite
-    // cache keys based on sorting parameters for optimal performance.
+    // 指标列排序在升序和降序之间切换，并按指标、层级配置和方向缓存结果，
+    // 避免用户重复点击同一指标时再次计算整棵行分组。
     this.setState(state => {
       const { sortingOrder, activeSortColumn } = state;
 
@@ -714,6 +784,9 @@ export class TableRenderer extends Component<
       return {
         sortingOrder: newSortingOrder,
         activeSortColumn: columnIndex,
+        // 用户改按指标排序后，清除日期维度高亮，防止两个入口同时显示为生效。
+        rowSortingOrder: [],
+        activeSortRowDimension: null,
       };
     });
   }
@@ -844,12 +917,12 @@ export class TableRenderer extends Component<
         };
         const headerCellFormattedValue =
           dateFormatters?.[attrName]?.(colKey[attrIdx]) ?? colKey[attrIdx];
-        const { backgroundColor } = getCellColor(
+        const { backgroundColor, color } = getCellColor(
           [attrName],
           headerCellFormattedValue,
           cellColorFormatters,
         );
-        const style = { backgroundColor };
+        const style = { backgroundColor, color };
         attrValueCells.push(
           <th
             className={colLabelClass}
@@ -949,9 +1022,7 @@ export class TableRenderer extends Component<
   }
 
   renderRowHeaderRow(pivotSettings: PivotSettings) {
-    // Render just the attribute names of the rows (the actual attribute values
-    // will show up in the individual rows).
-
+    // 渲染行维度标题；第一层是父分组，允许排序，子维度继续跟随父分组展示。
     const {
       rowAttrs,
       colAttrs,
@@ -978,6 +1049,15 @@ export class TableRenderer extends Component<
                 : this.expandAttr(true, i, rowKeys);
             subArrow = i + 1 < maxRowVisible! ? arrowExpanded : arrowCollapsed;
           }
+          // 仅开放第一层行维度排序，避免对子维度单独排序后破坏父子分组关系。
+          const isSortableTopLevelDimension = i === 0;
+          const rowDimensionLabel = String(namesMapping[r] || r);
+          const isActiveRowSort = this.state.activeSortRowDimension === i;
+          const RowSortIcon = !isActiveRowSort
+            ? FaSort
+            : this.state.rowSortingOrder[i] === 'asc'
+              ? FaSortAsc
+              : FaSortDesc;
           return (
             <th className="pvtAxisLabel" key={`rowAttr-${i}`}>
               {displayHeaderCell(
@@ -987,6 +1067,27 @@ export class TableRenderer extends Component<
                 r,
                 namesMapping,
                 allowRenderHtml,
+              )}
+              {isSortableTopLevelDimension && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={event => {
+                    event.stopPropagation();
+                    this.sortRowDimension(i, rowKeys);
+                  }}
+                  aria-label={
+                    isActiveRowSort
+                      ? `Sorted by ${rowDimensionLabel} ${
+                          this.state.rowSortingOrder[i] === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                        }`
+                      : `Sort ${rowDimensionLabel}`
+                  }
+                >
+                  <RowSortIcon />
+                </span>
               )}
             </th>
           );
@@ -1044,6 +1145,7 @@ export class TableRenderer extends Component<
       highlightedHeaderCells,
       cellColorFormatters,
       dateFormatters,
+      pivotNumberFormatRules,
     } = this.props.tableOptions;
     const flatRowKey = flatKey(rowKey);
 
@@ -1080,12 +1182,12 @@ export class TableRenderer extends Component<
         const headerCellFormattedValue =
           dateFormatters?.[rowAttrs[i]]?.(r) ?? r;
 
-        const { backgroundColor } = getCellColor(
+        const { backgroundColor, color } = getCellColor(
           [rowAttrs[i]],
           headerCellFormattedValue,
           cellColorFormatters,
         );
-        const style = { backgroundColor };
+        const style = { backgroundColor, color };
         return (
           <th
             key={`rowKeyLabel-${i}`}
@@ -1152,15 +1254,15 @@ export class TableRenderer extends Component<
 
       const keys = [...rowKey, ...colKey];
 
-      const { backgroundColor } = getCellColor(
+      const { backgroundColor, color } = getCellColor(
         keys,
         aggValue,
         cellColorFormatters,
       );
 
       const style = agg.isSubtotal
-        ? { fontWeight: 'bold' }
-        : { backgroundColor };
+        ? { fontWeight: 'bold', backgroundColor, color }
+        : { backgroundColor, color };
 
       return (
         <td
@@ -1171,7 +1273,19 @@ export class TableRenderer extends Component<
           onContextMenu={e => this.props.onContextMenu(e, colKey, rowKey)}
           style={style}
         >
-          {displayCell(agg.format(aggValue, agg), allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey,
+              colAttrs,
+              colKey,
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            allowRenderHtml,
+          )}
         </td>
       );
     });
@@ -1180,6 +1294,11 @@ export class TableRenderer extends Component<
     if (rowTotals) {
       const agg = pivotData.getAggregator(rowKey, []);
       const aggValue = agg.value();
+      const { backgroundColor, color } = getCellColor(
+        rowKey,
+        aggValue,
+        cellColorFormatters,
+      );
       totalCell = (
         <td
           role="gridcell"
@@ -1187,8 +1306,21 @@ export class TableRenderer extends Component<
           className="pvtTotal"
           onClick={rowTotalCallbacks[flatRowKey]}
           onContextMenu={e => this.props.onContextMenu(e, undefined, rowKey)}
+          style={{ backgroundColor, color }}
         >
-          {displayCell(agg.format(aggValue, agg), allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey,
+              colAttrs,
+              colKey: [],
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            allowRenderHtml,
+          )}
         </td>
       );
     }
@@ -1220,6 +1352,9 @@ export class TableRenderer extends Component<
       return null;
     }
 
+    const { cellColorFormatters, dateFormatters, pivotNumberFormatRules } =
+      this.props.tableOptions;
+
     const totalLabelCell = (
       <th
         key="label"
@@ -1246,6 +1381,11 @@ export class TableRenderer extends Component<
       const flatColKey = flatKey(colKey);
       const agg = pivotData.getAggregator([], colKey);
       const aggValue = agg.value();
+      const { backgroundColor, color } = getCellColor(
+        colKey,
+        aggValue,
+        cellColorFormatters,
+      );
 
       return (
         <td
@@ -1254,9 +1394,21 @@ export class TableRenderer extends Component<
           key={`total-${flatColKey}`}
           onClick={colTotalCallbacks[flatColKey]}
           onContextMenu={e => this.props.onContextMenu(e, colKey, undefined)}
-          style={{ padding: '5px' }}
+          style={{ padding: '5px', backgroundColor, color }}
         >
-          {displayCell(agg.format(aggValue, agg), this.props.allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey: [],
+              colAttrs,
+              colKey,
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            this.props.allowRenderHtml,
+          )}
         </td>
       );
     });
@@ -1265,6 +1417,11 @@ export class TableRenderer extends Component<
     if (rowTotals) {
       const agg = pivotData.getAggregator([], []);
       const aggValue = agg.value();
+      const { backgroundColor, color } = getCellColor(
+        [],
+        aggValue,
+        cellColorFormatters,
+      );
       grandTotalCell = (
         <td
           role="gridcell"
@@ -1272,8 +1429,21 @@ export class TableRenderer extends Component<
           className="pvtGrandTotal pvtRowTotal"
           onClick={grandTotalCallback || undefined}
           onContextMenu={e => this.props.onContextMenu(e, undefined, undefined)}
+          style={{ backgroundColor, color }}
         >
-          {displayCell(agg.format(aggValue, agg), this.props.allowRenderHtml)}
+          {displayCell(
+            formatPivotValueWithRules({
+              value: aggValue,
+              rowAttrs,
+              rowKey: [],
+              colAttrs,
+              colKey: [],
+              rules: pivotNumberFormatRules,
+              dateFormatters,
+              defaultFormatter: () => agg.format(aggValue, agg),
+            }),
+            this.props.allowRenderHtml,
+          )}
         </td>
       );
     }
@@ -1319,10 +1489,12 @@ export class TableRenderer extends Component<
   render() {
     if (this.cachedProps !== this.props) {
       this.sortCache.clear();
-      // Reset sort state without using setState to avoid re-render during render.
-      // This is safe because the state is being synchronized with new props.
+      // 新查询属性会生成一套新的行键，渲染前同步清空两类排序状态，
+      // 避免旧图表的列索引或日期方向作用到新结果上。
       (this.state as TableRendererState).sortingOrder = [];
       (this.state as TableRendererState).activeSortColumn = null;
+      (this.state as TableRendererState).rowSortingOrder = [];
+      (this.state as TableRendererState).activeSortRowDimension = null;
       this.cachedProps = this.props;
       this.cachedBasePivotSettings = this.getBasePivotSettings();
     }

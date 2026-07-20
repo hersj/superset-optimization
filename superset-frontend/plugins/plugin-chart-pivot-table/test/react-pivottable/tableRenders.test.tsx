@@ -106,10 +106,176 @@ const mockGroups = {
 const createMockPivotData = (rowData: Record<string, number>) =>
   ({
     rowKeys: Object.keys(rowData).map(key => key.split('.')),
-    getAggregator: (rowKey: string[], colName: string) => ({
+    getAggregator: (rowKey: string[], _colName: string) => ({
       value: () => rowData[rowKey.join('.')],
     }),
   }) as unknown as PivotData;
+
+const createColorPivotSettings = (overrides: Record<string, unknown> = {}) => {
+  const makeAggregator = (value: number, isSubtotal = false) => ({
+    value: () => value,
+    format: (v: number) => String(v),
+    isSubtotal,
+  });
+
+  return {
+    rowAttrs: ['store'],
+    colAttrs: ['Metric'],
+    rowAttrSpans: [[1]],
+    visibleColKeys: [['purchase_cost_rate']],
+    pivotData: {
+      getAggregator: (rowKey: string[], colKey: string[]) => {
+        if (rowKey.length === 0 && colKey.length === 0) {
+          return makeAggregator(0.42);
+        }
+        if (rowKey.length === 0) {
+          return makeAggregator(0.41);
+        }
+        if (colKey.length === 0) {
+          return makeAggregator(0.4);
+        }
+        return makeAggregator(0.39, Boolean(overrides.isSubtotal));
+      },
+    },
+    rowTotals: true,
+    rowSubtotalDisplay: {
+      enabled: false,
+      displayOnTop: false,
+      hideOnExpand: false,
+    },
+    arrowExpanded: null,
+    arrowCollapsed: null,
+    cellCallbacks: { StoreA: { purchase_cost_rate: jest.fn() } },
+    rowTotalCallbacks: { StoreA: jest.fn() },
+    colTotalCallbacks: { purchase_cost_rate: jest.fn() },
+    grandTotalCallback: jest.fn(),
+    namesMapping: {},
+    allowRenderHtml: false,
+    ...overrides,
+  } as any;
+};
+
+const colorFormatterProps = {
+  ...mockProps,
+  tableOptions: {
+    cellColorFormatters: {
+      Metric: [
+        {
+          column: 'purchase_cost_rate',
+          getColorFromValue: (value: unknown) =>
+            typeof value === 'number' && value > 0.35 ? '#7f1d1d' : undefined,
+        },
+      ],
+    },
+  },
+};
+
+test('applies conditional formatting colors to pivot totals and subtotal cells', () => {
+  tableRenderer = new TableRenderer(colorFormatterProps);
+  const pivotSettings = createColorPivotSettings();
+
+  const row = tableRenderer.renderTableRow(['StoreA'], 0, pivotSettings) as any;
+  const rowTotalCell = row.props.children.at(-1);
+  expect(rowTotalCell.props.className).toBe('pvtTotal');
+  expect(rowTotalCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const totalsRow = tableRenderer.renderTotalsRow(pivotSettings) as any;
+  const totalValueCell = totalsRow.props.children[1];
+  expect(totalValueCell.props.className).toBe('pvtTotal pvtRowTotal');
+  expect(totalValueCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const grandTotalCell = totalsRow.props.children.at(-1);
+  expect(grandTotalCell.props.className).toBe('pvtGrandTotal pvtRowTotal');
+  expect(grandTotalCell.props.style).toEqual(
+    expect.objectContaining({ backgroundColor: '#7f1d1d' }),
+  );
+
+  const subtotalRow = tableRenderer.renderTableRow(
+    ['StoreA'],
+    0,
+    createColorPivotSettings({ isSubtotal: true }),
+  ) as any;
+  const subtotalValueCell = subtotalRow.props.children[2];
+  expect(subtotalValueCell.props.className).toBe('pvtVal');
+  expect(subtotalValueCell.props.style).toEqual(
+    expect.objectContaining({
+      backgroundColor: '#7f1d1d',
+      fontWeight: 'bold',
+    }),
+  );
+});
+
+test('sorts the first row dimension descending first without breaking child groups', () => {
+  const rowKeys = [
+    ['2026-07-16', 'LT-B'],
+    ['2026-07-16', 'LT-A'],
+    ['2026-07-15', 'LT-C'],
+  ];
+  const pivotSettings = {
+    rowAttrs: ['delivery_date', 'lt'],
+    colAttrs: [],
+    rowKeys,
+    rowSubtotalDisplay: {
+      enabled: false,
+      displayOnTop: false,
+      hideOnExpand: false,
+    },
+    maxRowVisible: 2,
+    arrowExpanded: null,
+    arrowCollapsed: null,
+    pivotData: {},
+    namesMapping: {
+      delivery_date: '配送日期',
+      lt: 'LT',
+    },
+    allowRenderHtml: false,
+  } as any;
+  tableRenderer.cachedBasePivotSettings = pivotSettings;
+  tableRenderer.setState = jest.fn(updater => {
+    const nextState =
+      typeof updater === 'function'
+        ? updater(tableRenderer.state, tableRenderer.props)
+        : updater;
+    tableRenderer.state = { ...tableRenderer.state, ...nextState };
+  });
+
+  const rowHeader = tableRenderer.renderRowHeaderRow(pivotSettings) as any;
+  const [rowAttributeHeaders] = rowHeader.props.children;
+  const dateHeader = rowAttributeHeaders[0];
+
+  expect(Array.isArray(dateHeader.props.children)).toBe(true);
+  const sortControl = dateHeader.props.children[1];
+  expect(sortControl.props['aria-label']).toBe('Sort 配送日期');
+
+  const stopPropagation = jest.fn();
+  sortControl.props.onClick({ stopPropagation });
+
+  expect(stopPropagation).toHaveBeenCalledTimes(1);
+  expect(tableRenderer.cachedBasePivotSettings?.rowKeys).toEqual([
+    ['2026-07-16', 'LT-B'],
+    ['2026-07-16', 'LT-A'],
+    ['2026-07-15', 'LT-C'],
+  ]);
+
+  const sortedHeader = tableRenderer.renderRowHeaderRow(pivotSettings) as any;
+  const [sortedRowAttributeHeaders] = sortedHeader.props.children;
+  const activeSortControl = sortedRowAttributeHeaders[0].props.children[1];
+  expect(activeSortControl.props['aria-label']).toBe(
+    'Sorted by 配送日期 descending',
+  );
+
+  activeSortControl.props.onClick({ stopPropagation: jest.fn() });
+
+  expect(tableRenderer.cachedBasePivotSettings?.rowKeys).toEqual([
+    ['2026-07-15', 'LT-C'],
+    ['2026-07-16', 'LT-B'],
+    ['2026-07-16', 'LT-A'],
+  ]);
+});
 
 test('should set initial ascending sort when no active sort column', () => {
   mockGetAggregatedData.mockReturnValue({

@@ -63,6 +63,10 @@ import { FilterControlProps } from './types';
 import { getFormData } from '../../utils';
 import { useFilterDependencies } from './state';
 import { useFilterOutlined } from '../useFilterOutlined';
+import {
+  getCascadeFilterOptions,
+  isCascadeFilter,
+} from './cascadeFilterOptions';
 
 const HEIGHT = 32;
 
@@ -83,6 +87,52 @@ const StyledDiv = styled.div<{
 `;
 
 const queriesDataPlaceholder = [{ data: [{}] }];
+
+export const shouldStartFilterOptionsRequest = ({
+  isRefreshing,
+  formDataChanged,
+  ownStateChanged,
+  shouldRefresh,
+  shouldLoadOptions = true,
+  hasLoadedOptions = true,
+}: {
+  isRefreshing: boolean;
+  formDataChanged: boolean;
+  ownStateChanged: boolean;
+  shouldRefresh: boolean;
+  shouldLoadOptions?: boolean;
+  hasLoadedOptions?: boolean;
+}) =>
+  shouldLoadOptions &&
+  (formDataChanged ||
+    ownStateChanged ||
+    (!hasLoadedOptions && !isRefreshing) ||
+    (shouldRefresh && !isRefreshing));
+
+export const shouldLoadFilterOptions = ({
+  defaultToFirstItem,
+  hasLoadedOptions,
+  isFilterActive,
+  isBatchableFilter = false,
+}: {
+  defaultToFirstItem: boolean;
+  hasLoadedOptions: boolean;
+  isFilterActive: boolean;
+  isBatchableFilter?: boolean;
+}) =>
+  defaultToFirstItem || hasLoadedOptions || isFilterActive || isBatchableFilter;
+
+export const shouldApplyFilterOptionsRequestResult = ({
+  requestId,
+  currentRequestId,
+  requestDashboardId,
+  currentDashboardId,
+}: {
+  requestId: number;
+  currentRequestId: number;
+  requestDashboardId: number;
+  currentDashboardId: number;
+}) => requestId === currentRequestId && requestDashboardId === currentDashboardId;
 
 const useShouldFilterRefresh = () => {
   const isDashboardRefreshing = useSelector<RootState, boolean>(
@@ -105,6 +155,7 @@ const FilterValue: FC<FilterValueProps> = ({
   inView = true,
   showOverflow,
   parentRef,
+  isFilterActive = false,
   setFilterActive,
   orientation = FilterBarOrientation.Vertical,
   overflow = false,
@@ -131,6 +182,9 @@ const FilterValue: FC<FilterValueProps> = ({
   const dashboardId = useSelector<RootState, number>(
     state => state.dashboardInfo.id,
   );
+  const nativeFilters = useSelector<RootState, Record<string, any>>(
+    state => state.nativeFilters.filters,
+  );
 
   const [error, setError] = useState<ClientErrorObject>();
   const [formData, setFormData] = useState<Partial<QueryFormData>>({
@@ -148,6 +202,9 @@ const FilterValue: FC<FilterValueProps> = ({
   const hasDataSource = !!datasetId;
   const [isLoading, setIsLoading] = useState<boolean>(hasDataSource);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasLoadedOptions, setHasLoadedOptions] = useState(!hasDataSource);
+  const requestIdRef = useRef(0);
+  const dashboardIdRef = useRef(dashboardId);
   const dispatch = useDispatch();
 
   const { outlinedFilterId, lastUpdated } = useFilterOutlined();
@@ -159,6 +216,21 @@ const FilterValue: FC<FilterValueProps> = ({
       dispatch(onFiltersRefreshSuccess());
     }
   }, [dispatch, shouldRefresh]);
+
+  useEffect(() => {
+    dashboardIdRef.current = dashboardId;
+  }, [dashboardId]);
+
+  useEffect(() => {
+    requestIdRef.current += 1;
+    setIsRefreshing(false);
+    setIsLoading(hasDataSource);
+    setHasLoadedOptions(!hasDataSource);
+    setState([]);
+    setError(undefined);
+    setFormData({ inView: false });
+    setOwnState({});
+  }, [dashboardId, hasDataSource, id]);
 
   useEffect(() => {
     if (!inViewFirstTime && inView) {
@@ -216,11 +288,47 @@ const FilterValue: FC<FilterValueProps> = ({
       othValue: Partial<QueryFormData>,
       key: string,
     ) => (key === 'url_params' ? true : undefined);
+    const formDataChanged = !isEqualWith(formData, newFormData, customizer);
+    const ownStateChanged = !isEqual(ownState, filterOwnState);
+    const isBatchableFilter =
+      !filterOwnState.search &&
+      isCascadeFilter(
+        dashboardId,
+        datasetId,
+        filterType,
+        groupby,
+        nativeFilters,
+      );
+    const defaultToFirstItem = Boolean(
+      newFormData.defaultToFirstItem &&
+        filter.dataMask?.filterState?.value === undefined &&
+        !clearAllTrigger,
+    );
+    const shouldLoadOptions = shouldLoadFilterOptions({
+      defaultToFirstItem,
+      hasLoadedOptions,
+      isFilterActive,
+      isBatchableFilter,
+    });
+    if (!shouldLoadOptions) {
+      if (formDataChanged) {
+        setFormData(newFormData);
+      }
+      if (ownStateChanged) {
+        setOwnState(filterOwnState);
+      }
+      setIsLoading(false);
+      return;
+    }
     if (
-      !isRefreshing &&
-      (!isEqualWith(formData, newFormData, customizer) ||
-        !isEqual(ownState, filterOwnState) ||
-        shouldRefresh)
+      shouldStartFilterOptionsRequest({
+        isRefreshing,
+        formDataChanged,
+        ownStateChanged,
+        shouldRefresh,
+        shouldLoadOptions,
+        hasLoadedOptions,
+      })
     ) {
       setFormData(newFormData);
       setOwnState(filterOwnState);
@@ -228,59 +336,131 @@ const FilterValue: FC<FilterValueProps> = ({
         return;
       }
       setIsRefreshing(true);
-      getChartDataRequest({
-        formData: newFormData,
-        force: shouldRefresh,
-        ownState: filterOwnState,
-      })
-        .then(({ response, json }) => {
-          if (isFeatureEnabled(FeatureFlag.GlobalAsyncQueries)) {
-            // deal with getChartDataRequest transforming the response data
-            const result = 'result' in json ? json.result[0] : json;
-            if (response.status === 200) {
-              setState([result as ChartDataResponseResult]);
-              handleFilterLoadFinish();
-            } else if (response.status === 202) {
-              waitForAsyncData(result as Parameters<typeof waitForAsyncData>[0])
-                .then((asyncResult: ChartDataResponseResult[]) => {
-                  setState(asyncResult);
-                  handleFilterLoadFinish();
-                })
-                .catch((error: Response) => {
-                  getClientErrorObject(error).then(clientErrorObject => {
-                    setError(clientErrorObject);
-                    handleFilterLoadFinish();
-                  });
-                });
-            } else {
-              throw new Error(
-                `Received unexpected response status (${response.status}) while fetching chart data`,
-              );
-            }
-          } else {
-            setState(json.result as ChartDataResponseResult[]);
-            setError(undefined);
-            handleFilterLoadFinish();
-          }
-        })
-        .catch((error: Response) => {
-          getClientErrorObject(error).then(clientErrorObject => {
-            setError(clientErrorObject);
-            handleFilterLoadFinish();
-          });
+      setHasLoadedOptions(true);
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      const requestDashboardId = dashboardId;
+      const isCurrentRequest = () =>
+        shouldApplyFilterOptionsRequestResult({
+          requestId,
+          currentRequestId: requestIdRef.current,
+          requestDashboardId,
+          currentDashboardId: dashboardIdRef.current,
         });
+      const finishCurrentRequest = () => {
+        if (isCurrentRequest()) {
+          handleFilterLoadFinish();
+        }
+      };
+
+      const loadChartData = () =>
+        getChartDataRequest({
+          formData: newFormData,
+          force: shouldRefresh,
+          ownState: filterOwnState,
+        })
+          .then(({ response, json }) => {
+            if (!isCurrentRequest()) {
+              return;
+            }
+            if (isFeatureEnabled(FeatureFlag.GlobalAsyncQueries)) {
+              // deal with getChartDataRequest transforming the response data
+              const result = 'result' in json ? json.result[0] : json;
+              if (response.status === 200) {
+                setState([result as ChartDataResponseResult]);
+                finishCurrentRequest();
+              } else if (response.status === 202) {
+                waitForAsyncData(
+                  result as Parameters<typeof waitForAsyncData>[0],
+                )
+                  .then((asyncResult: ChartDataResponseResult[]) => {
+                    if (!isCurrentRequest()) {
+                      return;
+                    }
+                    setState(asyncResult);
+                    finishCurrentRequest();
+                  })
+                  .catch((error: Response) => {
+                    if (!isCurrentRequest()) {
+                      return;
+                    }
+                    getClientErrorObject(error).then(clientErrorObject => {
+                      if (!isCurrentRequest()) {
+                        return;
+                      }
+                      setError(clientErrorObject);
+                      finishCurrentRequest();
+                    });
+                  });
+              } else {
+                throw new Error(
+                  `Received unexpected response status (${response.status}) while fetching chart data`,
+                );
+              }
+            } else {
+              setState(json.result as ChartDataResponseResult[]);
+              setError(undefined);
+              finishCurrentRequest();
+            }
+          })
+          .catch((error: Response) => {
+            if (!isCurrentRequest()) {
+              return;
+            }
+            getClientErrorObject(error).then(clientErrorObject => {
+              if (!isCurrentRequest()) {
+                return;
+              }
+              setError(clientErrorObject);
+              finishCurrentRequest();
+            });
+          });
+
+      if (isBatchableFilter) {
+        getCascadeFilterOptions(
+          dashboardId,
+          datasetId as number,
+          nativeFilters,
+          dataMaskSelected,
+        )
+          .then(result => {
+            if (!isCurrentRequest()) {
+              return undefined;
+            }
+            const columnResult = result[groupby as string];
+            if (!columnResult) {
+              return loadChartData();
+            }
+            setState([columnResult]);
+            setError(undefined);
+            finishCurrentRequest();
+            return undefined;
+          })
+          .catch(() => {
+            if (!isCurrentRequest()) {
+              return undefined;
+            }
+            return loadChartData();
+          });
+      } else {
+        loadChartData();
+      }
     }
   }, [
     inViewFirstTime,
+    dashboardId,
     dependencies,
     datasetId,
     groupby,
     handleFilterLoadFinish,
     filter,
     hasDataSource,
+    hasLoadedOptions,
+    isFilterActive,
     isRefreshing,
     shouldRefresh,
     dataMaskSelected,
+    nativeFilters,
   ]);
 
   useEffect(() => {

@@ -96,9 +96,20 @@ function handleFilterChangesComplete(
     }
   });
 
+  const focusedFilterId =
+    state.focusedFilterId && newFilters[state.focusedFilterId]
+      ? state.focusedFilterId
+      : undefined;
+  const hoveredFilterId =
+    state.hoveredFilterId && newFilters[state.hoveredFilterId]
+      ? state.hoveredFilterId
+      : undefined;
+
   return {
     ...state,
     filters: newFilters,
+    focusedFilterId,
+    hoveredFilterId,
   } as ExtendedNativeFiltersState;
 }
 

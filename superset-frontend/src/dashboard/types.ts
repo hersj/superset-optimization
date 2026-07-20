@@ -40,6 +40,7 @@ import { UserWithPermissionsAndRoles } from 'src/types/bootstrapTypes';
 import Owner from 'src/types/Owner';
 import Role from 'src/types/Role';
 import { TagType } from 'src/components/Tag/TagType';
+import type { PersonalChartLayout } from './actions/personalChartLayout';
 import { ChartState } from '../explore/types';
 import { AutoRefreshStatus } from './types/autoRefresh';
 
@@ -166,6 +167,7 @@ export type DashboardState = {
   isStarred?: boolean;
   lastRefreshTime?: number;
   tabActivationTimes?: Record<string, number>;
+  personalChartLayouts?: Record<string, PersonalChartLayout>;
 };
 export type DashboardInfo = {
   id: number;
@@ -393,4 +395,5 @@ export enum MenuKeys {
   ManageEmailReports = 'manage_email_reports',
   ExportPivotXlsx = 'export_pivot_xlsx',
   EmbedCode = 'embed_code',
+  CustomizePivotColumns = 'customize_pivot_columns',
 }

@@ -468,6 +468,12 @@ class DashboardColorsConfigUpdateSchema(BaseDashboardSchema):
     color_scheme_domain = fields.List(fields.String(), allow_none=False)
 
 
+class DashboardChartLayoutSchema(Schema):
+    ordered_metric_ids = fields.List(fields.String(), allow_none=False, required=True)
+    hidden_metric_ids = fields.List(fields.String(), allow_none=False, required=True)
+    version = fields.Integer(allow_none=False, required=True)
+
+
 class DashboardScreenshotPostSchema(Schema):
     dataMask = fields.Dict(  # noqa: N815
         keys=fields.Str(),

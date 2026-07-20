@@ -417,7 +417,6 @@ describe('ControlPanelsContainer', () => {
     const tableVizTypes = [
       'table',
       'ag-grid-table',
-      'pivot_table_v2',
       'time_table',
       'time_pivot',
     ];
@@ -443,6 +442,33 @@ describe('ControlPanelsContainer', () => {
         screen.queryByRole('tab', { name: /matrixify/i }),
       ).not.toBeInTheDocument();
     }
+  });
+
+  test('should show Matrixify tab for pivot table charts', async () => {
+    mockIsFeatureEnabled.mockImplementation(
+      (featureFlag: FeatureFlag) => featureFlag === FeatureFlag.Matrixify,
+    );
+    getChartControlPanelRegistry().registerValue('pivot_table_v2', {
+      controlPanelSections: [],
+    });
+
+    const props = getDefaultProps();
+    props.form_data = {
+      ...props.form_data,
+      viz_type: 'pivot_table_v2',
+    };
+
+    render(<ControlPanelsContainer {...props} />, {
+      useRedux: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', { name: /matrixify/i }),
+      ).toBeInTheDocument();
+    });
+
+    getChartControlPanelRegistry().remove('pivot_table_v2');
   });
 
   test('should show Matrixify tab for supported chart types', async () => {

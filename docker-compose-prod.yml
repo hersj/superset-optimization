@@ -1,0 +1,91 @@
+x-superset-image: &superset-image apache/superset:4.1.1
+x-superset-env: &superset-env
+  env_file:
+    - path: docker/.env
+      required: true
+    - path: docker/.env-local
+      required: false
+
+x-superset-volumes: &superset-volumes
+  - ./docker/pythonpath_dev/superset_config.py:/app/pythonpath/superset_config.py:ro
+  - superset_home:/app/superset_home
+
+services:
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis:/data
+
+  db:
+    <<: *superset-env
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - db_home:/var/lib/postgresql/data
+
+  superset-init:
+    <<: *superset-env
+    image: *superset-image
+    user: root
+    command: >
+      bash -c "
+      pip install psycopg2-binary &&
+      superset db upgrade &&
+      superset init
+      "
+    depends_on:
+      - db
+      - redis
+    volumes: *superset-volumes
+
+  superset:
+    <<: *superset-env
+    image: *superset-image
+    user: root
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 2G
+
+  superset-worker:
+    <<: *superset-env
+    image: *superset-image
+    user: root
+    restart: unless-stopped
+    command: celery --app=superset.tasks.celery_app:app worker -O fair -l INFO --concurrency=4
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+
+  superset-worker-beat:
+    <<: *superset-env
+    image: *superset-image
+    user: root
+    restart: unless-stopped
+    command: celery --app=superset.tasks.celery_app:app beat --pidfile /tmp/celerybeat.pid -l INFO -s /app/superset_home/celerybeat-schedule
+    depends_on:
+      - superset-worker
+    volumes: *superset-volumes
+
+volumes:
+  superset_home:
+    external: false
+  db_home:
+    external: false
+  redis:
+    external: false

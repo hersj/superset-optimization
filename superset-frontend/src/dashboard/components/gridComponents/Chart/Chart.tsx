@@ -18,7 +18,11 @@
  */
 import cx from 'classnames';
 import { useCallback, useEffect, useRef, useMemo, useState, memo } from 'react';
-import type { ChartCustomization, JsonObject } from '@superset-ui/core';
+import type {
+  ChartCustomization,
+  JsonObject,
+  QueryFormMetric,
+} from '@superset-ui/core';
 import { styled } from '@apache-superset/core/theme';
 import { t } from '@apache-superset/core/translation';
 import { debounce } from 'lodash';
@@ -62,6 +66,14 @@ import {
   unsetFocusedFilterField,
   updateChartState,
 } from '../../../actions/dashboardState';
+import {
+  deleteDashboardChartLayout,
+  isNotFoundError,
+  removePersonalChartLayout,
+  type PersonalChartLayout,
+  putDashboardChartLayout,
+  upsertPersonalChartLayout,
+} from '../../../actions/personalChartLayout';
 import { changeFilter } from '../../../actions/dashboardFilters';
 import { refreshChart } from '../../../../components/Chart/chartAction';
 import { logEvent } from '../../../../logger/actions';
@@ -72,6 +84,12 @@ import {
 import getFormDataWithExtraFilters from '../../../util/charts/getFormDataWithExtraFilters';
 import { useChartCustomizationFromRedux } from '../../nativeFilters/state';
 import { PLACEHOLDER_DATASOURCE } from '../../../constants';
+import {
+  buildMetricDescriptors,
+  isDefaultMetricLayout,
+  PIVOT_METRIC_LAYOUT_VERSION,
+  reconcileMetricLayout,
+} from '../../../../../plugins/plugin-chart-pivot-table/src/metricLayout';
 
 interface ChartProps {
   id: number;
@@ -248,6 +266,8 @@ const Chart = (props: ChartProps) => {
   const [descriptionHeight, setDescriptionHeight] = useState(0);
   const [height, setHeight] = useState(props.height);
   const [width, setWidth] = useState(props.width);
+  const [isSavingPersonalChartLayout, setIsSavingPersonalChartLayout] =
+    useState(false);
 
   const [isStreamingModalVisible, setIsStreamingModalVisible] = useState(false);
   const { progress, startExport, cancelExport, resetExport, retryExport } =
@@ -407,10 +427,12 @@ const Chart = (props: ChartProps) => {
     (state: RootState) => state.nativeFilters?.filters,
   );
   const dataMask = useSelector((state: RootState) => state.dataMask);
-  const dataMaskOwnState = dataMask[props.id]?.ownState;
   const chartState = useSelector(
     (state: RootState) => state.dashboardState.chartStates?.[props.id],
   );
+  const personalChartLayout = useSelector(
+    (state: RootState) => state.dashboardState.personalChartLayouts?.[props.id],
+  ) as PersonalChartLayout | undefined;
   const labelsColor: JsonObject = useSelector(
     (state: RootState) =>
       state.dashboardInfo?.metadata?.label_colors || EMPTY_OBJECT,
@@ -468,6 +490,37 @@ const Chart = (props: ChartProps) => {
   );
 
   (formData as JsonObject).dashboardId = dashboardInfo.id;
+
+  const chartOwnState = useMemo(() => {
+    const baseOwnState =
+      (dataMask[props.id]?.ownState as JsonObject) || EMPTY_OBJECT;
+    const ownStateWithChartState = createOwnStateWithChartState(
+      baseOwnState,
+      {
+        state:
+          getChartStateWithFallback(
+            chartState as { state?: JsonObject } | undefined,
+            formData as JsonObject,
+            slice.viz_type,
+          ) ?? undefined,
+      },
+      slice.viz_type,
+    );
+
+    return personalChartLayout
+      ? {
+          ...ownStateWithChartState,
+          pivot_table_metric_layout: personalChartLayout,
+        }
+      : ownStateWithChartState;
+  }, [
+    chartState,
+    dataMask,
+    formData,
+    personalChartLayout,
+    props.id,
+    slice.viz_type,
+  ]);
 
   const exportTable = useCallback(
     (format: string, isFullCSV: boolean, isPivot = false) => {
@@ -528,28 +581,13 @@ const Chart = (props: ChartProps) => {
         );
         filename = `${safeChartName}${timestamp}.csv`;
       }
-      const baseOwnState =
-        (dataMask[props.id]?.ownState as Record<string, unknown>) || {};
-      const state = getChartStateWithFallback(
-        chartState as { state?: JsonObject } | undefined,
-        formData,
-        sliceVizType,
-      );
-
-      const exportOwnState = state
-        ? {
-            ...baseOwnState,
-            ...convertChartStateToOwnState(sliceVizType, state),
-          }
-        : baseOwnState;
-
       exportChart({
         formData:
           exportFormData as unknown as import('@superset-ui/core').QueryFormData,
         resultType,
         resultFormat: format,
         force: true,
-        ownState: exportOwnState,
+        ownState: chartOwnState,
         onStartStreamingExport: shouldUseStreaming
           ? (exportParams: JsonObject) => {
               setIsStreamingModalVisible(true);
@@ -564,18 +602,15 @@ const Chart = (props: ChartProps) => {
     },
     [
       sliceSliceId,
-      sliceVizType,
       isCached,
       formData,
       maxRows,
-      dataMaskOwnState,
-      chartState,
-      props.id,
       boundActionCreators.logEvent,
       queriesResponse,
       startExport,
       resetExport,
       streamingThreshold,
+      chartOwnState,
     ],
   );
 
@@ -617,6 +652,56 @@ const Chart = (props: ChartProps) => {
     isCached,
     boundActionCreators.logEvent,
   ]);
+
+  const savePersonalChartLayout = useCallback(
+    async (layout: PersonalChartLayout | null) => {
+      const metricDescriptors = buildMetricDescriptors(
+        ((formData as JsonObject).metrics || []) as QueryFormMetric[],
+      );
+      const normalizedLayout = layout
+        ? (() => {
+            const reconciled = reconcileMetricLayout(metricDescriptors, layout);
+            return {
+              ordered_metric_ids: reconciled.orderedMetricIds,
+              hidden_metric_ids: reconciled.hiddenMetricIds,
+              version: PIVOT_METRIC_LAYOUT_VERSION,
+            };
+          })()
+        : null;
+
+      setIsSavingPersonalChartLayout(true);
+      try {
+        if (
+          !normalizedLayout ||
+          isDefaultMetricLayout(metricDescriptors, normalizedLayout)
+        ) {
+          try {
+            await deleteDashboardChartLayout(props.dashboardId, props.id);
+          } catch (error: any) {
+            if (!isNotFoundError(error)) {
+              throw error;
+            }
+          }
+          dispatch(removePersonalChartLayout(props.id));
+        } else {
+          await putDashboardChartLayout(
+            props.dashboardId,
+            props.id,
+            normalizedLayout,
+          );
+          dispatch(upsertPersonalChartLayout(props.id, normalizedLayout));
+        }
+        boundActionCreators.addSuccessToast(t('Personal column layout saved'));
+      } catch {
+        boundActionCreators.addDangerToast(
+          t('Failed to save personal column layout'),
+        );
+      } finally {
+        setIsSavingPersonalChartLayout(false);
+      }
+    },
+    [boundActionCreators, dispatch, formData, props.dashboardId, props.id],
+  );
 
   if (!chart || (slice as unknown) === EMPTY_OBJECT) {
     return <MissingChart height={getChartHeight()} />;
@@ -688,6 +773,9 @@ const Chart = (props: ChartProps) => {
         width={width}
         height={getHeaderHeight()}
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
+        personalChartLayout={personalChartLayout}
+        onSavePersonalChartLayout={savePersonalChartLayout}
+        isSavingPersonalChartLayout={isSavingPersonalChartLayout}
       />
 
       {/*
@@ -738,18 +826,7 @@ const Chart = (props: ChartProps) => {
           formData={
             formData as unknown as import('@superset-ui/core').QueryFormData
           }
-          ownState={createOwnStateWithChartState(
-            (dataMask[props.id]?.ownState as JsonObject) || EMPTY_OBJECT,
-            {
-              state:
-                getChartStateWithFallback(
-                  chartState as { state?: JsonObject } | undefined,
-                  formData as JsonObject,
-                  slice.viz_type,
-                ) ?? undefined,
-            },
-            slice.viz_type,
-          )}
+          ownState={chartOwnState}
           queriesResponse={chart.queriesResponse ?? undefined}
           timeout={timeout}
           triggerQuery={chart.triggerQuery}

@@ -17,7 +17,82 @@
  * under the License.
  */
 import { buildQueryContext, QueryFormData } from '@superset-ui/core';
+import { getBigNumberComparisonRanges } from './comparisonRanges';
+
+type ComparisonMode = 'previous' | 'year';
+
+const DEFAULT_COMPARISON_MODES: ComparisonMode[] = ['previous', 'year'];
+
+function getFormDataValue<T>(
+  formData: QueryFormData,
+  snakeKey: string,
+  camelKey: string,
+): T | undefined {
+  const values = formData as Record<string, T | undefined>;
+  return values[snakeKey] ?? values[camelKey];
+}
+
+function getComparisonModes(formData: QueryFormData): ComparisonMode[] {
+  const rawModes = getFormDataValue<ComparisonMode | ComparisonMode[]>(
+    formData,
+    'comparison_modes',
+    'comparisonModes',
+  );
+  if (rawModes === undefined) {
+    return DEFAULT_COMPARISON_MODES;
+  }
+  const modes = Array.isArray(rawModes) ? rawModes : [rawModes];
+  return modes.filter(
+    (mode): mode is ComparisonMode => mode === 'previous' || mode === 'year',
+  );
+}
+
+function isComparisonEnabled(formData: QueryFormData): boolean {
+  return (
+    getFormDataValue<boolean>(
+      formData,
+      'comparison_enabled',
+      'comparisonEnabled',
+    ) !== false
+  );
+}
 
 export default function buildQuery(formData: QueryFormData) {
-  return buildQueryContext(formData, baseQueryObject => [baseQueryObject]);
+  return buildQueryContext(formData, baseQueryObject => {
+    const timeRange =
+      (baseQueryObject.time_range as string | undefined) ||
+      (formData.time_range as string | undefined) ||
+      ((formData as any).extraFormData?.time_range as string | undefined);
+    const comparisonModes = getComparisonModes(formData);
+
+    if (!isComparisonEnabled(formData) || comparisonModes.length === 0) {
+      return [baseQueryObject];
+    }
+
+    const comparisonRanges = getBigNumberComparisonRanges(timeRange);
+
+    if (!comparisonRanges) {
+      return [baseQueryObject];
+    }
+
+    return [
+      baseQueryObject,
+      ...(comparisonModes.includes('previous')
+        ? [
+            {
+              ...baseQueryObject,
+              time_range: comparisonRanges.previousRange,
+            },
+          ]
+        : []),
+      ...(comparisonModes.includes('year')
+        ? [
+            {
+              ...baseQueryObject,
+              time_range: comparisonRanges.yearRange,
+            },
+          ]
+        : []),
+    ];
+  });
 }

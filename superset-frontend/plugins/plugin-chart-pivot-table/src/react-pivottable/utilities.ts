@@ -535,7 +535,7 @@ const baseAggregatorTemplates = {
     };
   },
 
-  sumOverSum(formatter = usFmt) {
+  sumOverSum(formatter = usFmt, useAbsoluteNumerator = false) {
     return function ([num, denom]: string[]) {
       return function () {
         return {
@@ -543,11 +543,25 @@ const baseAggregatorTemplates = {
           sumDenom: 0,
           currencySet: new Set<string>(),
           push(record: PivotRecord) {
-            if (!Number.isNaN(Number(record[num]))) {
-              this.sumNum += parseFloat(String(record[num]));
+            const numerator = record[num];
+            const denominator = record[denom];
+            // SQL SUM 会忽略 NULL；这里也只累计实际存在的有限数值，避免
+            // Number(null) === 0 但 parseFloat('null') === NaN 污染整个总计。
+            if (
+              numerator !== null &&
+              numerator !== undefined &&
+              numerator !== '' &&
+              Number.isFinite(Number(numerator))
+            ) {
+              this.sumNum += Number(numerator);
             }
-            if (!Number.isNaN(Number(record[denom]))) {
-              this.sumDenom += parseFloat(String(record[denom]));
+            if (
+              denominator !== null &&
+              denominator !== undefined &&
+              denominator !== '' &&
+              Number.isFinite(Number(denominator))
+            ) {
+              this.sumDenom += Number(denominator);
             }
             if (
               record.__currencyColumn &&
@@ -559,7 +573,14 @@ const baseAggregatorTemplates = {
             }
           },
           value() {
-            return this.sumNum / this.sumDenom;
+            // 与 SQL NULLIF(denominator, 0) 保持一致，禁止把无定义的率渲染为 Infinity。
+            if (this.sumDenom === 0) {
+              return null;
+            }
+            const numerator = useAbsoluteNumerator
+              ? Math.abs(this.sumNum)
+              : this.sumNum;
+            return numerator / this.sumDenom;
           },
           getCurrencies() {
             return Array.from(this.currencySet);
@@ -810,27 +831,54 @@ class PivotData {
     ) => Record<string, (vals: unknown) => (...args: unknown[]) => Aggregator>;
     const aggregatorName = this.props.aggregatorName as string;
     const vals = this.props.vals as string[];
-    this.aggregator = aggregatorsFactory(this.props.defaultFormatter)[
-      aggregatorName
-    ](vals);
-    this.formattedAggregators = this.props.customFormatters
-      ? Object.entries(
-          this.props.customFormatters as Record<
-            string,
-            Record<string, unknown>
-          >,
-        ).reduce(
+    const buildAggregator = (formatter: unknown, preferredName: string) => {
+      const aggregatorsByName = aggregatorsFactory(formatter);
+      const aggregateBuilder =
+        aggregatorsByName[preferredName] ||
+        aggregatorsByName[aggregatorName] ||
+        Object.values(aggregatorsByName)[0];
+      return aggregateBuilder(vals);
+    };
+    this.aggregator = buildAggregator(
+      this.props.defaultFormatter,
+      aggregatorName,
+    );
+
+    const customFormatters = (this.props.customFormatters || {}) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const customAggregatorNames = (this.props.customAggregatorNames ||
+      {}) as Record<string, Record<string, string>>;
+    const customGroups = Array.from(
+      new Set([
+        ...Object.keys(customFormatters),
+        ...Object.keys(customAggregatorNames),
+      ]),
+    );
+    this.formattedAggregators = customGroups.length
+      ? customGroups.reduce(
           (
             acc: Record<
               string,
               Record<string, (...args: unknown[]) => Aggregator>
             >,
-            [key, columnFormatter],
+            key,
           ) => {
+            const columnFormatters = customFormatters[key] || {};
+            const columnAggregatorNames = customAggregatorNames[key] || {};
+            const columns = Array.from(
+              new Set([
+                ...Object.keys(columnFormatters),
+                ...Object.keys(columnAggregatorNames),
+              ]),
+            );
             acc[key] = {};
-            Object.entries(columnFormatter).forEach(([column, formatter]) => {
-              acc[key][column] =
-                aggregatorsFactory(formatter)[aggregatorName](vals);
+            columns.forEach(column => {
+              acc[key][column] = buildAggregator(
+                columnFormatters[column] || this.props.defaultFormatter,
+                columnAggregatorNames[column] || aggregatorName,
+              );
             });
             return acc;
           },

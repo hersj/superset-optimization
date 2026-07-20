@@ -49,6 +49,13 @@ import {
   PivotTableStylesProps,
   SelectedFiltersType,
 } from './types';
+import {
+  PIVOT_ABSOLUTE_RATIO_AGGREGATE_FUNCTION,
+  PIVOT_RATIO_AGGREGATE_FUNCTION,
+  PIVOT_RATIO_DENOMINATOR_FIELD,
+  PIVOT_RATIO_NUMERATOR_FIELD,
+  unpivotPivotTableData,
+} from './plugin/pivotRatioMetrics';
 
 const Styles = styled.div<PivotTableStylesProps>`
   ${({ height, width, margin }) => `
@@ -179,6 +186,16 @@ const aggregatorsFactory = (formatter: NumberFormatter) => ({
   'List Unique Values': aggregatorTemplates.listUnique(', ', formatter),
   Sum: aggregatorTemplates.sum(formatter),
   Average: aggregatorTemplates.average(formatter),
+  [PIVOT_RATIO_AGGREGATE_FUNCTION]: () =>
+    aggregatorTemplates.sumOverSum(formatter)([
+      PIVOT_RATIO_NUMERATOR_FIELD,
+      PIVOT_RATIO_DENOMINATOR_FIELD,
+    ]),
+  [PIVOT_ABSOLUTE_RATIO_AGGREGATE_FUNCTION]: () =>
+    aggregatorTemplates.sumOverSum(
+      formatter,
+      true,
+    )([PIVOT_RATIO_NUMERATOR_FIELD, PIVOT_RATIO_DENOMINATOR_FIELD]),
   Median: aggregatorTemplates.median(formatter),
   'Sample Variance': aggregatorTemplates.var(1, formatter),
   'Sample Standard Deviation': aggregatorTemplates.stdev(1, formatter),
@@ -251,12 +268,16 @@ export default function PivotTableChart(props: PivotTableProps) {
     verboseMap,
     columnFormats,
     currencyFormats,
+    metricAggregateFunctions,
+    metricRatioComponents = {},
     metricsLayout,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
     timeGrainSqla,
     allowRenderHtml,
+    pivotNumberFormatRules,
+    dimensionLabelOverrides = {},
   } = props;
 
   const theme = useTheme();
@@ -299,6 +320,16 @@ export default function PivotTableChart(props: PivotTableProps) {
     [columnFormats, currencyFormat, currencyFormats, valueFormat],
   );
   const hasCustomMetricFormatters = customFormatsArray.length > 0;
+  const metricAggregatorNames = useMemo(() => {
+    const aggregateEntries = Object.entries(
+      metricAggregateFunctions || {},
+    ).filter(([, aggregateName]) => Boolean(aggregateName));
+    return aggregateEntries.length
+      ? {
+          [METRIC_KEY]: Object.fromEntries(aggregateEntries),
+        }
+      : undefined;
+  }, [metricAggregateFunctions]);
   const metricFormatters = useMemo(
     () =>
       hasCustomMetricFormatters
@@ -341,22 +372,14 @@ export default function PivotTableChart(props: PivotTableProps) {
 
   const unpivotedData = useMemo(
     () =>
-      data.reduce(
-        (acc: Record<string, any>[], record: Record<string, any>) => [
-          ...acc,
-          ...metricNames
-            .map((name: string) => ({
-              ...record,
-              [METRIC_KEY]: name,
-              value: record[name],
-              // Mark currency column for per-cell currency detection in aggregators
-              __currencyColumn: currencyCodeColumn,
-            }))
-            .filter(record => record.value !== null),
-        ],
-        [],
+      unpivotPivotTableData(
+        data,
+        metricNames,
+        metricRatioComponents,
+        METRIC_KEY,
+        currencyCodeColumn,
       ),
-    [data, metricNames, currencyCodeColumn],
+    [data, metricNames, currencyCodeColumn, metricRatioComponents],
   );
   const groupbyRows = useMemo(
     () => groupbyRowsRaw.map(getColumnLabel),
@@ -365,6 +388,10 @@ export default function PivotTableChart(props: PivotTableProps) {
   const groupbyColumns = useMemo(
     () => groupbyColumnsRaw.map(getColumnLabel),
     [groupbyColumnsRaw],
+  );
+  const namesMapping = useMemo(
+    () => ({ ...verboseMap, ...dimensionLabelOverrides }),
+    [dimensionLabelOverrides, verboseMap],
   );
 
   const sorters = useMemo(
@@ -576,6 +603,7 @@ export default function PivotTableChart(props: PivotTableProps) {
       omittedHighlightHeaderGroups: [METRIC_KEY],
       cellColorFormatters: { [METRIC_KEY]: metricColorFormatters },
       dateFormatters,
+      pivotNumberFormatRules,
     }),
     [
       colTotals,
@@ -583,6 +611,7 @@ export default function PivotTableChart(props: PivotTableProps) {
       dateFormatters,
       emitCrossFilters,
       metricColorFormatters,
+      pivotNumberFormatRules,
       rowTotals,
       rowSubTotals,
       selectedFilters,
@@ -679,6 +708,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           aggregatorsFactory={aggregatorsFactory}
           defaultFormatter={defaultFormatter}
           customFormatters={metricFormatters}
+          customAggregatorNames={metricAggregatorNames}
           aggregatorName={aggregateFunction}
           vals={vals}
           colOrder={colOrder}
@@ -686,7 +716,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           sorters={sorters}
           tableOptions={tableOptions}
           subtotalOptions={subtotalOptions}
-          namesMapping={verboseMap}
+          namesMapping={namesMapping}
           onContextMenu={handleContextMenu}
           allowRenderHtml={allowRenderHtml}
         />

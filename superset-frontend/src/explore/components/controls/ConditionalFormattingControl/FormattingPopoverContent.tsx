@@ -16,7 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  type ChangeEvent,
+} from 'react';
 import { t } from '@apache-superset/core/translation';
 import { styled } from '@apache-superset/core/theme';
 import { GenericDataType } from '@apache-superset/core/common';
@@ -36,6 +42,8 @@ import {
   Col,
   Row,
   Checkbox,
+  ColorPicker,
+  type ColorValue,
   type FormProps,
 } from '@superset-ui/core/components';
 import { ConditionalFormattingConfig, ColumnOption } from './types';
@@ -52,6 +60,13 @@ const FullWidthInputNumber = styled(InputNumber)`
 `;
 
 const FullWidthInput = styled(Input)`
+  width: 100%;
+`;
+
+const CustomColorControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.sizeUnit * 2}px;
   width: 100%;
 `;
 
@@ -94,6 +109,12 @@ const isOperatorNone = (operator?: Comparator) =>
   !operator || operator === Comparator.None;
 
 const rulesRequired = [{ required: true, message: t('Required') }];
+const customColorRules = [
+  {
+    pattern: /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
+    message: t('Use a valid hex color'),
+  },
+];
 
 type GetFieldValue = Pick<Required<FormProps>['form'], 'getFieldValue'>;
 const rulesTargetValueLeft = [
@@ -121,6 +142,38 @@ const shouldFormItemUpdate = (
     isOperatorNone(currentValues.operator) ||
   isOperatorMultiValue(prevValues.operator) !==
     isOperatorMultiValue(currentValues.operator);
+
+const CustomColorInput = ({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (value?: string) => void;
+}) => {
+  const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange?.(event.target.value || undefined);
+  };
+
+  const handleColorChange = (color: ColorValue) => {
+    onChange?.(color.toHexString());
+  };
+
+  return (
+    <CustomColorControl>
+      <ColorPicker
+        value={value || undefined}
+        onChangeComplete={handleColorChange}
+        showText={false}
+      />
+      <FullWidthInput
+        aria-label={t('Custom color')}
+        placeholder="#ff4d4f"
+        value={value ?? ''}
+        onChange={handleInputChange}
+      />
+    </CustomColorControl>
+  );
+};
 
 const renderOperator = ({
   showOnlyNone,
@@ -402,6 +455,17 @@ export const FormattingPopoverContent = ({
               ariaLabel={t('Color scheme')}
               options={[...colorScheme, ...extraColorChoices]}
             />
+          </FormItem>
+        </Col>
+      </Row>
+      <Row gutter={12}>
+        <Col span={12}>
+          <FormItem
+            name="customColor"
+            label={t('Custom color')}
+            rules={customColorRules}
+          >
+            <CustomColorInput />
           </FormItem>
         </Col>
       </Row>

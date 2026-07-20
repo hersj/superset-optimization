@@ -67,9 +67,10 @@ describe('useFilterFocusHighlightStyles', () => {
       nativeFilters: {
         focusedFilterId: 'test-filter',
         filters: {
-          otherId: {
-            id: 'NATIVE_FILTER-otherId',
+          'test-filter': {
+            id: 'test-filter',
             chartsInScope: [],
+            scope: { rootPath: [], excluded: [] },
           },
         },
       },
@@ -88,9 +89,10 @@ describe('useFilterFocusHighlightStyles', () => {
       nativeFilters: {
         hoveredFilterId: 'test-filter',
         filters: {
-          otherId: {
-            id: 'NATIVE_FILTER-otherId',
+          'test-filter': {
+            id: 'test-filter',
             chartsInScope: [],
+            scope: { rootPath: [], excluded: [] },
           },
         },
       },
@@ -101,6 +103,40 @@ describe('useFilterFocusHighlightStyles', () => {
 
     const styles = getComputedStyle(container);
     expect(parseFloat(styles.opacity)).toBe(0.3);
+  });
+
+  test('should ignore a stale focused filter id', async () => {
+    mockGetRelatedCharts.mockClear();
+    const store = createMockStore({
+      nativeFilters: {
+        focusedFilterId: 'removed-filter',
+        filters: {},
+      },
+    });
+
+    renderWrapper(10, store);
+
+    expect(mockGetRelatedCharts).not.toHaveBeenCalled();
+    expect(
+      getComputedStyle(screen.getByTestId('test-component')).opacity,
+    ).toBeFalsy();
+  });
+
+  test('should ignore a stale hovered filter id', async () => {
+    mockGetRelatedCharts.mockClear();
+    const store = createMockStore({
+      nativeFilters: {
+        hoveredFilterId: 'removed-filter',
+        filters: {},
+      },
+    });
+
+    renderWrapper(10, store);
+
+    expect(mockGetRelatedCharts).not.toHaveBeenCalled();
+    expect(
+      getComputedStyle(screen.getByTestId('test-component')).opacity,
+    ).toBeFalsy();
   });
 
   test('should return focused styles if chart is in scope of focused native filter', async () => {

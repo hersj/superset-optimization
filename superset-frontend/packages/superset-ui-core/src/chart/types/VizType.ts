@@ -18,6 +18,7 @@
  */
 export enum VizType {
   Area = 'echarts_area',
+  BandChart = 'echarts_band_chart',
   Bar = 'echarts_timeseries_bar',
   BigNumber = 'big_number',
   BigNumberTotal = 'big_number_total',

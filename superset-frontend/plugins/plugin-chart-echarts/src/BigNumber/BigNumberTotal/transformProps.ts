@@ -32,6 +32,113 @@ import { BigNumberTotalChartProps, BigNumberVizProps } from '../types';
 import { getDateFormatter, getOriginalLabel, parseMetricValue } from '../utils';
 import { Refs } from '../../types';
 
+type ComparisonMode = 'previous' | 'year';
+type ComparisonDisplay = 'percent' | 'delta_percent';
+
+const DEFAULT_COMPARISON_MODES: ComparisonMode[] = ['previous', 'year'];
+const COMPARISON_LABELS: Record<ComparisonMode, string> = {
+  previous: '环比',
+  year: '同比',
+};
+
+function getFormDataValue<T>(
+  formData: QueryFormData,
+  snakeKey: string,
+  camelKey: string,
+): T | undefined {
+  const values = formData as Record<string, T | undefined>;
+  return values[snakeKey] ?? values[camelKey];
+}
+
+function getComparisonModes(formData: QueryFormData): ComparisonMode[] {
+  const rawModes = getFormDataValue<ComparisonMode | ComparisonMode[]>(
+    formData,
+    'comparison_modes',
+    'comparisonModes',
+  );
+  if (rawModes === undefined) {
+    return DEFAULT_COMPARISON_MODES;
+  }
+  const modes = Array.isArray(rawModes) ? rawModes : [rawModes];
+  return modes.filter(
+    (mode): mode is ComparisonMode => mode === 'previous' || mode === 'year',
+  );
+}
+
+function isComparisonEnabled(formData: QueryFormData): boolean {
+  return (
+    getFormDataValue<boolean>(
+      formData,
+      'comparison_enabled',
+      'comparisonEnabled',
+    ) !== false
+  );
+}
+
+function getComparisonDisplay(formData: QueryFormData): ComparisonDisplay {
+  const display = getFormDataValue<ComparisonDisplay>(
+    formData,
+    'comparison_display',
+    'comparisonDisplay',
+  );
+  return display === 'delta_percent' ? 'delta_percent' : 'percent';
+}
+
+function formatPercentChange(current: number, baseline: number): string {
+  let change: number;
+  if (baseline === 0 && current === 0) {
+    change = 0;
+  } else if (baseline === 0) {
+    change = current > 0 ? 1 : -1;
+  } else {
+    change = (current - baseline) / Math.abs(baseline);
+  }
+  const percent = change * 100;
+  const sign = percent > 0 ? '+' : '';
+  return `${sign}${percent.toFixed(1)}%`;
+}
+
+function formatDelta(
+  current: number,
+  baseline: number,
+  formatter: (value: number) => string,
+): string {
+  const delta = current - baseline;
+  const sign = delta > 0 ? '+' : '';
+  return `${sign}${formatter(delta)}`;
+}
+
+function getComparisonText(
+  current: number | null,
+  comparisonValues: Partial<Record<ComparisonMode, number | null>>,
+  modes: ComparisonMode[],
+  display: ComparisonDisplay,
+  formatter: (value: number) => string,
+): string {
+  if (current === null) {
+    return '';
+  }
+
+  return modes
+    .map(mode => {
+      const baseline = comparisonValues[mode];
+      if (baseline === null || baseline === undefined) {
+        return null;
+      }
+      const percentText = formatPercentChange(current, baseline);
+      if (display === 'delta_percent') {
+        return `${COMPARISON_LABELS[mode]} ${formatDelta(
+          current,
+          baseline,
+          formatter,
+        )} (${percentText})`;
+      }
+      return `${COMPARISON_LABELS[mode]} ${percentText}`;
+    })
+    .filter((label): label is string => Boolean(label))
+    .join(' | ');
+}
+
 export default function transformProps(
   chartProps: BigNumberTotalChartProps,
 ): BigNumberVizProps {
@@ -113,6 +220,26 @@ export default function transformProps(
       ? formatTime
       : numberFormatter;
 
+  const comparisonModes = getComparisonModes(formData as QueryFormData);
+  const comparisonValues = comparisonModes.reduce<
+    Partial<Record<ComparisonMode, number | null>>
+  >((acc, mode, index) => {
+    const comparisonData = queriesData[index + 1]?.data;
+    acc[mode] = comparisonData?.length
+      ? parseMetricValue(comparisonData[0][metricName])
+      : null;
+    return acc;
+  }, {});
+  const comparisonText = isComparisonEnabled(formData as QueryFormData)
+    ? getComparisonText(
+        typeof bigNumber === 'number' ? bigNumber : null,
+        comparisonValues,
+        comparisonModes,
+        getComparisonDisplay(formData as QueryFormData),
+        numberFormatter,
+      )
+    : '';
+
   const { onContextMenu } = hooks;
 
   const defaultColorFormatters = [] as ColorFormatters;
@@ -126,6 +253,7 @@ export default function transformProps(
     bigNumber,
     headerFormatter,
     headerFontSize,
+    subheader: comparisonText || subheader || '',
     subheaderFontSize,
     subtitleFontSize: formattedSubtitleFontSize,
     subtitle: formattedSubtitle,

@@ -66,6 +66,11 @@ import {
   SET_AUTO_REFRESH_FETCH_START_TIME,
   SET_AUTO_REFRESH_PAUSE_ON_INACTIVE_TAB,
 } from '../actions/autoRefresh';
+import {
+  REMOVE_PERSONAL_CHART_LAYOUT,
+  SET_PERSONAL_CHART_LAYOUTS,
+  UPSERT_PERSONAL_CHART_LAYOUT,
+} from '../actions/personalChartLayout';
 import { AutoRefreshStatus, ERROR_THRESHOLD_COUNT } from '../types/autoRefresh';
 
 interface ChartStateEntry {
@@ -105,6 +110,7 @@ interface DashboardStateShape {
   overwriteConfirmMetadata?: JsonObject;
   nativeFiltersBarOpen?: boolean;
   chartStates?: Record<string, ChartStateEntry>;
+  personalChartLayouts?: Record<string, JsonObject>;
   css?: string;
   preselectNativeFilters?: JsonObject;
   autoRefreshStatus?: AutoRefreshStatus;
@@ -147,6 +153,8 @@ interface DashboardStateAction {
   chartState?: JsonObject;
   lastModified?: number;
   chartStates?: Record<string, ChartStateEntry>;
+  layouts?: Record<string, JsonObject>;
+  layout?: JsonObject;
   status?: string;
   isPaused?: boolean;
   isPausedByTab?: boolean;
@@ -458,6 +466,29 @@ export default function dashboardStateReducer(
       return {
         ...state,
         chartStates: {},
+      };
+    },
+    [SET_PERSONAL_CHART_LAYOUTS](): DashboardStateShape {
+      return {
+        ...state,
+        personalChartLayouts: action.layouts || {},
+      };
+    },
+    [UPSERT_PERSONAL_CHART_LAYOUT](): DashboardStateShape {
+      return {
+        ...state,
+        personalChartLayouts: {
+          ...(state.personalChartLayouts || {}),
+          [action.chartId!]: action.layout!,
+        },
+      };
+    },
+    [REMOVE_PERSONAL_CHART_LAYOUT](): DashboardStateShape {
+      const personalChartLayouts = { ...(state.personalChartLayouts || {}) };
+      delete personalChartLayouts[action.chartId!];
+      return {
+        ...state,
+        personalChartLayouts,
       };
     },
     // Auto-refresh status indicator handlers

@@ -115,6 +115,40 @@ test('SET_NATIVE_FILTERS_CONFIG_COMPLETE updates filters with complete scope pro
   expect(result.filters.filter1.tabsInScope).toEqual(['tab2']);
 });
 
+test('SET_NATIVE_FILTERS_CONFIG_COMPLETE clears a removed focused filter', () => {
+  const initialState = {
+    filters: {
+      removedFilter: createMockFilter('removedFilter'),
+    },
+    focusedFilterId: 'removedFilter',
+  };
+  const action = {
+    type: SET_NATIVE_FILTERS_CONFIG_COMPLETE as typeof SET_NATIVE_FILTERS_CONFIG_COMPLETE,
+    filterChanges: [createMockFilter('remainingFilter')],
+  };
+
+  const result = nativeFilterReducer(initialState, action);
+
+  expect(result.focusedFilterId).toBeUndefined();
+});
+
+test('SET_NATIVE_FILTERS_CONFIG_COMPLETE clears a removed hovered filter', () => {
+  const initialState = {
+    filters: {
+      removedFilter: createMockFilter('removedFilter'),
+    },
+    hoveredFilterId: 'removedFilter',
+  };
+  const action = {
+    type: SET_NATIVE_FILTERS_CONFIG_COMPLETE as typeof SET_NATIVE_FILTERS_CONFIG_COMPLETE,
+    filterChanges: [createMockFilter('remainingFilter')],
+  };
+
+  const result = nativeFilterReducer(initialState, action);
+
+  expect(result.hoveredFilterId).toBeUndefined();
+});
+
 test('SET_NATIVE_FILTERS_CONFIG_COMPLETE preserves existing chartsInScope when missing from update', () => {
   const initialState = {
     filters: {

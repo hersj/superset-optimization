@@ -17,6 +17,7 @@
  * under the License.
  */
 import { QueryFormData } from '@superset-ui/core';
+import type { PersonalChartLayout } from 'src/dashboard/actions/personalChartLayout';
 
 export interface SliceHeaderControlsProps {
   slice: {
@@ -60,4 +61,9 @@ export interface SliceHeaderControlsProps {
   supersetCanCSV?: boolean;
 
   crossFiltersEnabled?: boolean;
+  personalChartLayout?: PersonalChartLayout;
+  onSavePersonalChartLayout?: (
+    layout: PersonalChartLayout | null,
+  ) => Promise<void> | void;
+  isSavingPersonalChartLayout?: boolean;
 }

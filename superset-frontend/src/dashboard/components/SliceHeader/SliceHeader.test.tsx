@@ -194,6 +194,21 @@ const createProps = (overrides: any = {}) => ({
   ...overrides,
 });
 
+test('renders while its chart state is missing', () => {
+  const stateWithoutChart = {
+    ...initialState,
+    charts: {},
+  };
+
+  render(<SliceHeader {...createProps()} />, {
+    useRedux: true,
+    useRouter: true,
+    initialState: stateWithoutChart,
+  });
+
+  expect(screen.getByTestId('SliceHeaderControls')).toBeInTheDocument();
+});
+
 test('Should render', () => {
   const props = createProps();
   render(<SliceHeader {...props} />, {

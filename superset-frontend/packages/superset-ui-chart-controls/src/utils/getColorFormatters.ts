@@ -71,6 +71,7 @@ export const getColorFunction = (
     targetValueLeft,
     targetValueRight,
     colorScheme,
+    customColor,
     useGradient,
   }: ConditionalFormattingConfig,
   columnValues: number[] | string[] | (boolean | null)[],
@@ -83,7 +84,9 @@ export const getColorFunction = (
     value: number | string | boolean | null,
     allValues: number[] | string[] | (boolean | null)[],
   ) => false | { cutoffValue: number | string; extremeValue: number | string };
-  if (operator === undefined || colorScheme === undefined) {
+  const resolvedColor = customColor?.trim() || colorScheme;
+
+  if (operator === undefined || resolvedColor === undefined) {
     return () => undefined;
   }
   if (
@@ -265,17 +268,17 @@ export const getColorFunction = (
 
     // If useGradient is explicitly false, return solid color
     if (useGradient === false) {
-      return colorScheme;
+      return resolvedColor;
     }
 
     // Otherwise apply gradient (default behavior for backward compatibility)
     if (alpha === undefined || alpha) {
       return addAlpha(
-        colorScheme,
+        resolvedColor,
         getOpacity(value, cutoffValue, extremeValue, minOpacity, maxOpacity),
       );
     }
-    return colorScheme;
+    return resolvedColor;
   };
 };
 
@@ -288,8 +291,10 @@ export const getColorFormatters = memoizeOne(
   ) =>
     columnConfig?.reduce(
       (acc: ColorFormatters, config: ConditionalFormattingConfig) => {
-        let resolvedColorScheme = config.colorScheme;
+        const customColor = config.customColor?.trim();
+        let resolvedColorScheme = customColor || config.colorScheme;
         if (
+          !customColor &&
           theme &&
           typeof config.colorScheme === 'string' &&
           config.colorScheme.startsWith('color') &&
@@ -314,7 +319,11 @@ export const getColorFormatters = memoizeOne(
             columnFormatting: config?.columnFormatting,
             objectFormatting: config?.objectFormatting,
             getColorFromValue: getColorFunction(
-              { ...config, colorScheme: resolvedColorScheme },
+              {
+                ...config,
+                colorScheme: resolvedColorScheme,
+                customColor,
+              },
               data.map(row => row[config.column!] as number),
               alpha,
             ),

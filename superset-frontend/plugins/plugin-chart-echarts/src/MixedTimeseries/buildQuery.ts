@@ -63,6 +63,24 @@ export default function buildQuery(formData: QueryFormData) {
         ...(isXAxisSet(formData) ? {} : { is_timeseries: true }),
       };
 
+      // Time-comparison (time-shift) only aligns cleanly at day/month grains.
+      // At week/quarter/year a fixed offset like "30 days ago" produces a
+      // misaligned column → "referenced column not available in the DataFrame".
+      // So keep the comparison only for day/month and disable it otherwise.
+      // The active grain comes from the resolved query extras (reflects a
+      // dashboard time-grain filter); fd.time_grain_sqla is just the default.
+      if (ensureIsArray(fd.time_compare).length > 0) {
+        const activeGrain =
+          (queryObject.extras && (queryObject.extras as any).time_grain_sqla) ||
+          (fd.extra_form_data && fd.extra_form_data.time_grain_sqla) ||
+          fd.time_grain_sqla;
+        const comparisonAllowed =
+          activeGrain === 'P1D' || activeGrain === 'P1M';
+        if (!comparisonAllowed) {
+          fd.time_compare = [];
+        }
+      }
+
       const pivotOperatorInRuntime: PostProcessingPivot = isTimeComparison(
         fd,
         queryObject,

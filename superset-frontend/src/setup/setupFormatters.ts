@@ -20,6 +20,7 @@ import {
   createDurationFormatter,
   getNumberFormatter,
   getNumberFormatterRegistry,
+  NumberFormatter,
   NumberFormats,
   getTimeFormatterRegistry,
   SMART_DATE_ID,
@@ -39,6 +40,34 @@ export default function setupFormatters(
 ) {
   getNumberFormatterRegistry()
     .setD3Format(d3NumberFormat)
+    // Chinese unit formatters (万 = 1e4, 亿 = 1e8). Not expressible as a
+    // d3-format spec, so registered as custom NumberFormatters.
+    .registerValue(
+      'CN_WAN',
+      new NumberFormatter({
+        id: 'CN_WAN',
+        label: '万',
+        formatFunc: (value: number) =>
+          `${getNumberFormatter(',.2~f')(value / 1e4)}万`,
+      }),
+    )
+    .registerValue(
+      'CN_WANYI',
+      new NumberFormatter({
+        id: 'CN_WANYI',
+        label: '万/亿 (中文)',
+        formatFunc: (value: number) => {
+          const abs = Math.abs(value);
+          if (abs >= 1e8) {
+            return `${getNumberFormatter(',.2~f')(value / 1e8)}亿`;
+          }
+          if (abs >= 1e4) {
+            return `${getNumberFormatter(',.2~f')(value / 1e4)}万`;
+          }
+          return getNumberFormatter(',.2~f')(value);
+        },
+      }),
+    )
     // Add shims for format strings that are deprecated or common typos.
     // Temporary solution until performing a db migration to fix this.
     .registerValue(',0', getNumberFormatter(',.4~f'))

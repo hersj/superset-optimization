@@ -181,7 +181,7 @@ export default function transformProps(
     sliceId,
     sortSeriesType,
     sortSeriesAscending,
-    timeGrainSqla,
+    timeGrainSqla: _timeGrainSqla,
     forceMaxInterval,
     timeCompare,
     timeShiftColor,
@@ -212,6 +212,13 @@ export default function transformProps(
     zoomable,
     stackDimension,
   }: EchartsTimeseriesFormData = { ...DEFAULT_FORM_DATA, ...formData };
+
+  const timeGrainSqla = (formData as any).extra_form_data?.time_grain_sqla
+    || (chartProps as any).ownState?.time_grain_sqla
+    || (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla
+    || (chartProps as any).rawFormData?.time_grain_sqla
+    || (formData as any).time_grain_sqla
+    || _timeGrainSqla;
 
   const refs: Refs = {};
   const groupBy = ensureIsArray(groupby);
@@ -630,7 +637,7 @@ export default function transformProps(
 
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat)
+      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla)
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
@@ -796,6 +803,26 @@ export default function transformProps(
         padding.right || 0,
         TIMESERIES_CONSTANTS.horizontalBarLabelRightPadding,
       );
+    }
+    // Explicitly set yAxis.data to preserve SQL ORDER BY for categorical axis.
+    // Without this, ECharts auto-sorts categories alphabetically.
+    if (xAxisType === AxisType.Category && rawSeries.length > 0) {
+      const firstSeries = rawSeries[0];
+      const seenCats = new Set<string>();
+      const categoryData: string[] = [];
+      if (Array.isArray(firstSeries.data)) {
+        (firstSeries.data as any[]).forEach(d => {
+          const cat = Array.isArray(d) ? d[1] : (d as any)?.value?.[1];
+          const catStr = String(cat ?? '');
+          if (cat !== null && cat !== undefined && !seenCats.has(catStr)) {
+            seenCats.add(catStr);
+            categoryData.push(catStr);
+          }
+        });
+      }
+      if (categoryData.length > 0) {
+        (yAxis as any).data = categoryData;
+      }
     }
   }
 
@@ -995,9 +1022,24 @@ export default function transformProps(
     customEchartOptions = undefined;
   }
 
-  const mergedEchartOptions = customEchartOptions
+  let mergedEchartOptions = customEchartOptions
     ? mergeCustomEChartOptions(echartOptions, customEchartOptions)
     : echartOptions;
+
+  // If visualMap is configured, remove static itemStyle.color from series so
+  // visualMap can control per-bar colors (static color overrides visualMap).
+  if ((mergedEchartOptions as any).visualMap && Array.isArray((mergedEchartOptions as any).series)) {
+    mergedEchartOptions = {
+      ...mergedEchartOptions,
+      series: ((mergedEchartOptions as any).series as any[]).map(s => {
+        if (s && s.itemStyle && s.itemStyle.color !== undefined) {
+          const { color: _color, ...restItemStyle } = s.itemStyle;
+          return { ...s, itemStyle: restItemStyle };
+        }
+        return s;
+      }),
+    };
+  }
 
   return {
     echartOptions: mergedEchartOptions,

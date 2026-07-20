@@ -48,6 +48,7 @@ import {
   EchartsPieChartPlugin,
   EchartsBoxPlotChartPlugin,
   EchartsAreaChartPlugin,
+  EchartsBandChartPlugin,
   EchartsTimeseriesChartPlugin,
   EchartsTimeseriesBarChartPlugin,
   EchartsTimeseriesLineChartPlugin,
@@ -76,6 +77,7 @@ import {
   TimeFilterPlugin,
   TimeColumnFilterPlugin,
   TimeGrainFilterPlugin,
+  CustomTimeFilterPlugin,
 } from 'src/filters/components';
 import {
   ChartCustomizationTimeGrainPlugin,
@@ -148,6 +150,9 @@ export default class MainPreset extends Preset {
         new EchartsAreaChartPlugin().configure({
           key: VizType.Area,
         }),
+        new EchartsBandChartPlugin().configure({
+          key: VizType.BandChart,
+        }),
         new EchartsTimeseriesChartPlugin().configure({
           key: VizType.Timeseries,
         }),
@@ -179,6 +184,9 @@ export default class MainPreset extends Preset {
         }),
         new TimeGrainFilterPlugin().configure({
           key: FilterPlugins.TimeGrain,
+        }),
+        new CustomTimeFilterPlugin().configure({
+          key: FilterPlugins.CustomTime,
         }),
         new ChartCustomizationTimeGrainPlugin().configure({
           key: ChartCustomizationPlugins.TimeGrain,

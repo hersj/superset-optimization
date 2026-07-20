@@ -20,16 +20,34 @@ import {
   AdhocColumn,
   buildQueryContext,
   ensureIsArray,
+  getMetricLabel,
   isPhysicalColumn,
   QueryFormColumn,
+  QueryFormMetric,
   QueryFormOrderBy,
 } from '@superset-ui/core';
 import { PivotTableQueryFormData } from '../types';
+import {
+  getPivotRatioConfiguration,
+  type PivotRatioColumnConfig,
+} from './pivotRatioMetrics';
 
 export default function buildQuery(formData: PivotTableQueryFormData) {
   const { groupbyColumns = [], groupbyRows = [], extra_form_data } = formData;
+  const isDownloadQuery =
+    ['csv', 'xlsx'].includes(formData.result_format || '') ||
+    (formData.result_format === 'json' &&
+      ['results', 'post_processed'].includes(formData.result_type || ''));
   const time_grain_sqla =
     extra_form_data?.time_grain_sqla || formData.time_grain_sqla;
+  const { helperMetrics } = getPivotRatioConfiguration(
+    formData.column_config as
+      | Record<string, PivotRatioColumnConfig>
+      | undefined,
+    ensureIsArray<QueryFormMetric>(formData.metrics)
+      .map(getMetricLabel)
+      .filter((name): name is string => Boolean(name)),
+  );
 
   // TODO: add deduping of AdhocColumns
   const columns = Array.from(
@@ -66,6 +84,11 @@ export default function buildQuery(formData: PivotTableQueryFormData) {
     return [
       {
         ...baseQueryObject,
+        // 率指标分子分母与可见指标共用一次查询，避免额外网络与数据库往返。
+        metrics:
+          !isDownloadQuery && helperMetrics.length
+            ? [...ensureIsArray<QueryFormMetric>(metrics), ...helperMetrics]
+            : metrics,
         orderby: orderBy,
         columns,
       },
