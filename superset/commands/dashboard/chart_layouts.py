@@ -96,6 +96,13 @@ class _DashboardChartTemplateScope(BaseCommand):
         self.dashboard_id = dashboard_id
         self.chart_id = chart_id
 
+    def validate(self) -> None:
+        """满足 BaseCommand 抽象契约，实际归属/权限校验在 run 时使用当前用户执行。"""
+
+        # 模板命令的用户、dashboard、chart 关系依赖请求上下文；由 get_scope()
+        # 在事务内统一校验，避免在构造阶段读取可能不存在的当前用户。
+        pass
+
     def get_scope(self) -> tuple[int, int]:
         dashboard = DashboardDAO.get_by_id_or_slug(self.dashboard_id)
         if self.chart_id not in {chart.id for chart in dashboard.slices}:
@@ -118,6 +125,11 @@ def serialize_chart_template(row: Any) -> dict[str, Any]:
 class GetDashboardChartTemplatesCommand(BaseCommand):
     def __init__(self, dashboard_id: int):
         self.dashboard_id = dashboard_id
+
+    def validate(self) -> None:
+        """满足 BaseCommand 抽象契约；读取权限及 dashboard 归属在 run 中校验。"""
+
+        pass
 
     def run(self) -> dict[str, list[dict[str, Any]]]:
         dashboard = DashboardDAO.get_by_id_or_slug(self.dashboard_id)

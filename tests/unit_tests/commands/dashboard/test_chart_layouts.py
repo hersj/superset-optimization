@@ -130,3 +130,22 @@ def test_chart_layout_endpoints_reuse_dashboard_read_permission(
     method = getattr(DashboardRestApi, method_name)
 
     assert method._permission_name == "read"
+
+
+def test_template_commands_satisfy_base_command_contract() -> None:
+    """模板 API 的每个命令都必须可被 API 路由实例化。"""
+    from superset.commands.dashboard.chart_layouts import (
+        DeleteDashboardChartTemplateCommand,
+        GetDashboardChartTemplatesCommand,
+        PutDashboardChartTemplateCommand,
+        RenameDashboardChartTemplateCommand,
+        SetDefaultDashboardChartTemplateCommand,
+    )
+
+    commands = [
+        GetDashboardChartTemplatesCommand(44),
+        PutDashboardChartTemplateCommand(44, 642, 1, {"name": "模板 1", "layout": {}}),
+        SetDefaultDashboardChartTemplateCommand(44, 642, 1),
+        DeleteDashboardChartTemplateCommand(44, 642, 1),
+        RenameDashboardChartTemplateCommand(44, 642, 1, "模板 1"),
+    ]
