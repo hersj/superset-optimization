@@ -74,6 +74,8 @@ import {
   SET_PERSONAL_CHART_TEMPLATES,
   UPSERT_PERSONAL_CHART_LAYOUT,
   UPSERT_PERSONAL_CHART_TEMPLATE,
+  type PersonalChartTemplate,
+  type PersonalChartTemplatesMap,
 } from '../actions/personalChartLayout';
 import { AutoRefreshStatus, ERROR_THRESHOLD_COUNT } from '../types/autoRefresh';
 
@@ -164,6 +166,9 @@ interface DashboardStateAction {
   chartStates?: Record<string, ChartStateEntry>;
   layouts?: Record<string, JsonObject>;
   layout?: JsonObject;
+  templates?: PersonalChartTemplatesMap;
+  template?: PersonalChartTemplate;
+  slot?: 1 | 2 | 3 | null;
   status?: string;
   isPaused?: boolean;
   isPausedByTab?: boolean;
@@ -505,9 +510,9 @@ export default function dashboardStateReducer(
       const personalChartTemplateActiveSlots: Record<string, 1 | 2 | 3 | null> =
         {};
       Object.entries(action.templates || {}).forEach(([chartId, templates]) => {
-        const defaultTemplate = (
-          templates as import('../actions/personalChartLayout').PersonalChartTemplate[]
-        ).find(template => template.is_default);
+        const defaultTemplate = (templates as PersonalChartTemplate[]).find(
+          template => template.is_default,
+        );
         if (defaultTemplate) {
           personalChartLayouts[chartId] = defaultTemplate.layout as JsonObject;
           personalChartTemplateActiveSlots[chartId] = defaultTemplate.slot;

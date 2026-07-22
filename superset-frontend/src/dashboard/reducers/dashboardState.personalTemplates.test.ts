@@ -14,10 +14,11 @@ import {
   setPersonalChartTemplateActiveSlot,
   upsertPersonalChartTemplate,
 } from '../actions/personalChartLayout';
+import type { PersonalChartTemplate } from '../actions/personalChartLayout';
 
 test('default-template upsert does not mutate the previous template objects', () => {
-  const existing = {
-    slot: 1 as const,
+  const existing: PersonalChartTemplate = {
+    slot: 1,
     name: '模板 1',
     is_default: true,
     layout: {
@@ -26,7 +27,7 @@ test('default-template upsert does not mutate the previous template objects', ()
       hidden_metric_ids: [],
     },
   };
-  const state: any = {
+  const state: Parameters<typeof dashboardStateReducer>[0] = {
     personalChartTemplates: { '611': [existing] },
   };
   const next = dashboardStateReducer(
@@ -40,10 +41,18 @@ test('default-template upsert does not mutate the previous template objects', ()
   );
 
   expect(existing.is_default).toBe(true);
-  expect(next.personalChartTemplates['611'][0]).not.toBe(existing);
-  expect(
-    next.personalChartTemplates['611'].map((item: any) => item.is_default),
-  ).toEqual([false, true]);
+  const templates = next.personalChartTemplates;
+  expect(templates).toBeDefined();
+  if (!templates) {
+    throw new Error('personal chart templates should be present');
+  }
+  const chartTemplates = templates['611'];
+  expect(chartTemplates).toBeDefined();
+  if (!chartTemplates) {
+    throw new Error('chart templates should be present');
+  }
+  expect(chartTemplates[0]).not.toBe(existing);
+  expect(chartTemplates.map(item => item.is_default)).toEqual([false, true]);
 });
 
 test('active template slot is session-only and system default clears it', () => {
