@@ -66,7 +66,11 @@ export interface SliceHeaderControlsProps {
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
   personalChartTemplates?: PersonalChartTemplate[];
-  onApplyPersonalChartLayout?: (layout: PersonalChartLayout | null) => void;
+  personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
+  onApplyPersonalChartLayout?: (
+    layout: PersonalChartLayout | null,
+    slot: 1 | 2 | 3 | null,
+  ) => void;
   onSavePersonalChartTemplate?: (
     slot: 1 | 2 | 3,
     name: string,

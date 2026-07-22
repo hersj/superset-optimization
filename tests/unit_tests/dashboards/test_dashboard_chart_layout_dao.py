@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 from collections.abc import Iterator
+from threading import Event, Thread
 
 import pytest
 from flask_appbuilder.security.sqla.models import User
@@ -233,3 +234,70 @@ def test_template_slots_keep_only_the_explicit_default(
         dashboard.id, admin.id
     )[chart.id]
     assert [(row.slot, row.is_default) for row in templates] == [(1, False)]
+
+
+def test_postgresql_concurrent_default_switch_is_serialized_by_scope_row_lock(
+    app, session: Session, dashboard_chart_layout_context: dict[str, object]
+) -> None:
+    """第二个事务必须在第一个提交后取得行锁，并成为最终唯一默认。"""
+    if session.get_bind().dialect.name != "postgresql":
+        pytest.skip("requires PostgreSQL SELECT FOR UPDATE semantics")
+
+    from superset.daos.dashboard_chart_layout import DashboardChartLayoutDAO
+    from superset.extensions import db
+
+    admin = dashboard_chart_layout_context["admin"]
+    dashboard = dashboard_chart_layout_context["dashboard"]
+    chart = dashboard_chart_layout_context["chart"]
+    layout = {"ordered_metric_ids": ["sales"], "hidden_metric_ids": [], "version": 1}
+    for slot in (1, 2):
+        DashboardChartLayoutDAO.upsert(
+            user_id=admin.id,
+            dashboard_id=dashboard.id,
+            chart_id=chart.id,
+            slot=slot,
+            name=f"Template {slot}",
+            layout=layout,
+        )
+    db.session.commit()
+
+    first_locked = Event()
+    release_first = Event()
+    second_finished = Event()
+    errors: list[Exception] = []
+
+    def switch(slot: int, hold_lock: bool = False) -> None:
+        try:
+            with app.app_context():
+                DashboardChartLayoutDAO.set_default(
+                    user_id=admin.id,
+                    dashboard_id=dashboard.id,
+                    chart_id=chart.id,
+                    slot=slot,
+                )
+                if hold_lock:
+                    first_locked.set()
+                    assert release_first.wait(timeout=5)
+                db.session.commit()
+                if slot == 2:
+                    second_finished.set()
+        except Exception as ex:  # pragma: no cover - surfaced by the assertion below
+            errors.append(ex)
+
+    first = Thread(target=switch, args=(1, True))
+    second = Thread(target=switch, args=(2,))
+    first.start()
+    assert first_locked.wait(timeout=5)
+    second.start()
+    assert not second_finished.wait(timeout=0.2)
+    release_first.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+    assert not errors
+    assert second_finished.is_set()
+
+    session.expire_all()
+    templates = DashboardChartLayoutDAO.find_templates_by_dashboard_and_user(
+        dashboard.id, admin.id
+    )[chart.id]
+    assert [(row.slot, row.is_default) for row in templates] == [(1, False), (2, True)]

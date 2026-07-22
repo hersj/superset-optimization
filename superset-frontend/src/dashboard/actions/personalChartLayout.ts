@@ -52,6 +52,8 @@ export const REMOVE_PERSONAL_CHART_LAYOUT = 'REMOVE_PERSONAL_CHART_LAYOUT';
 export const SET_PERSONAL_CHART_TEMPLATES = 'SET_PERSONAL_CHART_TEMPLATES';
 export const UPSERT_PERSONAL_CHART_TEMPLATE = 'UPSERT_PERSONAL_CHART_TEMPLATE';
 export const REMOVE_PERSONAL_CHART_TEMPLATE = 'REMOVE_PERSONAL_CHART_TEMPLATE';
+export const SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT =
+  'SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT';
 
 export function setPersonalChartLayouts(layouts: PersonalChartLayoutsMap) {
   return {
@@ -93,6 +95,13 @@ export function upsertPersonalChartTemplate(
 
 export function removePersonalChartTemplate(chartId: number, slot: number) {
   return { type: REMOVE_PERSONAL_CHART_TEMPLATE, chartId, slot };
+}
+
+export function setPersonalChartTemplateActiveSlot(
+  chartId: number,
+  slot: 1 | 2 | 3 | null,
+) {
+  return { type: SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT, chartId, slot };
 }
 
 export async function getDashboardChartLayouts(

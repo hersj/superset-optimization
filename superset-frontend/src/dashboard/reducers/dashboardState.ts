@@ -69,6 +69,7 @@ import {
 import {
   REMOVE_PERSONAL_CHART_LAYOUT,
   REMOVE_PERSONAL_CHART_TEMPLATE,
+  SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT,
   SET_PERSONAL_CHART_LAYOUTS,
   SET_PERSONAL_CHART_TEMPLATES,
   UPSERT_PERSONAL_CHART_LAYOUT,
@@ -118,6 +119,7 @@ interface DashboardStateShape {
     string,
     import('../actions/personalChartLayout').PersonalChartTemplate[]
   >;
+  personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
   css?: string;
   preselectNativeFilters?: JsonObject;
   autoRefreshStatus?: AutoRefreshStatus;
@@ -500,37 +502,40 @@ export default function dashboardStateReducer(
     },
     [SET_PERSONAL_CHART_TEMPLATES](): DashboardStateShape {
       const personalChartLayouts: Record<string, JsonObject> = {};
+      const personalChartTemplateActiveSlots: Record<string, 1 | 2 | 3 | null> =
+        {};
       Object.entries(action.templates || {}).forEach(([chartId, templates]) => {
         const defaultTemplate = (
           templates as import('../actions/personalChartLayout').PersonalChartTemplate[]
         ).find(template => template.is_default);
         if (defaultTemplate) {
           personalChartLayouts[chartId] = defaultTemplate.layout as JsonObject;
+          personalChartTemplateActiveSlots[chartId] = defaultTemplate.slot;
+        } else {
+          personalChartTemplateActiveSlots[chartId] = null;
         }
       });
       return {
         ...state,
         personalChartTemplates: action.templates || {},
+        personalChartTemplateActiveSlots,
         personalChartLayouts,
       };
     },
     [UPSERT_PERSONAL_CHART_TEMPLATE](): DashboardStateShape {
+      const previousTemplates =
+        state.personalChartTemplates?.[action.chartId!] || [];
       const templates = [
-        ...(state.personalChartTemplates?.[action.chartId!] || []),
+        ...previousTemplates
+          .filter(template => template.slot !== action.template!.slot)
+          .map(template => ({
+            ...template,
+            is_default: action.template!.is_default
+              ? false
+              : template.is_default,
+          })),
+        { ...action.template! },
       ];
-      const index = templates.findIndex(
-        template => template.slot === action.template!.slot,
-      );
-      if (index === -1) {
-        templates.push(action.template!);
-      } else {
-        templates[index] = action.template!;
-      }
-      if (action.template!.is_default) {
-        templates.forEach(template => {
-          template.is_default = template.slot === action.template!.slot;
-        });
-      }
       templates.sort((left, right) => left.slot - right.slot);
       return {
         ...state,
@@ -553,6 +558,15 @@ export default function dashboardStateReducer(
         delete personalChartTemplates[action.chartId!];
       }
       return { ...state, personalChartTemplates };
+    },
+    [SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT](): DashboardStateShape {
+      return {
+        ...state,
+        personalChartTemplateActiveSlots: {
+          ...(state.personalChartTemplateActiveSlots || {}),
+          [action.chartId!]: action.slot,
+        },
+      };
     },
     // Auto-refresh status indicator handlers
     [SET_AUTO_REFRESH_STATUS]() {

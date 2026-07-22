@@ -70,6 +70,7 @@ import {
   deleteDashboardChartTemplate,
   removePersonalChartTemplate,
   removePersonalChartLayout,
+  setPersonalChartTemplateActiveSlot,
   type PersonalChartLayout,
   type PersonalChartTemplate,
   putDashboardChartTemplate,
@@ -439,6 +440,10 @@ const Chart = (props: ChartProps) => {
     (state: RootState) =>
       state.dashboardState.personalChartTemplates?.[props.id],
   ) as PersonalChartTemplate[] | undefined;
+  const personalChartTemplateActiveSlot = useSelector(
+    (state: RootState) =>
+      state.dashboardState.personalChartTemplateActiveSlots?.[props.id],
+  ) as 1 | 2 | 3 | null | undefined;
   const labelsColor: JsonObject = useSelector(
     (state: RootState) =>
       state.dashboardInfo?.metadata?.label_colors || EMPTY_OBJECT,
@@ -664,7 +669,9 @@ const Chart = (props: ChartProps) => {
       const metricDescriptors = buildMetricDescriptors(
         ((formData as JsonObject).metrics || []) as QueryFormMetric[],
       );
-      const reconciled = reconcileMetricLayout(metricDescriptors, layout);
+      const reconciled = reconcileMetricLayout(metricDescriptors, layout, {
+        includeMissingMetrics: true,
+      });
       return {
         ordered_metric_ids: reconciled.orderedMetricIds,
         hidden_metric_ids: reconciled.hiddenMetricIds,
@@ -675,7 +682,7 @@ const Chart = (props: ChartProps) => {
   );
 
   const applyPersonalChartLayout = useCallback(
-    (layout: PersonalChartLayout | null) => {
+    (layout: PersonalChartLayout | null, slot: 1 | 2 | 3 | null) => {
       if (layout) {
         dispatch(
           upsertPersonalChartLayout(props.id, normalizeTemplateLayout(layout)),
@@ -683,6 +690,7 @@ const Chart = (props: ChartProps) => {
       } else {
         dispatch(removePersonalChartLayout(props.id));
       }
+      dispatch(setPersonalChartTemplateActiveSlot(props.id, slot));
     },
     [dispatch, normalizeTemplateLayout, props.id],
   );
@@ -728,7 +736,6 @@ const Chart = (props: ChartProps) => {
           slot,
         );
         dispatch(upsertPersonalChartTemplate(props.id, template));
-        dispatch(upsertPersonalChartLayout(props.id, template.layout));
         boundActionCreators.addSuccessToast(t('个人默认模板已保存'));
       } catch {
         boundActionCreators.addDangerToast(t('设为个人默认模板失败'));
@@ -829,6 +836,7 @@ const Chart = (props: ChartProps) => {
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
         personalChartLayout={personalChartLayout}
         personalChartTemplates={personalChartTemplates}
+        personalChartTemplateActiveSlot={personalChartTemplateActiveSlot}
         onApplyPersonalChartLayout={applyPersonalChartLayout}
         onSavePersonalChartTemplate={savePersonalChartTemplate}
         onSetPersonalChartTemplateDefault={setPersonalChartTemplateDefault}

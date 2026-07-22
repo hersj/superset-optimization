@@ -50,11 +50,9 @@ test('uses the scoped template endpoints for get, save, and default', async () =
   const putSpy = jest
     .spyOn(SupersetClient, 'put')
     .mockResolvedValue({ json: { result: template } } as never);
-  const postSpy = jest
-    .spyOn(SupersetClient, 'post')
-    .mockResolvedValue({
-      json: { result: { ...template, is_default: true } },
-    } as never);
+  const postSpy = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+    json: { result: { ...template, is_default: true } },
+  } as never);
 
   await expect(getDashboardChartTemplates(88)).resolves.toEqual({
     '611': [template],

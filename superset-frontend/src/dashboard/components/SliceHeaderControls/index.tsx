@@ -143,7 +143,11 @@ export interface SliceHeaderControlsProps {
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
   personalChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
-  onApplyPersonalChartLayout?: (layout: PersonalChartLayout | null) => void;
+  personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
+  onApplyPersonalChartLayout?: (
+    layout: PersonalChartLayout | null,
+    slot: 1 | 2 | 3 | null,
+  ) => void;
   onSavePersonalChartTemplate?: (
     slot: 1 | 2 | 3,
     name: string,
@@ -638,9 +642,12 @@ const SliceHeaderControls = (
           metrics={props.formData.metrics || []}
           initialLayout={props.personalChartLayout}
           templates={props.personalChartTemplates || []}
+          activeSlot={props.personalChartTemplateActiveSlot || null}
           isSaving={props.isSavingPersonalChartLayout}
           onHide={() => setShowPivotMetricLayoutModal(false)}
-          onApply={layout => props.onApplyPersonalChartLayout?.(layout)}
+          onApply={(layout, slot) =>
+            props.onApplyPersonalChartLayout?.(layout, slot)
+          }
           onSaveTemplate={(slot, name, layout) =>
             props.onSavePersonalChartTemplate?.(slot, name, layout)
           }

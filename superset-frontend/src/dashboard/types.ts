@@ -172,6 +172,7 @@ export type DashboardState = {
   tabActivationTimes?: Record<string, number>;
   personalChartLayouts?: Record<string, PersonalChartLayout>;
   personalChartTemplates?: Record<string, PersonalChartTemplate[]>;
+  personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
 };
 export type DashboardInfo = {
   id: number;

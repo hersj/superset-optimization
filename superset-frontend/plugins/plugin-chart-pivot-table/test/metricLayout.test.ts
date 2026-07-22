@@ -62,4 +62,36 @@ describe('personal column template metric identities', () => {
       'metric_cost_v1',
     ]);
   });
+
+  it('does not drop duplicate or unpersistable metrics from the system view', () => {
+    const metrics = buildMetricDescriptors([
+      'sales',
+      'sales',
+      {
+        label: 'temporary metric',
+        expressionType: 'SQL',
+        sqlExpression: 'SUM(x)',
+      },
+    ] as any);
+    const result = reconcileMetricLayout(metrics);
+
+    expect(result.visibleMetrics).toHaveLength(3);
+    expect(metrics.map(metric => metric.canPersist)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it('shows metrics added after a template in the editor as hidden and saves them', () => {
+    const metrics = buildMetricDescriptors(['sales', 'new_cost'] as any);
+    const result = reconcileMetricLayout(
+      metrics,
+      { version: 1, ordered_metric_ids: ['sales'], hidden_metric_ids: [] },
+      { includeMissingMetrics: true },
+    );
+
+    expect(result.orderedMetricIds).toEqual(['sales', 'new_cost']);
+    expect(result.hiddenMetricIds).toEqual(['new_cost']);
+  });
 });

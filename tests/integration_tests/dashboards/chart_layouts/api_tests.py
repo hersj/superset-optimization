@@ -130,3 +130,16 @@ def test_get_dashboard_chart_layouts_access_denied(
     )
 
     assert response.status_code == 404
+
+
+def test_template_put_and_patch_reject_blank_normalized_names(
+    test_client, login_as_admin, dashboard_with_pivot_chart
+) -> None:
+    base = (
+        f"/api/v1/dashboard/{dashboard_with_pivot_chart['dashboard_id']}"
+        f"/chart_templates/{dashboard_with_pivot_chart['chart_id']}/1"
+    )
+    layout = {"ordered_metric_ids": ["sales"], "hidden_metric_ids": [], "version": 1}
+    assert test_client.put(base, json={"name": "   ", "layout": layout}).status_code == 400
+    assert test_client.put(base, json={"name": "  Template 1  ", "layout": layout}).status_code == 200
+    assert test_client.patch(base, json={"name": "\t\n"}).status_code == 400

@@ -484,6 +484,13 @@ class DashboardChartTemplateSchema(Schema):
     name = fields.String(required=True, allow_none=False, validate=Length(min=1, max=40))
     layout = fields.Nested(DashboardChartLayoutSchema, required=True, allow_none=False)
 
+    @pre_load
+    def normalize_name(self, data: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        """持久化规范化名称，空白名称在字段长度校验中被拒绝。"""
+        if isinstance(data.get("name"), str):
+            data = {**data, "name": data["name"].strip()}
+        return data
+
     @validates_schema
     def validate_template_layout(
         self, data: dict[str, Any], **kwargs: Any
@@ -512,6 +519,12 @@ class DashboardChartTemplateNameSchema(Schema):
     """仅重命名既有 slot，不修改其列布局或默认状态。"""
 
     name = fields.String(required=True, allow_none=False, validate=Length(min=1, max=40))
+
+    @pre_load
+    def normalize_name(self, data: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        if isinstance(data.get("name"), str):
+            data = {**data, "name": data["name"].strip()}
+        return data
 
 
 class DashboardScreenshotPostSchema(Schema):

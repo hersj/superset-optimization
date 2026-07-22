@@ -174,9 +174,10 @@ interface PivotMetricLayoutModalProps {
   metrics: QueryFormMetric[];
   initialLayout?: PersonalChartLayout;
   templates: PersonalChartTemplate[];
+  activeSlot: 1 | 2 | 3 | null;
   isSaving?: boolean;
   onHide: () => void;
-  onApply: (layout: PersonalChartLayout | null) => void;
+  onApply: (layout: PersonalChartLayout | null, slot: 1 | 2 | 3 | null) => void;
   onSaveTemplate: (
     slot: 1 | 2 | 3,
     name: string,
@@ -191,6 +192,7 @@ export default function PivotMetricLayoutModal({
   metrics,
   initialLayout,
   templates,
+  activeSlot,
   isSaving = false,
   onHide,
   onApply,
@@ -208,7 +210,7 @@ export default function PivotMetricLayoutModal({
    * - 状态与副作用：组件 state 仅保存打开期间草稿、目标 slot 和名称；网络/Redux 副作用由父图表处理。
    * - 外部依赖：metricLayout 的 identity/reconcile 规则、父组件模板 API 回调、dnd-kit。
    * - 异常与边界：至少保留一个可见指标；空 slot 可新建；关闭、取消和离开图表均丢弃未保存草稿。
-   * - 不变量与约束：不将草稿写入服务端，不自动把新增指标加入历史模板，不以点击模板改变默认。
+   * - 不变量与约束：不将草稿写入服务端；应用历史模板时不自动展示新增指标，编辑并保存时必须将新增指标追加到排序且保持隐藏；不以点击模板改变默认。
    * - 验证方式：前端类型检查及模板 API 单测；服务器实机验收三 slot 保存、跨刷新恢复、默认和系统默认语义。
    */
   const metricDescriptors = useMemo(
@@ -217,21 +219,22 @@ export default function PivotMetricLayoutModal({
   );
   const [orderedMetricIds, setOrderedMetricIds] = useState<string[]>([]);
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
-  const [saveSlot, setSaveSlot] = useState<1 | 2 | 3>(1);
+  const [saveSlot, setSaveSlot] = useState<1 | 2 | 3 | null>(null);
   const [templateName, setTemplateName] = useState('');
 
   useEffect(() => {
     if (!show) {
       return;
     }
-    const reconciled = reconcileMetricLayout(metricDescriptors, initialLayout);
+    const reconciled = reconcileMetricLayout(metricDescriptors, initialLayout, {
+      includeMissingMetrics: true,
+    });
     setOrderedMetricIds(reconciled.orderedMetricIds);
     setHiddenMetricIds(reconciled.hiddenMetricIds);
-    const defaultTemplate = templates.find(template => template.is_default);
-    const selected = defaultTemplate || templates[0];
-    setSaveSlot(selected?.slot || 1);
+    const selected = templates.find(template => template.slot === activeSlot);
+    setSaveSlot(activeSlot);
     setTemplateName(selected?.name || t('模板 1'));
-  }, [show, initialLayout, metricDescriptors, templates]);
+  }, [show, initialLayout, metricDescriptors, templates, activeSlot]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -284,6 +287,10 @@ export default function PivotMetricLayoutModal({
     version: PIVOT_METRIC_LAYOUT_VERSION,
   });
 
+  const canPersistTemplate = metricDescriptors.every(
+    metric => metric.canPersist,
+  );
+
   const chooseSlot = (slot: 1 | 2 | 3) => {
     const template = templates.find(item => item.slot === slot);
     setSaveSlot(slot);
@@ -291,6 +298,9 @@ export default function PivotMetricLayoutModal({
   };
 
   const handleSave = async () => {
+    if (!saveSlot || !canPersistTemplate) {
+      return;
+    }
     const nextLayout = draftLayout();
     try {
       await onSaveTemplate(
@@ -298,7 +308,7 @@ export default function PivotMetricLayoutModal({
         templateName.trim() || t('模板 %(slot)s', { slot: saveSlot }),
         nextLayout,
       );
-      onApply(nextLayout);
+      onApply(nextLayout, saveSlot);
       onHide();
     } catch {
       // The owning chart displays the server error; preserve this local draft.
@@ -306,19 +316,18 @@ export default function PivotMetricLayoutModal({
   };
 
   const handleUseSystemDefault = () => {
-    onApply(null);
+    onApply(null, null);
     onHide();
   };
 
   const handleUseTemplate = (template: PersonalChartTemplate) => {
-    onApply(template.layout);
+    onApply(template.layout, template.slot);
     onHide();
   };
 
   const handleSetDefault = async (template: PersonalChartTemplate) => {
     try {
       await onSetDefault(template.slot);
-      onApply(template.layout);
     } catch {
       // The owning chart displays the server error; do not alter the session view.
     }
@@ -330,7 +339,9 @@ export default function PivotMetricLayoutModal({
       if (template.slot === saveSlot) {
         setTemplateName(t('模板 %(slot)s', { slot: saveSlot }));
       }
-      onApply(null);
+      if (template.slot === activeSlot) {
+        onApply(null, null);
+      }
     } catch {
       // The owning chart displays the server error; do not alter the session view.
     }
@@ -360,7 +371,12 @@ export default function PivotMetricLayoutModal({
           <Button onClick={handleDiscard} disabled={isSaving}>
             {t('Cancel')}
           </Button>
-          <Button buttonStyle="primary" onClick={handleSave} loading={isSaving}>
+          <Button
+            buttonStyle="primary"
+            onClick={handleSave}
+            loading={isSaving}
+            disabled={!saveSlot || !canPersistTemplate}
+          >
             {t('Save')}
           </Button>
         </>
@@ -371,6 +387,13 @@ export default function PivotMetricLayoutModal({
           '拖动可调整指标顺序，取消勾选可隐藏指标。修改内容仅是草稿，保存到模板后才会生效。',
         )}
       </Description>
+      {!canPersistTemplate && (
+        <Description>
+          {t(
+            '当前指标存在重复或缺少稳定标识，仍可查看和调整，但不能保存为个人模板。',
+          )}
+        </Description>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
