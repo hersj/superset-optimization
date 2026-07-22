@@ -77,6 +77,11 @@ const CONCURRENCY_LIMIT = 3;
 const MAX_CACHE_ENTRIES = 20;
 const permissionSearchCache = new Map<string, SelectOption[]>();
 
+// 统一搜索词和展示标签的下划线、大小写，保证输入 `dataset_one` 与界面展示的
+// `dataset one` 都能命中同一权限。
+const normalizePermissionSearchText = (value: string) =>
+  value.replace(/_/g, ' ').trim().toLowerCase();
+
 export const clearPermissionSearchCache = () => {
   permissionSearchCache.clear();
 };
@@ -92,12 +97,12 @@ const fetchPermissionPageRaw = async (queryParams: Record<string, unknown>) => {
 };
 
 const fetchAllPermissionPages = async (
-  filters: Record<string, unknown>[],
+  filters?: Record<string, unknown>[],
 ): Promise<SelectOption[]> => {
   const page0 = await fetchPermissionPageRaw({
     page: 0,
     page_size: PAGE_SIZE,
-    filters,
+    ...(filters?.length ? { filters } : {}),
   });
   if (page0.data.length === 0 || page0.data.length >= page0.totalCount) {
     return page0.data;
@@ -116,7 +121,7 @@ const fetchAllPermissionPages = async (
         fetchPermissionPageRaw({
           page: batch + i,
           page_size: PAGE_SIZE,
-          filters,
+          ...(filters?.length ? { filters } : {}),
         }),
       ),
     );
@@ -136,6 +141,19 @@ export const fetchPermissionOptions = async (
   pageSize: number,
   addDangerToast: (msg: string) => void,
 ) => {
+  /**
+   * 功能审计（可重写规格）：角色编辑页的权限搜索
+   * - 功能目的与触发方式：管理员在“角色”编辑弹窗的权限选择框输入关键词时调用，返回可分页选择的权限；空关键词仍按当前页向服务端取数。
+   * - 输入契约：filterValue 为用户输入；page/pageSize 为前端分页；权限接口返回 id、permission.name、view_menu.name；addDangerToast 用于可见错误提示。
+   * - 输出契约：成功时返回 { data: SelectOption[], totalCount }；失败时仅提示“获取权限时出错”并返回空结果，不修改任何角色或权限。
+   * - 处理流程：有搜索词时先以无筛选分页读取全部权限，再以格式化后的“权限名 资源名”在浏览器做包含匹配、缓存最多 20 个搜索词，最后切片分页。
+   * - 业务规则：搜索忽略大小写，且下划线与空格等价；一个权限关联在无筛选接口中只出现一次，结果不重复；空搜索不读取或清除搜索缓存。
+   * - 状态与副作用：仅请求 GET 接口并更新模块内搜索缓存；不写数据库、不变更角色、用户或用户组。
+   * - 外部依赖：依赖 /api/v1/security/permissions-resources/ 的无筛选分页响应；该环境的后端不允许 permission.name、view_menu.name 作为 REST 筛选列，因此搜索不得发送这两个筛选字段。
+   * - 异常与边界：接口失败、分页为空或后端限制页大小时返回已取得的安全结果；请求异常只显示一次错误提示。
+   * - 不变量与约束：不得再向该接口发送 permission.name 或 view_menu.name 的 filters，以避免 HTTP 400；缓存上限为 20，超限淘汰最早项。
+   * - 验证方式：utils.test.ts 覆盖无筛选请求、客户端匹配、缓存分页、空搜索、失败提示、后端分页限制及并发页读取。
+   */
   if (!filterValue) {
     try {
       return await fetchPermissionPageRaw({ page, page_size: pageSize });
@@ -146,24 +164,13 @@ export const fetchPermissionOptions = async (
   }
 
   try {
-    const cacheKey = filterValue.trim().toLowerCase();
+    const cacheKey = normalizePermissionSearchText(filterValue);
     let cached = permissionSearchCache.get(cacheKey);
     if (!cached) {
-      const [byViewMenu, byPermission] = await Promise.all([
-        fetchAllPermissionPages([
-          { col: 'view_menu.name', opr: 'ct', value: filterValue },
-        ]),
-        fetchAllPermissionPages([
-          { col: 'permission.name', opr: 'ct', value: filterValue },
-        ]),
-      ]);
-
-      const seen = new Set<number>();
-      cached = [...byViewMenu, ...byPermission].filter(item => {
-        if (seen.has(item.value)) return false;
-        seen.add(item.value);
-        return true;
-      });
+      const allPermissions = await fetchAllPermissionPages();
+      cached = allPermissions.filter(item =>
+        normalizePermissionSearchText(item.label).includes(cacheKey),
+      );
       if (permissionSearchCache.size >= MAX_CACHE_ENTRIES) {
         const oldestKey = permissionSearchCache.keys().next().value;
         if (oldestKey !== undefined) {
