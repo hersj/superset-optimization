@@ -209,6 +209,86 @@ test('applies conditional formatting colors to pivot totals and subtotal cells',
   );
 });
 
+test('marks every cell in the selected leaf row without selecting adjacent rows', () => {
+  tableRenderer = new TableRenderer({
+    ...mockProps,
+    rows: ['delivery_date', 'lt'],
+    tableOptions: {
+      highlightedHeaderCells: { lt: ['LT-A'] },
+    },
+  });
+  const pivotSettings = createColorPivotSettings({
+    rowAttrs: ['delivery_date', 'lt'],
+    rowAttrSpans: [
+      [2, 1],
+      [-1, 1],
+    ],
+  });
+
+  const selectedRow = tableRenderer.renderTableRow(
+    ['2026-04-01', 'LT-A'],
+    0,
+    pivotSettings,
+  ) as any;
+  const adjacentRow = tableRenderer.renderTableRow(
+    ['2026-04-01', 'LT-B'],
+    1,
+    pivotSettings,
+  ) as any;
+
+  expect(selectedRow.props.className).toBe('pvtRowSelected');
+  const [groupCell, leafCell, , valueCell, totalCell] =
+    selectedRow.props.children;
+  expect(groupCell.props.rowSpan).toBe(2);
+  expect(groupCell.props.className).not.toContain('pvtRowSelectedCell');
+  expect(leafCell.props.className).toContain('pvtRowSelectedCell');
+  expect(valueCell.props.className).toContain('pvtRowSelectedCell');
+  expect(totalCell.props.className).toContain('pvtRowSelectedCell');
+  expect(adjacentRow.props.className).toBeUndefined();
+
+  const partialRenderer = new TableRenderer({
+    ...mockProps,
+    rows: ['delivery_date', 'lt'],
+    tableOptions: {
+      highlightedHeaderCells: { delivery_date: ['2026-04-01'] },
+    },
+  });
+  const partialRow = partialRenderer.renderTableRow(
+    ['2026-04-01'],
+    0,
+    createColorPivotSettings({
+      rowAttrs: ['delivery_date', 'lt'],
+      rowAttrSpans: [[1]],
+    }),
+  ) as any;
+  expect(partialRow.props.className).toBeUndefined();
+});
+
+test('does not highlight rows for column, empty, or malformed selections', () => {
+  const row = ['2026-04-01', 'LT-A'];
+  const pivotSettings = createColorPivotSettings({
+    rowAttrs: ['delivery_date', 'lt'],
+    rowAttrSpans: [[1, 1]],
+  });
+
+  for (const highlightedHeaderCells of [
+    { Metric: ['purchase_cost_rate'] },
+    {},
+    { lt: 'LT-A' } as any,
+  ]) {
+    tableRenderer = new TableRenderer({
+      ...mockProps,
+      rows: ['delivery_date', 'lt'],
+      tableOptions: { highlightedHeaderCells },
+    });
+    const renderedRow = tableRenderer.renderTableRow(
+      row,
+      0,
+      pivotSettings,
+    ) as any;
+    expect(renderedRow.props.className).toBeUndefined();
+  }
+});
 test('sorts the first row dimension descending first without breaking child groups', () => {
   const rowKeys = [
     ['2026-07-16', 'LT-B'],

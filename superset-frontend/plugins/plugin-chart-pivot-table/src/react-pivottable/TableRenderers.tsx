@@ -220,6 +220,41 @@ function getCellColor(
   return { backgroundColor, color: undefined };
 }
 
+/**
+ * 功能审计（可重写规格）：透视表已选行视觉高亮
+ * - 功能目的与触发方式：当用户通过透视表行维度选择产生 selectedFilters 时，让同一叶子行的维度单元格和数值单元格呈现统一选中状态，便于用户确认选择目标。
+ * - 输入契约：rowAttrs 与 rowKey 为当前渲染行的维度名称和原始值；仅 rowKey 长度等于 rowAttrs 长度的完整叶子行可选中；highlightedHeaderCells 为外部传入的 {维度名: 已选原始值[]}，可为空。
+ * - 输出契约：返回布尔值；true 时渲染行带 pvtRowSelected class，false 时不增加 class。
+ * - 处理流程：先排除小计/部分行，再提取属于行维度的已选条件；若没有行维度条件返回 false；每个已选行维度都必须与当前 rowKey 对应值匹配才返回 true。
+ * - 业务规则：多个行维度条件按 AND 匹配，避免同一日期下其他 LT 被误高亮；列维度选择不高亮所有行；取消选择后的空对象不高亮任何行。
+ * - 状态与副作用：纯计算，不改变 selectedFilters、不发起筛选请求、不修改透视表数据或总计。
+ * - 外部依赖：依赖 PivotTableChart 既有 highlightedHeaderCells/selectedFilters 传递；无新增配置、接口或持久化状态。
+ * - 异常与边界：未知维度、非数组值或缺失 rowKey 值均视为不匹配；行合并单元格的 rowspan 结构保持原样。
+ * - 不变量与约束：只影响普通数据行的视觉 class；不得改变已有表头 active、条件色计算、点击筛选或展开/排序行为。
+ * - 验证方式：tableRenders 测试覆盖匹配叶子行有 class、相邻非匹配行无 class；页面验收点击 LT 后仅该 LT 行高亮，取消后恢复。
+ */
+function isRowSelectionActive(
+  rowAttrs: string[],
+  rowKey: string[],
+  highlightedHeaderCells: Record<string, unknown[]> | undefined,
+): boolean {
+  if (!highlightedHeaderCells || rowKey.length !== rowAttrs.length) {
+    return false;
+  }
+
+  const selectedRowDimensions = Object.entries(highlightedHeaderCells).filter(
+    ([attr, values]) => rowAttrs.includes(attr) && Array.isArray(values),
+  );
+  if (selectedRowDimensions.length === 0) {
+    return false;
+  }
+
+  return selectedRowDimensions.every(([attr, values]) => {
+    const attrIndex = rowAttrs.indexOf(attr);
+    return values.includes(rowKey[attrIndex]);
+  });
+}
+
 interface HierarchicalNode {
   currentVal?: number;
   [key: string]: HierarchicalNode | number | undefined;
@@ -1148,6 +1183,11 @@ export class TableRenderer extends Component<
       pivotNumberFormatRules,
     } = this.props.tableOptions;
     const flatRowKey = flatKey(rowKey);
+    const isSelectedRow = isRowSelectionActive(
+      rowAttrs,
+      rowKey,
+      highlightedHeaderCells,
+    );
 
     const colIncrSpan = colAttrs.length !== 0 ? 1 : 0;
     const attrValueCells = rowKey.map((r: string, i: number) => {
@@ -1170,6 +1210,9 @@ export class TableRenderer extends Component<
         valueCellClassName += ' active';
       }
       const rowSpan = rowAttrSpans![rowIdx][i];
+      if (isSelectedRow && rowSpan === 1) {
+        valueCellClassName += ' pvtRowSelectedCell';
+      }
       if (rowSpan > 0) {
         const flatRowKey = flatKey(rowKey.slice(0, i + 1));
         const colSpan = 1 + (i === rowAttrs.length - 1 ? colIncrSpan : 0);
@@ -1267,7 +1310,7 @@ export class TableRenderer extends Component<
       return (
         <td
           role="gridcell"
-          className="pvtVal"
+          className={isSelectedRow ? 'pvtVal pvtRowSelectedCell' : 'pvtVal'}
           key={`pvtVal-${flatColKey}`}
           onClick={rowClickHandlers[flatColKey]}
           onContextMenu={e => this.props.onContextMenu(e, colKey, rowKey)}
@@ -1303,7 +1346,7 @@ export class TableRenderer extends Component<
         <td
           role="gridcell"
           key="total"
-          className="pvtTotal"
+          className={isSelectedRow ? 'pvtTotal pvtRowSelectedCell' : 'pvtTotal'}
           onClick={rowTotalCallbacks[flatRowKey]}
           onContextMenu={e => this.props.onContextMenu(e, undefined, rowKey)}
           style={{ backgroundColor, color }}
@@ -1332,7 +1375,14 @@ export class TableRenderer extends Component<
       totalCell,
     ];
 
-    return <tr key={`keyRow-${flatRowKey}`}>{rowCells}</tr>;
+    return (
+      <tr
+        key={`keyRow-${flatRowKey}`}
+        className={isSelectedRow ? 'pvtRowSelected' : undefined}
+      >
+        {rowCells}
+      </tr>
+    );
   }
 
   renderTotalsRow(pivotSettings: PivotSettings) {

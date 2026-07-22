@@ -99,6 +99,10 @@ export const Styles = styled.div<{ isDashboardEditMode: boolean }>`
       background-color: ${theme.colorPrimaryBg};
     }
 
+    table.pvtTable .pvtRowSelectedCell {
+      background-color: ${theme.colorPrimaryBg} !important;
+    }
+
     table.pvtTable .pvtTotalLabel {
       text-align: right;
       font-weight: ${theme.fontWeightStrong};
