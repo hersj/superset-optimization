@@ -112,9 +112,9 @@ const TemplateRow = styled.div`
 
 const TemplateSection = styled.div`
   ${({ theme }) => css`
-    border-top: 1px solid ${theme.colorBorder};
-    margin-top: ${theme.sizeUnit * 4}px;
-    padding-top: ${theme.sizeUnit * 3}px;
+    border-bottom: 1px solid ${theme.colorBorder};
+    margin-bottom: ${theme.sizeUnit * 4}px;
+    padding-bottom: ${theme.sizeUnit * 3}px;
   `}
 `;
 
@@ -205,7 +205,7 @@ export default function PivotMetricLayoutModal({
    * - 功能目的与触发方式：用户从透视表“自定义列”打开后调整列顺序/显隐，并选择使用、保存、设默认或删除三格个人模板。
    * - 输入契约：metrics 是当前图表指标；templates 是当前用户、dashboard、chart 的已持久化 slot；initialLayout 是当前会话布局。
    * - 输出契约：使用系统默认或模板只回调 onApply；保存、设默认、删除通过父组件回调发起服务端写入；关闭不产生草稿写入。
-   * - 处理流程：打开时由 initialLayout 生成内存草稿；拖动/勾选仅更新草稿；保存到选定 slot 成功后应用草稿；使用模板立即应用后关闭。
+   * - 处理流程：模板区固定显示在指标列表之前，打开时由 initialLayout 生成内存草稿；拖动/勾选仅更新草稿；保存到选定 slot 成功后应用草稿；使用模板立即应用后关闭。
    * - 业务规则：系统默认不删除模板也不清除 is_default；非默认模板使用不修改默认；删除默认后不补选；失败保留当前草稿和会话视图。
    * - 状态与副作用：组件 state 仅保存打开期间草稿、目标 slot 和名称；网络/Redux 副作用由父图表处理。
    * - 外部依赖：metricLayout 的 identity/reconcile 规则、父组件模板 API 回调、dnd-kit。
@@ -394,34 +394,10 @@ export default function PivotMetricLayoutModal({
           )}
         </Description>
       )}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={orderedMetricIds}
-          strategy={verticalListSortingStrategy}
-        >
-          <List>
-            {orderedMetrics.map(metric => (
-              <SortableMetricRow
-                key={metric!.id}
-                id={metric!.id}
-                label={metric!.label}
-                checked={!hiddenMetricIds.includes(metric!.id)}
-                disableToggle={
-                  !hiddenMetricIds.includes(metric!.id) &&
-                  visibleMetricCount <= 1
-                }
-                onToggle={handleToggle}
-              />
-            ))}
-          </List>
-        </SortableContext>
-      </DndContext>
       <TemplateSection>
         <Description>
+          <strong>{t('个人模板')}</strong>
+          <br />
           {t('使用模板只影响当前会话；可将当前草稿保存到三个个人模板之一。')}
         </Description>
         {([1, 2, 3] as const).map(slot => {
@@ -470,6 +446,32 @@ export default function PivotMetricLayoutModal({
           );
         })}
       </TemplateSection>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={orderedMetricIds}
+          strategy={verticalListSortingStrategy}
+        >
+          <List>
+            {orderedMetrics.map(metric => (
+              <SortableMetricRow
+                key={metric!.id}
+                id={metric!.id}
+                label={metric!.label}
+                checked={!hiddenMetricIds.includes(metric!.id)}
+                disableToggle={
+                  !hiddenMetricIds.includes(metric!.id) &&
+                  visibleMetricCount <= 1
+                }
+                onToggle={handleToggle}
+              />
+            ))}
+          </List>
+        </SortableContext>
+      </DndContext>
     </Modal>
   );
 }
