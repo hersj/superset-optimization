@@ -19,6 +19,7 @@ from threading import Event, Thread
 
 import pytest
 from flask_appbuilder.security.sqla.models import User
+from sqlalchemy import event
 from sqlalchemy.orm.session import Session
 
 from superset.models.dashboard import Dashboard
@@ -315,3 +316,75 @@ def test_postgresql_concurrent_default_switch_is_serialized_by_scope_row_lock(
         dashboard.id, admin.id
     )[chart.id]
     assert [(row.slot, row.is_default) for row in templates] == [(1, True), (2, False)]
+
+
+def test_postgresql_default_lock_query_uses_only_layout_rows(
+    session: Session, dashboard_chart_layout_context: dict[str, object]
+) -> None:
+    """真实模型的默认切换锁查询不得因 joined 关系生成 DISTINCT 或关联 JOIN。"""
+    if session.get_bind().dialect.name != "postgresql":
+        pytest.skip("requires PostgreSQL SELECT FOR UPDATE semantics")
+
+    from superset.daos.dashboard_chart_layout import DashboardChartLayoutDAO
+    from superset.extensions import db
+
+    admin = dashboard_chart_layout_context["admin"]
+    dashboard = dashboard_chart_layout_context["dashboard"]
+    chart = dashboard_chart_layout_context["chart"]
+    layout = {
+        "ordered_metric_ids": ["sales"],
+        "hidden_metric_ids": [],
+        "version": 1,
+    }
+    for slot in (1, 2):
+        DashboardChartLayoutDAO.upsert(
+            user_id=admin.id,
+            dashboard_id=dashboard.id,
+            chart_id=chart.id,
+            slot=slot,
+            name=f"Template {slot}",
+            layout=layout,
+        )
+    db.session.commit()
+
+    statements: list[str] = []
+
+    def capture_lock_query(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        if "FOR UPDATE" in statement.upper():
+            statements.append(statement)
+
+    engine = session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture_lock_query)
+    try:
+        target = DashboardChartLayoutDAO.set_default(
+            user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=2
+        )
+        db.session.commit()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_lock_query)
+
+    assert target.slot == 2
+    assert len(statements) == 1
+    lock_sql = statements[0].lower()
+    assert "distinct" not in lock_sql
+    assert "join slices" not in lock_sql
+    assert "join tables" not in lock_sql
+    assert "for update of dashboard_chart_layouts" in lock_sql
+
+    with pytest.raises(ValueError, match="Template slot does not exist"):
+        DashboardChartLayoutDAO.set_default(
+            user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=3
+        )
+    db.session.rollback()
+    session.expire_all()
+    templates = DashboardChartLayoutDAO.find_templates_by_dashboard_and_user(
+        dashboard.id, admin.id
+    )[chart.id]
+    assert [(row.slot, row.is_default) for row in templates] == [(1, False), (2, True)]

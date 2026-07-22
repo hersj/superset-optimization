@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy.orm import lazyload
+
 from superset.daos.base import BaseDAO
 from superset.extensions import db
 from superset.models.dashboard_chart_layout import DashboardChartLayout
@@ -14,13 +16,13 @@ class DashboardChartLayoutDAO(BaseDAO[DashboardChartLayout]):
     - 功能目的与触发方式：为同一用户、仪表盘和图表保存最多三个可复用的透视表列顺序/隐藏模板；由模板 API 的查询、覆盖、重命名、删除和设默认命令调用。
     - 输入契约：scope 为 user_id/dashboard_id/chart_id，slot 仅允许 1..3；layout 为已由 API schema 校验的 v1 JSON；name 长度不超过 40。
     - 输出契约：查询按 chart/slot 升序返回；写入返回对应行；删除返回是否实际删除；设默认返回目标行。
-    - 处理流程：按 scope+slot 查询或写入；设默认先按 slot 升序锁住 scope 的全部既有行，再清除旧默认并设置目标行。
+    - 处理流程：按 scope+slot 查询或写入；设默认查询显式关闭 joined 关系预加载，只读取并按 slot 升序锁住 scope 的 dashboard_chart_layouts 主表既有行，再清除旧默认并设置目标行。
     - 业务规则：同 scope+slot 只能一行；删除默认不补选；新模板不自动加入历史 layout；layout 身份规则由前端生成并由 schema 保证结构。
     - 状态与副作用：仅写 dashboard_chart_layouts；调用者的 transaction 负责提交或回滚。
     - 外部依赖：SQLAlchemy session、dashboard_chart_layouts 表及其 slot 检查、scope+slot 唯一约束和默认部分唯一索引。
-    - 异常与边界：不存在的 slot 删除返回 False；设默认目标不存在抛 ValueError；并发设默认由已有行锁串行化，后取得锁并提交者成为最终默认。
+    - 异常与边界：不存在的 slot 删除返回 False；设默认目标不存在抛 ValueError 且不改变旧默认；模型关系的默认 joined 加载不得进入锁 SQL，避免 PostgreSQL 因 DISTINCT 或关联 JOIN 拒绝 FOR UPDATE；并发设默认由已有行锁串行化，后取得锁并提交者成为最终默认。
     - 不变量与约束：不得跨用户/仪表盘/图表读取或写入；不得新增锁表、缓存或服务层；一次 dashboard 查询只进行一次批量数据库读取。
-    - 验证方式：DAO 单元测试覆盖用户隔离、slot 覆盖/删除、默认删除、行锁默认切换和并发最终唯一默认。
+    - 验证方式：DAO 单元测试覆盖用户隔离、slot 覆盖/删除、默认删除、真实模型锁 SQL 无 DISTINCT/slices/tables JOIN、缺失目标不改旧默认及并发最终唯一默认。
     """
 
     @staticmethod
@@ -152,6 +154,10 @@ class DashboardChartLayoutDAO(BaseDAO[DashboardChartLayout]):
     ) -> DashboardChartLayout:
         rows = (
             db.session.query(DashboardChartLayout)
+            # 模型的 user/dashboard/chart 默认 lazy="joined"；锁 scope 行时必须关闭
+            # 关联预加载，避免 SQLAlchemy 生成 DISTINCT 子查询和 slices/tables JOIN，
+            # PostgreSQL 不允许对该查询执行 FOR UPDATE。
+            .options(lazyload("*"))
             .filter(
                 DashboardChartLayout.user_id == user_id,
                 DashboardChartLayout.dashboard_id == dashboard_id,
