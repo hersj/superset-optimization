@@ -22,6 +22,7 @@ import {
   clearPermissionSearchCache,
   fetchGroupOptions,
   fetchPermissionOptions,
+  fetchPermissionsByIds,
 } from './utils';
 
 const getMock = jest.spyOn(SupersetClient, 'get');
@@ -97,6 +98,42 @@ test('fetchPermissionOptions serves cached slices on subsequent pages', async ()
   expect(page1).toEqual({
     data: [{ value: 3, label: 'c test Z' }],
     totalCount: 3,
+  });
+});
+
+test('fetchPermissionsByIds resolves selected IDs without REST filters', async () => {
+  getMock.mockResolvedValue({
+    json: {
+      count: 3,
+      result: [
+        {
+          id: 10,
+          permission: { name: 'can_read' },
+          view_menu: { name: 'Chart' },
+        },
+        {
+          id: 20,
+          permission: { name: 'can_write' },
+          view_menu: { name: 'Dashboard' },
+        },
+        {
+          id: 30,
+          permission: { name: 'can_read' },
+          view_menu: { name: 'Dataset' },
+        },
+      ],
+    },
+  } as any);
+
+  await expect(fetchPermissionsByIds([20, 30])).resolves.toEqual([
+    { value: 20, label: 'can write Dashboard' },
+    { value: 30, label: 'can read Dataset' },
+  ]);
+  expect(getMock).toHaveBeenCalledTimes(1);
+  const { endpoint } = getMock.mock.calls[0][0] as { endpoint: string };
+  expect(rison.decode(endpoint.split('?q=')[1])).toEqual({
+    page: 0,
+    page_size: 1000,
   });
 });
 

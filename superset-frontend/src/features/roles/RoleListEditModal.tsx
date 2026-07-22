@@ -47,7 +47,7 @@ import {
   updateRoleName,
   updateRolePermissions,
   updateRoleUsers,
-  formatPermissionLabel,
+  fetchPermissionsByIds,
 } from './utils';
 
 export interface RoleListEditModalProps extends BaseModalProps {
@@ -154,32 +154,30 @@ function RoleListEditModal({
 
     setLoadingRolePermissions(true);
     permissionFetchSucceeded.current = false;
-    const filters = [{ col: 'id', opr: 'in', value: stablePermissionIds }];
+    let cancelled = false;
 
-    fetchPaginatedData({
-      endpoint: `/api/v1/security/permissions-resources/`,
-      pageSize: 100,
-      setData: (data: SelectOption[]) => {
+    // 权限资源 API 不接受 id in 筛选；复用工具层的无筛选读取后按 ID 本地匹配，
+    // 以便编辑现有角色时保留全部已授予权限而不是只显示裸 ID。
+    fetchPermissionsByIds(stablePermissionIds)
+      .then(data => {
+        if (cancelled) return;
         permissionFetchSucceeded.current = true;
         setRolePermissions(data);
-      },
-      filters,
-      setLoadingState: (loading: boolean) => setLoadingRolePermissions(loading),
-      loadingKey: 'rolePermissions',
-      addDangerToast,
-      errorMessage: t('There was an error loading permissions.'),
-      mapResult: (permission: {
-        id: number;
-        permission: { name: string };
-        view_menu: { name: string };
-      }) => ({
-        value: permission.id,
-        label: formatPermissionLabel(
-          permission.permission.name,
-          permission.view_menu.name,
-        ),
-      }),
-    });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          addDangerToast(t('There was an error loading permissions.'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingRolePermissions(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [addDangerToast, id, stablePermissionIds]);
 
   useEffect(() => {

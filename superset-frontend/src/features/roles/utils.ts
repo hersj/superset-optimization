@@ -135,6 +135,17 @@ const fetchAllPermissionPages = async (
   return allResults;
 };
 
+/**
+ * 角色编辑弹窗的已选权限解析共用同一份后端兼容的权限列表：权限资源 API
+ * 不允许任何 REST filters，因此先读取完整列表，再按传入的权限 ID 筛选。
+ * 网络异常向调用方抛出，调用方负责维持加载状态和显示一次“加载权限失败”提示。
+ */
+export const fetchPermissionsByIds = async (permissionIds: number[]) => {
+  const selectedIds = new Set(permissionIds);
+  const allPermissions = await fetchAllPermissionPages();
+  return allPermissions.filter(permission => selectedIds.has(permission.value));
+};
+
 export const fetchPermissionOptions = async (
   filterValue: string,
   page: number,
@@ -146,13 +157,13 @@ export const fetchPermissionOptions = async (
    * - 功能目的与触发方式：管理员在“角色”编辑弹窗的权限选择框输入关键词时调用，返回可分页选择的权限；空关键词仍按当前页向服务端取数。
    * - 输入契约：filterValue 为用户输入；page/pageSize 为前端分页；权限接口返回 id、permission.name、view_menu.name；addDangerToast 用于可见错误提示。
    * - 输出契约：成功时返回 { data: SelectOption[], totalCount }；失败时仅提示“获取权限时出错”并返回空结果，不修改任何角色或权限。
-   * - 处理流程：有搜索词时先以无筛选分页读取全部权限，再以格式化后的“权限名 资源名”在浏览器做包含匹配、缓存最多 20 个搜索词，最后切片分页。
+   * - 处理流程：角色编辑的已选权限与有搜索词的下拉搜索均以无筛选分页读取权限；已选权限按 ID 匹配，搜索按格式化后的“权限名 资源名”包含匹配并缓存最多 20 个关键词，最后切片分页。
    * - 业务规则：搜索忽略大小写，且下划线与空格等价；一个权限关联在无筛选接口中只出现一次，结果不重复；空搜索不读取或清除搜索缓存。
    * - 状态与副作用：仅请求 GET 接口并更新模块内搜索缓存；不写数据库、不变更角色、用户或用户组。
    * - 外部依赖：依赖 /api/v1/security/permissions-resources/ 的无筛选分页响应；该环境的后端不允许 permission.name、view_menu.name 作为 REST 筛选列，因此搜索不得发送这两个筛选字段。
    * - 异常与边界：接口失败、分页为空或后端限制页大小时返回已取得的安全结果；请求异常只显示一次错误提示。
    * - 不变量与约束：不得再向该接口发送 permission.name 或 view_menu.name 的 filters，以避免 HTTP 400；缓存上限为 20，超限淘汰最早项。
-   * - 验证方式：utils.test.ts 覆盖无筛选请求、客户端匹配、缓存分页、空搜索、失败提示、后端分页限制及并发页读取。
+   * - 验证方式：utils.test.ts 覆盖无筛选请求、ID 解析、客户端匹配、缓存分页、空搜索、失败提示、后端分页限制及并发页读取。
    */
   if (!filterValue) {
     try {

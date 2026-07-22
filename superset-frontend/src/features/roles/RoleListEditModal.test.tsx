@@ -31,6 +31,7 @@ import {
   updateRoleGroups,
   updateRolePermissions,
   updateRoleUsers,
+  fetchPermissionsByIds,
 } from './utils';
 
 const mockToasts = {
@@ -43,6 +44,12 @@ const mockUpdateRoleName = jest.mocked(updateRoleName);
 const mockUpdateRoleGroups = jest.mocked(updateRoleGroups);
 const mockUpdateRolePermissions = jest.mocked(updateRolePermissions);
 const mockUpdateRoleUsers = jest.mocked(updateRoleUsers);
+const mockFetchPermissionsByIds = jest.mocked(fetchPermissionsByIds);
+
+beforeEach(() => {
+  mockFetchPermissionsByIds.mockReset();
+  mockFetchPermissionsByIds.mockResolvedValue([]);
+});
 
 jest.mock('src/components/MessageToasts/withToasts', () => ({
   __esModule: true,
@@ -274,11 +281,9 @@ describe('RoleListEditModal', () => {
 
   test('does not fire fallback toast when hydration fetch fails', async () => {
     mockToasts.addDangerToast.mockClear();
+    mockFetchPermissionsByIds.mockRejectedValue(new Error('network error'));
     const mockGet = SupersetClient.get as jest.Mock;
     mockGet.mockImplementation(({ endpoint }) => {
-      if (endpoint?.includes('/api/v1/security/permissions-resources/')) {
-        return Promise.reject(new Error('network error'));
-      }
       if (endpoint?.includes('/api/v1/security/groups/')) {
         return Promise.reject(new Error('network error'));
       }
@@ -345,29 +350,10 @@ describe('RoleListEditModal', () => {
       group_ids: [],
     };
 
-    mockGet.mockImplementation(({ endpoint }) => {
-      if (endpoint?.includes('/api/v1/security/permissions-resources/')) {
-        const query = rison.decode(endpoint.split('?q=')[1]) as Record<
-          string,
-          unknown
-        >;
-        const filters = query.filters as Array<{
-          col: string;
-          opr: string;
-          value: number[];
-        }>;
-        const ids = filters?.[0]?.value || [];
-        const result = ids.map((id: number) => ({
-          id,
-          permission: { name: `perm_${id}` },
-          view_menu: { name: `view_${id}` },
-        }));
-        return Promise.resolve({
-          json: { count: result.length, result },
-        });
-      }
-      return Promise.resolve({ json: { count: 0, result: [] } });
-    });
+    mockFetchPermissionsByIds.mockImplementation(async ids =>
+      ids.map(id => ({ value: id, label: `perm ${id} view ${id}` })),
+    );
+    mockGet.mockResolvedValue({ json: { count: 0, result: [] } });
 
     const { rerender, unmount } = render(
       <RoleListEditModal
@@ -379,10 +365,9 @@ describe('RoleListEditModal', () => {
     );
 
     await waitFor(() => {
-      const permCall = mockGet.mock.calls.find(([c]) =>
-        c.endpoint.includes('/api/v1/security/permissions-resources/'),
+      expect(mockFetchPermissionsByIds).toHaveBeenCalledWith(
+        roleA.permission_ids,
       );
-      expect(permCall).toBeTruthy();
     });
 
     mockGet.mockClear();
@@ -399,20 +384,10 @@ describe('RoleListEditModal', () => {
     );
 
     await waitFor(() => {
-      const permCalls = mockGet.mock.calls.filter(([c]) =>
-        c.endpoint.includes('/api/v1/security/permissions-resources/'),
+      // Should resolve role B's IDs, not role A's.
+      expect(mockFetchPermissionsByIds).toHaveBeenCalledWith(
+        roleB.permission_ids,
       );
-      expect(permCalls.length).toBeGreaterThan(0);
-      // Should request role B's IDs, not role A's
-      const query = rison.decode(
-        permCalls[0][0].endpoint.split('?q=')[1],
-      ) as Record<string, unknown>;
-      const filters = query.filters as Array<{
-        col: string;
-        opr: string;
-        value: number[];
-      }>;
-      expect(filters[0].value).toEqual(roleB.permission_ids);
     });
 
     unmount();
@@ -441,31 +416,21 @@ describe('RoleListEditModal', () => {
       call.endpoint.includes('/api/v1/security/groups/'),
     )?.[0];
 
-    expect(permissionCall).toBeTruthy();
+    expect(permissionCall).toBeFalsy();
     expect(groupsCall).toBeTruthy();
-    if (!permissionCall || !groupsCall) {
-      throw new Error('Expected hydration calls to be defined');
+    if (!groupsCall) {
+      throw new Error('Expected group hydration call to be defined');
     }
 
-    const permissionQuery = permissionCall.endpoint.match(/\?q=(.+)/);
     const groupsQuery = groupsCall.endpoint.match(/\?q=(.+)/);
-    expect(permissionQuery).toBeTruthy();
     expect(groupsQuery).toBeTruthy();
-    if (!permissionQuery || !groupsQuery) {
+    if (!groupsQuery) {
       throw new Error('Expected query params to be present');
     }
 
-    expect(rison.decode(permissionQuery[1])).toEqual({
-      page_size: 100,
-      page: 0,
-      filters: [
-        {
-          col: 'id',
-          opr: 'in',
-          value: mockRole.permission_ids,
-        },
-      ],
-    });
+    expect(mockFetchPermissionsByIds).toHaveBeenCalledWith(
+      mockRole.permission_ids,
+    );
 
     expect(rison.decode(groupsQuery[1])).toEqual({
       page_size: 100,
