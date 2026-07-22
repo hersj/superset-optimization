@@ -185,3 +185,51 @@ def test_delete_removes_only_requested_row(
         DashboardChartLayoutDAO.find_by_dashboard_and_user(dashboard.id, admin.id)
         == {}
     )
+
+
+def test_template_slots_keep_only_the_explicit_default(
+    dashboard_chart_layout_context: dict[str, object]
+) -> None:
+    """默认切换只改变同 scope 既有 slot；删默认后必须保持无个人默认。"""
+    from superset.daos.dashboard_chart_layout import DashboardChartLayoutDAO
+
+    admin = dashboard_chart_layout_context["admin"]
+    dashboard = dashboard_chart_layout_context["dashboard"]
+    chart = dashboard_chart_layout_context["chart"]
+    layout = {
+        "ordered_metric_ids": ["sales"],
+        "hidden_metric_ids": [],
+        "version": 1,
+    }
+    DashboardChartLayoutDAO.upsert(
+        user_id=admin.id,
+        dashboard_id=dashboard.id,
+        chart_id=chart.id,
+        slot=1,
+        name="Template 1",
+        layout=layout,
+    )
+    DashboardChartLayoutDAO.upsert(
+        user_id=admin.id,
+        dashboard_id=dashboard.id,
+        chart_id=chart.id,
+        slot=2,
+        name="Template 2",
+        layout=layout,
+    )
+
+    DashboardChartLayoutDAO.set_default(
+        user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=2
+    )
+    templates = DashboardChartLayoutDAO.find_templates_by_dashboard_and_user(
+        dashboard.id, admin.id
+    )[chart.id]
+    assert [(row.slot, row.is_default) for row in templates] == [(1, False), (2, True)]
+
+    assert DashboardChartLayoutDAO.delete_slot(
+        user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=2
+    )
+    templates = DashboardChartLayoutDAO.find_templates_by_dashboard_and_user(
+        dashboard.id, admin.id
+    )[chart.id]
+    assert [(row.slot, row.is_default) for row in templates] == [(1, False)]

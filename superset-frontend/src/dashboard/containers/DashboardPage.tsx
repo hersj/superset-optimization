@@ -43,8 +43,8 @@ import { URL_PARAMS } from 'src/constants';
 import { getUrlParam } from 'src/utils/urlUtils';
 import { setDatasetsStatus } from 'src/dashboard/actions/dashboardState';
 import {
-  getDashboardChartLayouts,
-  setPersonalChartLayouts,
+  getDashboardChartTemplates,
+  setPersonalChartTemplates,
 } from 'src/dashboard/actions/personalChartLayout';
 import {
   getFilterValue,
@@ -185,9 +185,7 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
   const isDashboardHydrated = useRef(false);
   const lastSavedDataMaskTextRef = useRef<string | null>(null);
 
-  const currentDataMask = useSelector(
-    (state: RootState) => state.dataMask,
-  );
+  const currentDataMask = useSelector((state: RootState) => state.dataMask);
   const { userId } = useSelector((state: RootState) => state.user || {});
 
   const error = dashboardApiError || chartsApiError;
@@ -226,22 +224,22 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     let isMounted = true;
 
     if (!id || !userId) {
-      dispatch(setPersonalChartLayouts({}));
+      dispatch(setPersonalChartTemplates({}));
       return () => {
         isMounted = false;
       };
     }
 
-    dispatch(setPersonalChartLayouts({}));
-    getDashboardChartLayouts(id)
-      .then(layouts => {
+    dispatch(setPersonalChartTemplates({}));
+    getDashboardChartTemplates(id)
+      .then(templates => {
         if (isMounted) {
-          dispatch(setPersonalChartLayouts(layouts));
+          dispatch(setPersonalChartTemplates(templates));
         }
       })
       .catch(() => {
         if (isMounted) {
-          dispatch(setPersonalChartLayouts({}));
+          dispatch(setPersonalChartTemplates({}));
         }
       });
 

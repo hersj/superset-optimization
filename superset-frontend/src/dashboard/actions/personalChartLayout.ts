@@ -24,6 +24,14 @@ export interface PersonalChartLayout {
   version: number;
 }
 
+/** A persisted personal slot. The selected layout itself remains session-only. */
+export interface PersonalChartTemplate {
+  slot: 1 | 2 | 3;
+  name: string;
+  is_default: boolean;
+  layout: PersonalChartLayout;
+}
+
 export function isNotFoundError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false;
@@ -36,10 +44,14 @@ export function isNotFoundError(error: unknown): boolean {
 }
 
 export type PersonalChartLayoutsMap = Record<string, PersonalChartLayout>;
+export type PersonalChartTemplatesMap = Record<string, PersonalChartTemplate[]>;
 
 export const SET_PERSONAL_CHART_LAYOUTS = 'SET_PERSONAL_CHART_LAYOUTS';
 export const UPSERT_PERSONAL_CHART_LAYOUT = 'UPSERT_PERSONAL_CHART_LAYOUT';
 export const REMOVE_PERSONAL_CHART_LAYOUT = 'REMOVE_PERSONAL_CHART_LAYOUT';
+export const SET_PERSONAL_CHART_TEMPLATES = 'SET_PERSONAL_CHART_TEMPLATES';
+export const UPSERT_PERSONAL_CHART_TEMPLATE = 'UPSERT_PERSONAL_CHART_TEMPLATE';
+export const REMOVE_PERSONAL_CHART_TEMPLATE = 'REMOVE_PERSONAL_CHART_TEMPLATE';
 
 export function setPersonalChartLayouts(layouts: PersonalChartLayoutsMap) {
   return {
@@ -64,6 +76,23 @@ export function removePersonalChartLayout(chartId: number) {
     type: REMOVE_PERSONAL_CHART_LAYOUT,
     chartId,
   };
+}
+
+export function setPersonalChartTemplates(
+  templates: PersonalChartTemplatesMap,
+) {
+  return { type: SET_PERSONAL_CHART_TEMPLATES, templates };
+}
+
+export function upsertPersonalChartTemplate(
+  chartId: number,
+  template: PersonalChartTemplate,
+) {
+  return { type: UPSERT_PERSONAL_CHART_TEMPLATE, chartId, template };
+}
+
+export function removePersonalChartTemplate(chartId: number, slot: number) {
+  return { type: REMOVE_PERSONAL_CHART_TEMPLATE, chartId, slot };
 }
 
 export async function getDashboardChartLayouts(
@@ -93,4 +122,61 @@ export async function deleteDashboardChartLayout(
   await SupersetClient.delete({
     endpoint: `/api/v1/dashboard/${dashboardId}/chart_layouts/${chartId}`,
   });
+}
+
+export async function getDashboardChartTemplates(
+  dashboardId: number,
+): Promise<PersonalChartTemplatesMap> {
+  /*
+   * 功能审计（可重写规格）：仪表盘个人列模板客户端同步
+   * - 功能目的与触发方式：仪表盘加载时一次性读取当前用户各透视图的三 slot 模板；弹窗保存、删除和设默认时通过同一 scope API 同步。
+   * - 输入契约：dashboardId/chartId 为当前仪表盘及其中图表，slot 只能 1..3；layout 为后端已校验的 v1 列表 JSON，name 最长 40。
+   * - 输出契约：读取返回 chartId 到模板数组；写操作返回服务端模板或完成；Redux 仅保存会话选择及模板副本。
+   * - 处理流程：DashboardPage 批量 GET 并从 is_default 生成初始会话布局；用户选择模板只派发本地 layout；保存/删除/设默认调用精确 slot API 后更新 Redux。
+   * - 业务规则：非默认模板不改 is_default；系统默认只清当前会话布局；草稿仅在弹窗状态，关闭不写入；保存模板记录当时完整 ID 列表。
+   * - 状态与副作用：HTTP 调用和 Redux 状态更新；不使用 localStorage、缓存或客户端持久草稿。
+   * - 外部依赖：/api/v1/dashboard/<id>/chart_templates，后端按登录用户及 dashboard/chart 归属隔离。
+   * - 异常与边界：请求失败由调用图表提示错误且保留草稿/现有会话布局；未登录或无权限不会暴露模板。
+   * - 不变量与约束：每个图表最多三个 slot；不得把默认切换隐式绑定到选择；不得调用旧单布局端点作为模板状态来源。
+   * - 验证方式：personalChartLayout.test.ts 覆盖 GET/PUT/default 的精确 scope URL；服务器 API/DAO 测试覆盖用户隔离和默认并发。
+   */
+  const { json } = await SupersetClient.get({
+    endpoint: `/api/v1/dashboard/${dashboardId}/chart_templates`,
+  });
+  return (json?.result || {}) as PersonalChartTemplatesMap;
+}
+
+export async function putDashboardChartTemplate(
+  dashboardId: number,
+  chartId: number,
+  slot: 1 | 2 | 3,
+  name: string,
+  layout: PersonalChartLayout,
+): Promise<PersonalChartTemplate> {
+  const { json } = await SupersetClient.put({
+    endpoint: `/api/v1/dashboard/${dashboardId}/chart_templates/${chartId}/${slot}`,
+    jsonPayload: { name, layout },
+  });
+  return json.result as PersonalChartTemplate;
+}
+
+export async function deleteDashboardChartTemplate(
+  dashboardId: number,
+  chartId: number,
+  slot: 1 | 2 | 3,
+): Promise<void> {
+  await SupersetClient.delete({
+    endpoint: `/api/v1/dashboard/${dashboardId}/chart_templates/${chartId}/${slot}`,
+  });
+}
+
+export async function setDashboardChartTemplateDefault(
+  dashboardId: number,
+  chartId: number,
+  slot: 1 | 2 | 3,
+): Promise<PersonalChartTemplate> {
+  const { json } = await SupersetClient.post({
+    endpoint: `/api/v1/dashboard/${dashboardId}/chart_templates/${chartId}/${slot}/default`,
+  });
+  return json.result as PersonalChartTemplate;
 }

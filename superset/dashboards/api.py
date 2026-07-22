@@ -43,7 +43,12 @@ from superset import db
 from superset.charts.schemas import ChartEntityResponseSchema
 from superset.commands.dashboard.chart_layouts import (
     DeleteDashboardChartLayoutCommand,
+    DeleteDashboardChartTemplateCommand,
     GetDashboardChartLayoutsCommand,
+    GetDashboardChartTemplatesCommand,
+    PutDashboardChartTemplateCommand,
+    RenameDashboardChartTemplateCommand,
+    SetDefaultDashboardChartTemplateCommand,
     UpsertDashboardChartLayoutCommand,
 )
 from superset.commands.dashboard.copy import CopyDashboardCommand
@@ -100,6 +105,8 @@ from superset.dashboards.schemas import (
     CacheScreenshotSchema,
     DashboardCacheScreenshotResponseSchema,
     DashboardChartLayoutSchema,
+    DashboardChartTemplateNameSchema,
+    DashboardChartTemplateSchema,
     DashboardChartCustomizationsConfigUpdateSchema,
     DashboardColorsConfigUpdateSchema,
     DashboardCopySchema,
@@ -255,6 +262,11 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "get_chart_layouts",
         "put_chart_layout",
         "delete_chart_layout",
+        "get_chart_templates",
+        "put_chart_template",
+        "rename_chart_template",
+        "delete_chart_template",
+        "set_chart_template_default",
         "put_colors",
         "export_as_example",
     }
@@ -396,6 +408,8 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         DashboardChartCustomizationsConfigUpdateSchema()
     )
     chart_layout_model_schema = DashboardChartLayoutSchema()
+    chart_template_model_schema = DashboardChartTemplateSchema()
+    chart_template_name_model_schema = DashboardChartTemplateNameSchema()
     update_colors_model_schema = DashboardColorsConfigUpdateSchema()
     chart_entity_response_schema = ChartEntityResponseSchema()
     dashboard_get_response_schema = DashboardGetResponseSchema()
@@ -1097,6 +1111,88 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         except ValueError as ex:
             response = self.response_400(message=str(ex))
         return response
+
+    @expose("/<pk>/chart_templates", methods=("GET",))
+    @protect()
+    @safe
+    @permission_name("read")
+    def get_chart_templates(self, pk: int) -> Response:
+        try:
+            return self.response(200, result=GetDashboardChartTemplatesCommand(pk).run())
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+
+    @expose("/<pk>/chart_templates/<int:chart_id>/<int:slot>", methods=("PUT",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @requires_json
+    def put_chart_template(self, pk: int, chart_id: int, slot: int) -> Response:
+        if slot not in (1, 2, 3):
+            return self.response_400(message="Template slot must be between 1 and 3")
+        try:
+            payload = self.chart_template_model_schema.load(request.json)
+            result = PutDashboardChartTemplateCommand(pk, chart_id, slot, payload).run()
+            return self.response(200, result=result)
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
+
+    @expose("/<pk>/chart_templates/<int:chart_id>/<int:slot>/default", methods=("POST",))
+    @protect()
+    @safe
+    @permission_name("read")
+    def set_chart_template_default(self, pk: int, chart_id: int, slot: int) -> Response:
+        if slot not in (1, 2, 3):
+            return self.response_400(message="Template slot must be between 1 and 3")
+        try:
+            result = SetDefaultDashboardChartTemplateCommand(pk, chart_id, slot).run()
+            return self.response(200, result=result)
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
+
+    @expose("/<pk>/chart_templates/<int:chart_id>/<int:slot>", methods=("PATCH",))
+    @protect()
+    @safe
+    @permission_name("read")
+    @requires_json
+    def rename_chart_template(self, pk: int, chart_id: int, slot: int) -> Response:
+        if slot not in (1, 2, 3):
+            return self.response_400(message="Template slot must be between 1 and 3")
+        try:
+            payload = self.chart_template_name_model_schema.load(request.json)
+            result = RenameDashboardChartTemplateCommand(
+                pk, chart_id, slot, payload["name"]
+            ).run()
+            return self.response(200, result=result)
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
+
+    @expose("/<pk>/chart_templates/<int:chart_id>/<int:slot>", methods=("DELETE",))
+    @protect()
+    @safe
+    @permission_name("read")
+    def delete_chart_template(self, pk: int, chart_id: int, slot: int) -> Response:
+        if slot not in (1, 2, 3):
+            return self.response_400(message="Template slot must be between 1 and 3")
+        try:
+            deleted = DeleteDashboardChartTemplateCommand(pk, chart_id, slot).run()
+            if not deleted:
+                return self.response_404()
+            return self.response(200, message="Deleted successfully")
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+        except ValueError as ex:
+            return self.response_400(message=str(ex))
 
     @expose("/<pk>/colors", methods=("PUT",))
     @protect()

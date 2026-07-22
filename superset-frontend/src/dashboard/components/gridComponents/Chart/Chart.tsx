@@ -67,12 +67,15 @@ import {
   updateChartState,
 } from '../../../actions/dashboardState';
 import {
-  deleteDashboardChartLayout,
-  isNotFoundError,
+  deleteDashboardChartTemplate,
+  removePersonalChartTemplate,
   removePersonalChartLayout,
   type PersonalChartLayout,
-  putDashboardChartLayout,
+  type PersonalChartTemplate,
+  putDashboardChartTemplate,
+  setDashboardChartTemplateDefault,
   upsertPersonalChartLayout,
+  upsertPersonalChartTemplate,
 } from '../../../actions/personalChartLayout';
 import { changeFilter } from '../../../actions/dashboardFilters';
 import { refreshChart } from '../../../../components/Chart/chartAction';
@@ -86,7 +89,6 @@ import { useChartCustomizationFromRedux } from '../../nativeFilters/state';
 import { PLACEHOLDER_DATASOURCE } from '../../../constants';
 import {
   buildMetricDescriptors,
-  isDefaultMetricLayout,
   PIVOT_METRIC_LAYOUT_VERSION,
   reconcileMetricLayout,
 } from '../../../../../plugins/plugin-chart-pivot-table/src/metricLayout';
@@ -433,6 +435,10 @@ const Chart = (props: ChartProps) => {
   const personalChartLayout = useSelector(
     (state: RootState) => state.dashboardState.personalChartLayouts?.[props.id],
   ) as PersonalChartLayout | undefined;
+  const personalChartTemplates = useSelector(
+    (state: RootState) =>
+      state.dashboardState.personalChartTemplates?.[props.id],
+  ) as PersonalChartTemplate[] | undefined;
   const labelsColor: JsonObject = useSelector(
     (state: RootState) =>
       state.dashboardInfo?.metadata?.label_colors || EMPTY_OBJECT,
@@ -653,54 +659,102 @@ const Chart = (props: ChartProps) => {
     boundActionCreators.logEvent,
   ]);
 
-  const savePersonalChartLayout = useCallback(
-    async (layout: PersonalChartLayout | null) => {
+  const normalizeTemplateLayout = useCallback(
+    (layout: PersonalChartLayout) => {
       const metricDescriptors = buildMetricDescriptors(
         ((formData as JsonObject).metrics || []) as QueryFormMetric[],
       );
-      const normalizedLayout = layout
-        ? (() => {
-            const reconciled = reconcileMetricLayout(metricDescriptors, layout);
-            return {
-              ordered_metric_ids: reconciled.orderedMetricIds,
-              hidden_metric_ids: reconciled.hiddenMetricIds,
-              version: PIVOT_METRIC_LAYOUT_VERSION,
-            };
-          })()
-        : null;
+      const reconciled = reconcileMetricLayout(metricDescriptors, layout);
+      return {
+        ordered_metric_ids: reconciled.orderedMetricIds,
+        hidden_metric_ids: reconciled.hiddenMetricIds,
+        version: PIVOT_METRIC_LAYOUT_VERSION,
+      };
+    },
+    [formData],
+  );
 
+  const applyPersonalChartLayout = useCallback(
+    (layout: PersonalChartLayout | null) => {
+      if (layout) {
+        dispatch(
+          upsertPersonalChartLayout(props.id, normalizeTemplateLayout(layout)),
+        );
+      } else {
+        dispatch(removePersonalChartLayout(props.id));
+      }
+    },
+    [dispatch, normalizeTemplateLayout, props.id],
+  );
+
+  const savePersonalChartTemplate = useCallback(
+    async (slot: 1 | 2 | 3, name: string, layout: PersonalChartLayout) => {
+      const normalizedLayout = normalizeTemplateLayout(layout);
       setIsSavingPersonalChartLayout(true);
       try {
-        if (
-          !normalizedLayout ||
-          isDefaultMetricLayout(metricDescriptors, normalizedLayout)
-        ) {
-          try {
-            await deleteDashboardChartLayout(props.dashboardId, props.id);
-          } catch (error: any) {
-            if (!isNotFoundError(error)) {
-              throw error;
-            }
-          }
-          dispatch(removePersonalChartLayout(props.id));
-        } else {
-          await putDashboardChartLayout(
-            props.dashboardId,
-            props.id,
-            normalizedLayout,
-          );
-          dispatch(upsertPersonalChartLayout(props.id, normalizedLayout));
-        }
-        boundActionCreators.addSuccessToast(t('Personal column layout saved'));
-      } catch {
-        boundActionCreators.addDangerToast(
-          t('Failed to save personal column layout'),
+        const template = await putDashboardChartTemplate(
+          props.dashboardId,
+          props.id,
+          slot,
+          name,
+          normalizedLayout,
         );
+        dispatch(upsertPersonalChartTemplate(props.id, template));
+        dispatch(upsertPersonalChartLayout(props.id, template.layout));
+        boundActionCreators.addSuccessToast(t('个人列模板已保存'));
+      } catch {
+        boundActionCreators.addDangerToast(t('个人列模板保存失败'));
+        throw new Error('个人列模板保存失败');
       } finally {
         setIsSavingPersonalChartLayout(false);
       }
     },
-    [boundActionCreators, dispatch, formData, props.dashboardId, props.id],
+    [
+      boundActionCreators,
+      dispatch,
+      normalizeTemplateLayout,
+      props.dashboardId,
+      props.id,
+    ],
+  );
+
+  const setPersonalChartTemplateDefault = useCallback(
+    async (slot: 1 | 2 | 3) => {
+      setIsSavingPersonalChartLayout(true);
+      try {
+        const template = await setDashboardChartTemplateDefault(
+          props.dashboardId,
+          props.id,
+          slot,
+        );
+        dispatch(upsertPersonalChartTemplate(props.id, template));
+        dispatch(upsertPersonalChartLayout(props.id, template.layout));
+        boundActionCreators.addSuccessToast(t('个人默认模板已保存'));
+      } catch {
+        boundActionCreators.addDangerToast(t('设为个人默认模板失败'));
+        throw new Error('设为个人默认模板失败');
+      } finally {
+        setIsSavingPersonalChartLayout(false);
+      }
+    },
+    [boundActionCreators, dispatch, props.dashboardId, props.id],
+  );
+
+  const deletePersonalChartTemplate = useCallback(
+    async (slot: 1 | 2 | 3) => {
+      setIsSavingPersonalChartLayout(true);
+      try {
+        await deleteDashboardChartTemplate(props.dashboardId, props.id, slot);
+        dispatch(removePersonalChartTemplate(props.id, slot));
+        boundActionCreators.addSuccessToast(t('个人列模板已删除'));
+      } catch {
+        boundActionCreators.addDangerToast(t('个人列模板删除失败'));
+        throw new Error('个人列模板删除失败');
+      } finally {
+        setIsSavingPersonalChartLayout(false);
+      }
+    },
+    [boundActionCreators, dispatch, props.dashboardId, props.id],
   );
 
   if (!chart || (slice as unknown) === EMPTY_OBJECT) {
@@ -774,7 +828,11 @@ const Chart = (props: ChartProps) => {
         height={getHeaderHeight()}
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
         personalChartLayout={personalChartLayout}
-        onSavePersonalChartLayout={savePersonalChartLayout}
+        personalChartTemplates={personalChartTemplates}
+        onApplyPersonalChartLayout={applyPersonalChartLayout}
+        onSavePersonalChartTemplate={savePersonalChartTemplate}
+        onSetPersonalChartTemplateDefault={setPersonalChartTemplateDefault}
+        onDeletePersonalChartTemplate={deletePersonalChartTemplate}
         isSavingPersonalChartLayout={isSavingPersonalChartLayout}
       />
 

@@ -17,7 +17,10 @@
  * under the License.
  */
 import { QueryFormData } from '@superset-ui/core';
-import type { PersonalChartLayout } from 'src/dashboard/actions/personalChartLayout';
+import type {
+  PersonalChartLayout,
+  PersonalChartTemplate,
+} from 'src/dashboard/actions/personalChartLayout';
 
 export interface SliceHeaderControlsProps {
   slice: {
@@ -62,8 +65,14 @@ export interface SliceHeaderControlsProps {
 
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
-  onSavePersonalChartLayout?: (
-    layout: PersonalChartLayout | null,
+  personalChartTemplates?: PersonalChartTemplate[];
+  onApplyPersonalChartLayout?: (layout: PersonalChartLayout | null) => void;
+  onSavePersonalChartTemplate?: (
+    slot: 1 | 2 | 3,
+    name: string,
+    layout: PersonalChartLayout,
   ) => Promise<void> | void;
+  onSetPersonalChartTemplateDefault?: (slot: 1 | 2 | 3) => Promise<void> | void;
+  onDeletePersonalChartTemplate?: (slot: 1 | 2 | 3) => Promise<void> | void;
   isSavingPersonalChartLayout?: boolean;
 }

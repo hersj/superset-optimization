@@ -86,6 +86,38 @@ def test_get_chart_layouts_propagates_dashboard_access_errors(mocker) -> None:
         GetDashboardChartLayoutsCommand(44).run()
 
 
+def test_set_default_template_checks_chart_scope_and_delegates_to_locked_dao(mocker) -> None:
+    from superset.commands.dashboard.chart_layouts import (
+        SetDefaultDashboardChartTemplateCommand,
+    )
+
+    mocker.patch(
+        "superset.commands.dashboard.chart_layouts.DashboardDAO.get_by_id_or_slug",
+        return_value=SimpleNamespace(id=44, slices=[SimpleNamespace(id=642)]),
+    )
+    mocker.patch(
+        "superset.commands.dashboard.chart_layouts.get_user_id", return_value=7
+    )
+    target = SimpleNamespace(
+        slot=2,
+        name="Finance",
+        is_default=True,
+        layout_json='{"version": 1, "ordered_metric_ids": ["sales"], "hidden_metric_ids": []}',
+    )
+    set_default = mocker.patch(
+        "superset.commands.dashboard.chart_layouts.DashboardChartLayoutDAO.set_default",
+        return_value=target,
+    )
+
+    result = SetDefaultDashboardChartTemplateCommand(44, 642, 2).run()
+
+    set_default.assert_called_once_with(
+        user_id=7, dashboard_id=44, chart_id=642, slot=2
+    )
+    assert result["slot"] == 2
+    assert result["is_default"] is True
+
+
 @pytest.mark.parametrize(
     "method_name",
     ["get_chart_layouts", "put_chart_layout", "delete_chart_layout"],

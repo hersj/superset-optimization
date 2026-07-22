@@ -142,9 +142,15 @@ export interface SliceHeaderControlsProps {
 
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
-  onSavePersonalChartLayout?: (
-    layout: PersonalChartLayout | null,
+  personalChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
+  onApplyPersonalChartLayout?: (layout: PersonalChartLayout | null) => void;
+  onSavePersonalChartTemplate?: (
+    slot: 1 | 2 | 3,
+    name: string,
+    layout: PersonalChartLayout,
   ) => Promise<void> | void;
+  onSetPersonalChartTemplateDefault?: (slot: 1 | 2 | 3) => Promise<void> | void;
+  onDeletePersonalChartTemplate?: (slot: 1 | 2 | 3) => Promise<void> | void;
   isSavingPersonalChartLayout?: boolean;
 }
 type SliceHeaderControlsPropsWithRouter = SliceHeaderControlsProps &
@@ -631,9 +637,15 @@ const SliceHeaderControls = (
           show={showPivotMetricLayoutModal}
           metrics={props.formData.metrics || []}
           initialLayout={props.personalChartLayout}
+          templates={props.personalChartTemplates || []}
           isSaving={props.isSavingPersonalChartLayout}
           onHide={() => setShowPivotMetricLayoutModal(false)}
-          onSave={layout => props.onSavePersonalChartLayout?.(layout)}
+          onApply={layout => props.onApplyPersonalChartLayout?.(layout)}
+          onSaveTemplate={(slot, name, layout) =>
+            props.onSavePersonalChartTemplate?.(slot, name, layout)
+          }
+          onSetDefault={slot => props.onSetPersonalChartTemplateDefault?.(slot)}
+          onDeleteTemplate={slot => props.onDeletePersonalChartTemplate?.(slot)}
         />
       )}
 

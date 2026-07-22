@@ -40,7 +40,10 @@ import { UserWithPermissionsAndRoles } from 'src/types/bootstrapTypes';
 import Owner from 'src/types/Owner';
 import Role from 'src/types/Role';
 import { TagType } from 'src/components/Tag/TagType';
-import type { PersonalChartLayout } from './actions/personalChartLayout';
+import type {
+  PersonalChartLayout,
+  PersonalChartTemplate,
+} from './actions/personalChartLayout';
 import { ChartState } from '../explore/types';
 import { AutoRefreshStatus } from './types/autoRefresh';
 
@@ -168,6 +171,7 @@ export type DashboardState = {
   lastRefreshTime?: number;
   tabActivationTimes?: Record<string, number>;
   personalChartLayouts?: Record<string, PersonalChartLayout>;
+  personalChartTemplates?: Record<string, PersonalChartTemplate[]>;
 };
 export type DashboardInfo = {
   id: number;

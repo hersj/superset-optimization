@@ -17,7 +17,7 @@
 import re
 from typing import Any, Mapping, Union
 
-from marshmallow import fields, post_dump, post_load, pre_load, Schema
+from marshmallow import fields, post_dump, post_load, pre_load, Schema, validates_schema
 from marshmallow.validate import Length, ValidationError
 
 from superset import security_manager
@@ -469,9 +469,49 @@ class DashboardColorsConfigUpdateSchema(BaseDashboardSchema):
 
 
 class DashboardChartLayoutSchema(Schema):
-    ordered_metric_ids = fields.List(fields.String(), allow_none=False, required=True)
-    hidden_metric_ids = fields.List(fields.String(), allow_none=False, required=True)
+    ordered_metric_ids = fields.List(
+        fields.String(validate=Length(min=1, max=255)), allow_none=False, required=True
+    )
+    hidden_metric_ids = fields.List(
+        fields.String(validate=Length(min=1, max=255)), allow_none=False, required=True
+    )
     version = fields.Integer(allow_none=False, required=True)
+
+
+class DashboardChartTemplateSchema(Schema):
+    """三 slot 个人列模板写入体；slot 由 URL 指定，避免 payload 与路径歧义。"""
+
+    name = fields.String(required=True, allow_none=False, validate=Length(min=1, max=40))
+    layout = fields.Nested(DashboardChartLayoutSchema, required=True, allow_none=False)
+
+    @validates_schema
+    def validate_template_layout(
+        self, data: dict[str, Any], **kwargs: Any
+    ) -> None:
+        """拒绝无法稳定恢复的 layout，避免无界 JSON 占用 metadata 表。"""
+        layout = data["layout"]
+        ordered = layout["ordered_metric_ids"]
+        hidden = layout["hidden_metric_ids"]
+        if layout["version"] != 1:
+            raise ValidationError({"layout": {"version": ["Only version 1 is supported"]}})
+        if len(ordered) > 2000 or len(hidden) > 2000:
+            raise ValidationError({"layout": ["A template can contain at most 2000 metrics"]})
+        if len(set(ordered)) != len(ordered):
+            raise ValidationError({"layout": {"ordered_metric_ids": ["Metric IDs must be unique"]}})
+        if len(set(hidden)) != len(hidden):
+            raise ValidationError({"layout": {"hidden_metric_ids": ["Metric IDs must be unique"]}})
+        if not set(hidden).issubset(ordered):
+            raise ValidationError(
+                {"layout": {"hidden_metric_ids": ["Hidden IDs must be in ordered IDs"]}}
+            )
+        if len(json.dumps(layout).encode("utf-8")) > 16 * 1024:
+            raise ValidationError({"layout": ["Template layout must not exceed 16 KiB"]})
+
+
+class DashboardChartTemplateNameSchema(Schema):
+    """仅重命名既有 slot，不修改其列布局或默认状态。"""
+
+    name = fields.String(required=True, allow_none=False, validate=Length(min=1, max=40))
 
 
 class DashboardScreenshotPostSchema(Schema):
