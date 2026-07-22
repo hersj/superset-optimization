@@ -261,6 +261,20 @@ def test_postgresql_concurrent_default_switch_is_serialized_by_scope_row_lock(
         )
     db.session.commit()
 
+    # 先使较高 slot 成为默认，再反向切回较低 slot；覆盖部分唯一索引的危险更新顺序。
+    DashboardChartLayoutDAO.set_default(
+        user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=2
+    )
+    db.session.commit()
+    DashboardChartLayoutDAO.set_default(
+        user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=1
+    )
+    db.session.commit()
+    DashboardChartLayoutDAO.set_default(
+        user_id=admin.id, dashboard_id=dashboard.id, chart_id=chart.id, slot=2
+    )
+    db.session.commit()
+
     first_locked = Event()
     release_first = Event()
     second_finished = Event()
@@ -279,13 +293,13 @@ def test_postgresql_concurrent_default_switch_is_serialized_by_scope_row_lock(
                     first_locked.set()
                     assert release_first.wait(timeout=5)
                 db.session.commit()
-                if slot == 2:
+                if slot == 1:
                     second_finished.set()
         except Exception as ex:  # pragma: no cover - surfaced by the assertion below
             errors.append(ex)
 
-    first = Thread(target=switch, args=(1, True))
-    second = Thread(target=switch, args=(2,))
+    first = Thread(target=switch, args=(2, True))
+    second = Thread(target=switch, args=(1,))
     first.start()
     assert first_locked.wait(timeout=5)
     second.start()
@@ -300,4 +314,4 @@ def test_postgresql_concurrent_default_switch_is_serialized_by_scope_row_lock(
     templates = DashboardChartLayoutDAO.find_templates_by_dashboard_and_user(
         dashboard.id, admin.id
     )[chart.id]
-    assert [(row.slot, row.is_default) for row in templates] == [(1, False), (2, True)]
+    assert [(row.slot, row.is_default) for row in templates] == [(1, True), (2, False)]

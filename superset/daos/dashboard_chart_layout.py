@@ -158,13 +158,17 @@ class DashboardChartLayoutDAO(BaseDAO[DashboardChartLayout]):
                 DashboardChartLayout.chart_id == chart_id,
             )
             .order_by(DashboardChartLayout.slot)
-            .with_for_update()
+            # 只锁模板主表；模型的 joined scope 关系会形成外连接，PostgreSQL 不允许对其 nullable 侧裸 FOR UPDATE。
+            .with_for_update(of=DashboardChartLayout)
             .all()
         )
         target = next((row for row in rows if row.slot == slot), None)
         if target is None:
             raise ValueError("Template slot does not exist")
         for row in rows:
-            row.is_default = row.slot == slot
+            row.is_default = False
+        # PostgreSQL 的部分唯一索引即时校验；必须先消除旧默认再设目标，不能依赖 ORM UPDATE 顺序。
+        db.session.flush()
+        target.is_default = True
         db.session.flush()
         return target
