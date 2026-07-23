@@ -56,33 +56,44 @@ function formatBusinessDay(date: Date) {
   return `${year}-${pad2(month + 1)}-${pad2(dayOfMonth)}`;
 }
 
-function getSundayWeekNum(date: Date) {
+/**
+ * 功能审计（可重写规格）：Sellerfox 周日开始的业务周编号
+ * - 功能目的与触发方式：为日期筛选器、透视表和 ECharts 在 time_grain_sqla=P1W_SUN 时提供唯一且一致的周标签。
+ * - 输入契约：输入任意有效 Date；按 Asia/Taipei（UTC+8）解释其业务日期，周区间固定为周日 00:00 至次周六 23:59:59。
+ * - 输出契约：返回该周归属的业务年份和从 1 开始的周序号；格式化调用方据此显示“YYYY年第N周”。
+ * - 处理流程：先取得业务日期和该日期所在周的周日，再以该周周六所在年份作为归属年，最后以归属年 1 月 1 日所在周的周日为第 1 周起点计算差值。
+ * - 业务规则：包含某年 1 月 1 日的周日到周六必须是该年的第 1 周；例如 2025-12-28 至 2026-01-03 为 2026 年第 1 周，2026-06-21 至 2026-06-27 为第 26 周。
+ * - 状态与副作用：纯函数，不读写数据库、缓存或浏览器状态。
+ * - 外部依赖：仅依赖固定 UTC+8 业务时区；不得使用 ISO 周或“当年第一个周日”为第 1 周的规则。
+ * - 异常与边界：Date 的有效性由既有 TimeFormatter 调用链保证；跨年周以周六所属年份归属，避免第 1 周显示为上一年。
+ * - 不变量与约束：必须与后端 P1W_SUN 的周日起始分组保持一致；所有前端周标签调用此函数，禁止再次复制编号算法。
+ * - 验证方式：TimeFormatterRegistrySingleton、Pivot Table formatter 和 ECharts 日期标签的边界日期单测覆盖。
+ */
+export function getSellerfoxSundayWeek(date: Date) {
   const { year, month, dayOfMonth } = getBusinessDateParts(date);
   const businessDate = new Date(Date.UTC(year, month, dayOfMonth));
-  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const weekStart = new Date(businessDate.getTime());
+  weekStart.setUTCDate(businessDate.getUTCDate() - businessDate.getUTCDay());
+  const weekEnd = new Date(weekStart.getTime());
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+  const weekYear = weekEnd.getUTCFullYear();
+  const jan1 = new Date(Date.UTC(weekYear, 0, 1));
   const jan1Day = jan1.getUTCDay();
-  const firstSunday = new Date(jan1.getTime());
-  firstSunday.setUTCDate(jan1.getUTCDate() + (jan1Day === 0 ? 0 : 7 - jan1Day));
+  const firstWeekStart = new Date(jan1.getTime());
+  firstWeekStart.setUTCDate(jan1.getUTCDate() - jan1Day);
 
-  if (businessDate < firstSunday) {
-    const prevJan1 = new Date(Date.UTC(year - 1, 0, 1));
-    const prevJan1Day = prevJan1.getUTCDay();
-    const prevFirstSunday = new Date(prevJan1.getTime());
-    prevFirstSunday.setUTCDate(
-      prevJan1.getUTCDate() + (prevJan1Day === 0 ? 0 : 7 - prevJan1Day),
-    );
-    return (
+  return {
+    year: weekYear,
+    week:
       Math.floor(
-        (businessDate.getTime() - prevFirstSunday.getTime()) / (7 * 86400000),
-      ) + 1
-    );
-  }
+        (weekStart.getTime() - firstWeekStart.getTime()) / (7 * 86400000),
+      ) + 1,
+  };
+}
 
-  return (
-    Math.floor(
-      (businessDate.getTime() - firstSunday.getTime()) / (7 * 86400000),
-    ) + 1
-  );
+export function getSellerfoxSundayWeekLabel(date: Date) {
+  const { year, week } = getSellerfoxSundayWeek(date);
+  return `${year}年第${week}周`;
 }
 
 function getCalendarQuarterLabel(date: Date) {
@@ -94,10 +105,8 @@ function getCalendarQuarterLabel(date: Date) {
 
 function getFiscalQuarterLabel(date: Date) {
   const { year, month } = getBusinessDateParts(date);
-  const fiscalYear =
-    month < 3 ? year - 1 : year;
-  const fiscalQuarter =
-    month < 3 ? 4 : Math.floor((month - 3) / 3) + 1;
+  const fiscalYear = month < 3 ? year - 1 : year;
+  const fiscalQuarter = month < 3 ? 4 : Math.floor((month - 3) / 3) + 1;
 
   return `${fiscalYear}年Q${fiscalQuarter}`;
 }
@@ -126,8 +135,7 @@ function getBusinessTimeGrainFormatter(granularity: TimeGranularity) {
       formatFunc = date => `${getBusinessDateParts(date).year}年`;
       break;
     case TimeGranularity.WEEK_STARTING_SUNDAY_SELLERFOX:
-      formatFunc = date =>
-        `${getBusinessDateParts(date).year}年第${getSundayWeekNum(date)}周`;
+      formatFunc = getSellerfoxSundayWeekLabel;
       break;
     default:
       return undefined;

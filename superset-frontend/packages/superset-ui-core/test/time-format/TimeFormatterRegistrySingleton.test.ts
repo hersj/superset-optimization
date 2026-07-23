@@ -187,7 +187,21 @@ describe('TimeFormatterRegistrySingleton', () => {
             new Date(Date.UTC(2026, 1, 8, 8)),
             'P1W_SUN' as TimeGranularity,
           ),
-        ).toEqual('2026年第6周');
+        ).toEqual('2026年第7周');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2025-12-28T00:00:00+08:00'),
+            'P1W_SUN' as TimeGranularity,
+          ),
+        ).toEqual('2026年第1周');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-06-21T00:00:00+08:00'),
+            'P1W_SUN' as TimeGranularity,
+          ),
+        ).toEqual('2026年第26周');
         expect(
           formatTime(
             undefined,

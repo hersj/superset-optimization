@@ -179,3 +179,14 @@ test('getXAxisFormatter without time grain should use standard smart date behavi
 
   expect(standardResult).toBe(timeGrainResult);
 });
+
+test('getXAxisFormatter uses the Sellerfox Sunday-to-Saturday business week', () => {
+  const formatter = getXAxisFormatter(SMART_DATE_ID, 'P1W_SUN');
+
+  expect(
+    (formatter as TimeFormatter).format(new Date('2025-12-28T00:00:00+08:00')),
+  ).toBe('2026年第1周');
+  expect(
+    (formatter as TimeFormatter).format(new Date('2026-06-21T00:00:00+08:00')),
+  ).toBe('2026年第26周');
+});

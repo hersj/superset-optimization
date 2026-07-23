@@ -20,6 +20,7 @@
 import {
   CurrencyFormatter,
   ensureIsArray,
+  getSellerfoxSundayWeekLabel,
   getNumberFormatter,
   getTimeFormatter,
   isSavedMetric,
@@ -45,16 +46,12 @@ function isWeekGrain(timeGrain: string): boolean {
 }
 
 function isQuarterGrain(timeGrain: string): boolean {
-  return (
-    timeGrain === TimeGranularity.QUARTER ||
-    timeGrain === 'P3M_FISCAL'
-  );
+  return timeGrain === TimeGranularity.QUARTER || timeGrain === 'P3M_FISCAL';
 }
 
 function isDayGrain(timeGrain: string): boolean {
   return (
-    timeGrain === TimeGranularity.DAY ||
-    timeGrain === TimeGranularity.DATE
+    timeGrain === TimeGranularity.DAY || timeGrain === TimeGranularity.DATE
   );
 }
 
@@ -77,7 +74,9 @@ function getSundayWeekNum(date: Date): number {
   const firstSunday = new Date(jan1.getTime());
   firstSunday.setDate(jan1.getDate() + (jan1Day === 0 ? 0 : 7 - jan1Day));
   if (date < firstSunday) return 0;
-  return Math.floor((date.getTime() - firstSunday.getTime()) / (7 * 86400000)) + 1;
+  return (
+    Math.floor((date.getTime() - firstSunday.getTime()) / (7 * 86400000)) + 1
+  );
 }
 
 function getFiscalQuarter(month: number): string {
@@ -103,8 +102,8 @@ function formatByGrain(date: Date, timeGrain: string): string {
     return `${y}年${m}月`;
   }
   if (isWeekGrain(timeGrain)) {
-    const wn = getSundayWeekNum(date);
-    return `${y}年第${wn}周`;
+    if (timeGrain === 'P1W_SUN') return getSellerfoxSundayWeekLabel(date);
+    return `${y}年第${getSundayWeekNum(date)}周`;
   }
   if (isDayGrain(timeGrain)) {
     return `${y}-${m}-${d}`;

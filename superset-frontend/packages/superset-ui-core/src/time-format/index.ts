@@ -28,6 +28,8 @@ export {
   getTimeFormatter,
   getTimeFormatterForGranularity,
   getTimeRangeFormatter,
+  getSellerfoxSundayWeek,
+  getSellerfoxSundayWeekLabel,
 } from './TimeFormatterRegistrySingleton';
 
 export { default as createD3TimeFormatter } from './factories/createD3TimeFormatter';
