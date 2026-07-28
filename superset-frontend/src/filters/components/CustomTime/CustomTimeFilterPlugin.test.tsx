@@ -93,6 +93,32 @@ describe('CustomTimeFilterPlugin', () => {
     });
   });
 
+  it('writes the selected time column instead of a global time range', () => {
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        formData={{ ...baseProps.formData, groupby: ['year_month'] }}
+        setDataMask={setDataMask}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          filters: [
+            { col: 'year_month', op: 'TEMPORAL_RANGE', val: expect.any(String) },
+          ],
+          time_grain_sqla: 'P1D',
+        }),
+      }),
+    );
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData.time_range).toBeUndefined();
+  });
+
   it('applies the default preset against the T-2 profit data calendar and stores comparison ranges', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
