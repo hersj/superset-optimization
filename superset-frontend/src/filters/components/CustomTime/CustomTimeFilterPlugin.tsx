@@ -209,28 +209,6 @@ function normalizePair<T extends string | number>(
   return compare(a, b) <= 0 ? [a, b] : [b, a];
 }
 
-function getConfiguredTimeColumn(formData: any): string | undefined {
-  const groupby = formData?.groupby;
-  if (Array.isArray(groupby)) {
-    return typeof groupby[0] === 'string' ? groupby[0] : undefined;
-  }
-  return typeof groupby === 'string' ? groupby : undefined;
-}
-
-/**
- * 功能审计（可重写规格）：自定义时间筛选器运行时绑定
- * - 功能目的与触发方式：用户在 dashboard 原生筛选器中选择时间列并点击预设、粒度或日历范围。
- * - 输入契约：formData.groupby 为已配置的单个时间列；timeRange 为半开区间 '开始 : 结束'；grainKey 为 day/week/month/quarter/year。
- * - 输出契约：绑定时间列时 setDataMask.extraFormData.filters 写入 {col, op: TEMPORAL_RANGE, val}，并写入既有 time_grain_sqla；未绑定列时继续输出旧 time_range。
- * - 处理流程：读取目标列→计算时间范围与粒度→写入 DataMask→保留筛选器显示状态和比较区间。
- * - 业务规则：严格使用用户选择的列，不从图表 x_axis 或其他列推断；粒度值沿用既有 P1D/P1W_SUN/P1M/P3M_FISCAL/P1Y。
- * - 状态与副作用：只更新当前 dashboard 会话 DataMask，不直接写数据库；既有 ownState 用于恢复控件状态。
- * - 外部依赖：依赖原生筛选器传入的 formData 和 Superset QueryContext 对 temporal filter 的处理。
- * - 异常与边界：旧配置没有 groupby 时保留全局 time_range，避免历史 dashboard 立即失效；绑定配置缺失列名时不伪造过滤列。
- * - 不变量与约束：一次只绑定一个时间列；所有预设、日历点击和粒度切换都走同一 applyFilter 路径。
- * - 验证方式：组件测试分别断言绑定列输出 TEMPORAL_RANGE 与未绑定配置的兼容输出。
- */
-
 export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -243,7 +221,6 @@ export default function CustomTimeFilterPlugin(props: any) {
     enableCustomRange = true,
     enableTimeGrain = true,
   } = formData || {};
-  const timeColumn = getConfiguredTimeColumn(formData);
 
   const currentYear = Number(getDataEndDate().substring(0, 4));
   const savedRange =
@@ -399,13 +376,7 @@ export default function CustomTimeFilterPlugin(props: any) {
 
       setDataMask({
         extraFormData: {
-          ...(timeColumn
-            ? {
-                filters: [
-                  { col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange },
-                ],
-              }
-            : { time_range: timeRange }),
+          time_range: timeRange,
           time_grain_sqla: grainValue,
         },
         filterState: {
@@ -421,7 +392,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         }),
       });
     },
-    [buildOwnState, setDataMask, timeColumn],
+    [buildOwnState, setDataMask],
   );
 
   useEffect(() => {
@@ -1000,10 +971,7 @@ export default function CustomTimeFilterPlugin(props: any) {
           {enableCustomRange && renderExpandedSelector()}
         </div>
       </div>
-      <div style={styles.status}>
-        {currentLabel} | {currentGrain}
-        {timeColumn ? ' | 时间列：' + timeColumn : ' | 未绑定时间列'}
-      </div>
+      <div style={styles.status}>{currentLabel} | {currentGrain}</div>
     </div>
   );
 }
