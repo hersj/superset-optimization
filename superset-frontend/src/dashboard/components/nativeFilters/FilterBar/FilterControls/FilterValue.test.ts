@@ -86,6 +86,17 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
+  it('preloads a range filter to obtain its minimum and maximum', () => {
+    expect(
+      shouldLoadFilterOptions({
+        defaultToFirstItem: false,
+        hasLoadedOptions: false,
+        isFilterActive: false,
+        isRangeFilter: true,
+      }),
+    ).toBe(true);
+  });
+
   it('starts the first options request when a filter is opened', () => {
     expect(
       shouldLoadFilterOptions({

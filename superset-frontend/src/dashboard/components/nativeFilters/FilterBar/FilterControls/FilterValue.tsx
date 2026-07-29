@@ -114,13 +114,19 @@ export const shouldLoadFilterOptions = ({
   hasLoadedOptions,
   isFilterActive,
   isBatchableFilter = false,
+  isRangeFilter = false,
 }: {
   defaultToFirstItem: boolean;
   hasLoadedOptions: boolean;
   isFilterActive: boolean;
   isBatchableFilter?: boolean;
+  isRangeFilter?: boolean;
 }) =>
-  defaultToFirstItem || hasLoadedOptions || isFilterActive || isBatchableFilter;
+  defaultToFirstItem ||
+  hasLoadedOptions ||
+  isFilterActive ||
+  isBatchableFilter ||
+  isRangeFilter;
 
 export const shouldApplyFilterOptionsRequestResult = ({
   requestId,
@@ -309,6 +315,7 @@ const FilterValue: FC<FilterValueProps> = ({
       hasLoadedOptions,
       isFilterActive,
       isBatchableFilter,
+      isRangeFilter: filterType === 'filter_range',
     });
     if (!shouldLoadOptions) {
       if (formDataChanged) {
