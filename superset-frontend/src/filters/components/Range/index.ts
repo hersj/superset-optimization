@@ -31,6 +31,7 @@ export default class RangeFilterPlugin extends ChartPlugin {
       behaviors: [Behavior.InteractiveChart, Behavior.NativeFilter],
       tags: [t('Experimental')],
       thumbnail,
+      enableNoResults: false,
     });
 
     super({
