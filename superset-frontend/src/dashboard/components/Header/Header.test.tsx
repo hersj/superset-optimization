@@ -134,6 +134,16 @@ function setup(overrideState: JsonObject = {}) {
   );
 }
 
+test('renders chart display controls in the right header action panel', () => {
+  setup();
+
+  expect(
+    screen.getByTestId('dashboard-chart-controls').closest(
+      '.right-button-panel',
+    ),
+  ).toBeInTheDocument();
+});
+
 async function openActionsDropdown() {
   const btn = screen.getByRole('img', { name: 'ellipsis' });
   userEvent.click(btn);
