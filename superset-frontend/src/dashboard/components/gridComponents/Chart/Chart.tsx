@@ -79,7 +79,10 @@ import {
   upsertPersonalChartTemplate,
 } from '../../../actions/personalChartLayout';
 import { changeFilter } from '../../../actions/dashboardFilters';
-import { refreshChart } from '../../../../components/Chart/chartAction';
+import {
+  refreshChart,
+  triggerQuery,
+} from '../../../../components/Chart/chartAction';
 import { logEvent } from '../../../../logger/actions';
 import {
   getActiveFilters,
@@ -466,6 +469,17 @@ const Chart = (props: ChartProps) => {
       state.dashboardState.dashboardChartControls ||
       DEFAULT_DASHBOARD_CHART_CONTROLS,
   );
+  const previousDashboardChartControls = useRef(dashboardChartControls);
+
+  // 看板开关只会改变派生 formData；这里补发 triggerQuery，才能让已挂载图表重新请求并应用开关。
+  useEffect(() => {
+    if (previousDashboardChartControls.current === dashboardChartControls) {
+      return;
+    }
+    previousDashboardChartControls.current = dashboardChartControls;
+    dispatch(triggerQuery(true, props.id));
+  }, [dashboardChartControls, dispatch, props.id]);
+
   // 看板级开关只在图表 formData 入口覆盖显示字段，不修改图表实体或看板保存数据。
   const chartExtraControls = useMemo(
     () => ({
