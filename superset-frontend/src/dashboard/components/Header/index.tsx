@@ -648,7 +648,6 @@ const Header = (): JSX.Element => {
         />
       ),
       !editMode && !isEmbedded && metadataBar,
-      !editMode && <DashboardChartControls key="dashboard-chart-controls" />,
     ],
     [
       boundActionCreators.savePublished,
@@ -667,6 +666,8 @@ const Header = (): JSX.Element => {
   const rightPanelAdditionalItems = useMemo(
     () => (
       <div className="button-container">
+        {/* 看板查看模式下把图表显示开关放在右侧操作区，保证标题较长时仍可见。 */}
+        {!editMode && <DashboardChartControls key="dashboard-chart-controls" />}
         {userCanSaveAs && (
           <div className="button-container" data-test="dashboard-edit-actions">
             {editMode && (
