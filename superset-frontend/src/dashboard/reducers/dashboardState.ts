@@ -55,6 +55,7 @@ import {
   REMOVE_CHART_STATE,
   RESTORE_CHART_STATES,
   CLEAR_ALL_CHART_STATES,
+  SET_DASHBOARD_CHART_CONTROLS,
 } from '../actions/dashboardState';
 import { HYDRATE_DASHBOARD } from '../actions/hydrate';
 import {
@@ -78,6 +79,8 @@ import {
   type PersonalChartTemplatesMap,
 } from '../actions/personalChartLayout';
 import { AutoRefreshStatus, ERROR_THRESHOLD_COUNT } from '../types/autoRefresh';
+import type { DashboardChartControls } from '../types';
+import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../util/charts/getDashboardChartControls';
 
 interface ChartStateEntry {
   chartId: number;
@@ -116,6 +119,7 @@ interface DashboardStateShape {
   overwriteConfirmMetadata?: JsonObject;
   nativeFiltersBarOpen?: boolean;
   chartStates?: Record<string, ChartStateEntry>;
+  dashboardChartControls?: DashboardChartControls;
   personalChartLayouts?: Record<string, JsonObject>;
   personalChartTemplates?: Record<
     string,
@@ -164,6 +168,7 @@ interface DashboardStateAction {
   chartState?: JsonObject;
   lastModified?: number;
   chartStates?: Record<string, ChartStateEntry>;
+  dashboardChartControls?: DashboardChartControls;
   layouts?: Record<string, JsonObject>;
   layout?: JsonObject;
   templates?: PersonalChartTemplatesMap;
@@ -196,6 +201,10 @@ export default function dashboardStateReducer(
       const hydratedState: DashboardStateShape = {
         ...state,
         ...action.data?.dashboardState,
+        // 每次载入看板都从 hydrate 数据恢复当前用户偏好；没有偏好时使用默认开启。
+        dashboardChartControls:
+          action.data?.dashboardState.dashboardChartControls ||
+          DEFAULT_DASHBOARD_CHART_CONTROLS,
       };
       // Initialize tab activation times for initially active tabs
       if (hydratedState.activeTabs && hydratedState.activeTabs.length > 0) {
@@ -443,6 +452,12 @@ export default function dashboardStateReducer(
       return {
         ...state,
         nativeFiltersBarOpen: action.isOpen,
+      };
+    },
+    [SET_DASHBOARD_CHART_CONTROLS](): DashboardStateShape {
+      return {
+        ...state,
+        dashboardChartControls: action.dashboardChartControls,
       };
     },
     [UPDATE_CHART_STATE](): DashboardStateShape {

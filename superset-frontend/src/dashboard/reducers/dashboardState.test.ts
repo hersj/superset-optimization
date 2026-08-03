@@ -36,10 +36,12 @@ import {
   REMOVE_CHART_STATE,
   RESTORE_CHART_STATES,
   CLEAR_ALL_CHART_STATES,
+  SET_DASHBOARD_CHART_CONTROLS,
   setActiveTab,
   setActiveTabs,
 } from '../actions/dashboardState';
 import { DashboardState, RootState } from '../types';
+import { HYDRATE_DASHBOARD } from '../actions/hydrate';
 
 // Type the reducer function properly since it's imported from JS
 type DashboardStateReducer = (
@@ -479,5 +481,56 @@ describe('DashboardState reducer', () => {
     });
     expect(result.chartStates).toEqual({});
     expect((result as Record<string, unknown>).otherState).toEqual('preserved');
+  });
+
+  test('should store dashboard chart controls without marking the dashboard dirty', () => {
+    const result = typedDashboardStateReducer(createMockDashboardState(), {
+      type: SET_DASHBOARD_CHART_CONTROLS,
+      dashboardChartControls: {
+        timeCompareEnabled: false,
+        showValueEnabled: true,
+      },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        dashboardChartControls: {
+          timeCompareEnabled: false,
+          showValueEnabled: true,
+        },
+        hasUnsavedChanges: false,
+      }),
+    );
+  });
+
+  test('restores persisted dashboard chart controls during hydrate', () => {
+    const result = typedDashboardStateReducer(createMockDashboardState(), {
+      type: HYDRATE_DASHBOARD,
+      data: {
+        dashboardState: {
+          dashboardChartControls: {
+            timeCompareEnabled: false,
+            showValueEnabled: true,
+          },
+        },
+      },
+    });
+
+    expect(result.dashboardChartControls).toEqual({
+      timeCompareEnabled: false,
+      showValueEnabled: true,
+    });
+  });
+
+  test('defaults dashboard chart controls to enabled during hydrate', () => {
+    const result = typedDashboardStateReducer(createMockDashboardState(), {
+      type: HYDRATE_DASHBOARD,
+      data: { dashboardState: {} },
+    });
+
+    expect(result.dashboardChartControls).toEqual({
+      timeCompareEnabled: true,
+      showValueEnabled: true,
+    });
   });
 });

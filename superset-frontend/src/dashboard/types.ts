@@ -116,6 +116,10 @@ export type DashboardLayoutState = {
   present: DashboardLayout;
   future: DashboardLayout[];
 };
+export type DashboardChartControls = {
+  timeCompareEnabled: boolean;
+  showValueEnabled: boolean;
+};
 export type DashboardState = {
   preselectNativeFilters?: JsonObject;
   editMode: boolean;
@@ -173,6 +177,7 @@ export type DashboardState = {
   personalChartLayouts?: Record<string, PersonalChartLayout>;
   personalChartTemplates?: Record<string, PersonalChartTemplate[]>;
   personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
+  dashboardChartControls?: DashboardChartControls;
 };
 export type DashboardInfo = {
   id: number;

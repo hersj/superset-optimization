@@ -19,6 +19,7 @@
 
 import { TableTab } from 'src/views/CRUD/types';
 import { DashboardContextForExplore } from 'src/types/DashboardContextForExplore';
+import type { DashboardChartControls } from 'src/dashboard/types';
 
 export enum LocalStorageKeys {
   /**
@@ -55,6 +56,7 @@ export enum LocalStorageKeys {
   DashboardCustomFilterBarWidths = 'dashboard__custom_filter_bar_widths',
   DashboardExploreContext = 'dashboard__explore_context',
   DashboardEditorShowOnlyMyCharts = 'dashboard__editor_show_only_my_charts',
+  DashboardChartControls = 'dashboard__chart_controls',
   CommonResizableSidebarWidths = 'common__resizable_sidebar_widths',
 }
 
@@ -75,6 +77,7 @@ export type LocalStorageValues = {
   dashboard__custom_filter_bar_widths: Record<string, number>;
   dashboard__explore_context: Record<string, DashboardContextForExplore>;
   dashboard__editor_show_only_my_charts: boolean;
+  dashboard__chart_controls: Record<string, DashboardChartControls>;
   common__resizable_sidebar_widths: Record<string, number>;
 };
 
