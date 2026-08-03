@@ -32,6 +32,10 @@ class BuildZhOverrideTest(unittest.TestCase):
             "与其他时间段的结果进行比较。",
         )
 
+    def test_dashboard_chart_controls_are_translated(self):
+        self.assertEqual(OVERRIDES["Time comparison"], "和过去对比")
+        self.assertEqual(OVERRIDES["Show Values"], "数字显示")
+
 
 if __name__ == "__main__":
     unittest.main()

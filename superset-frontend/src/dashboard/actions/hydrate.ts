@@ -62,6 +62,7 @@ import extractUrlParams from '../util/extractUrlParams';
 import updateComponentParentsList from '../util/updateComponentParentsList';
 import { AUTO_REFRESH_STATE_DEFAULTS } from '../types/autoRefresh';
 import { migrateChartCustomizationArray } from '../util/migrateChartCustomization';
+import { getPersistedDashboardChartControls } from '../util/charts/getDashboardChartControls';
 import {
   DashboardLayout,
   FilterBarOrientation,
@@ -392,6 +393,10 @@ export const hydrateDashboard =
           datasetsStatus:
             dashboardState?.datasetsStatus || ResourceStatus.Loading,
           chartStates: chartStates || dashboardState?.chartStates || {},
+          // 看板 hydrate 时恢复当前用户的浏览器偏好；没有偏好时由 dashboardState reducer 使用默认值。
+          dashboardChartControls: getPersistedDashboardChartControls(
+            user.userId,
+          ),
         },
         dashboardLayout,
       },

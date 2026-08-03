@@ -98,6 +98,7 @@ import { useHeaderActionsMenu } from './useHeaderActionsDropdownMenu';
 import { useHeaderAutoRefresh } from './useHeaderAutoRefresh';
 import AutoRefreshIndicator from '../AutoRefreshIndicator';
 import { RefreshButton } from '../RefreshButton';
+import DashboardChartControls from './DashboardChartControls';
 
 type DashboardPropertiesUpdate = {
   slug?: string;
@@ -647,6 +648,7 @@ const Header = (): JSX.Element => {
         />
       ),
       !editMode && !isEmbedded && metadataBar,
+      !editMode && <DashboardChartControls key="dashboard-chart-controls" />,
     ],
     [
       boundActionCreators.savePublished,
