@@ -113,6 +113,20 @@ export function toggleNativeFiltersBar(
   return { type: TOGGLE_NATIVE_FILTERS_BAR, isOpen };
 }
 
+export const SET_DASHBOARD_CHART_CONTROLS = 'SET_DASHBOARD_CHART_CONTROLS';
+
+interface SetDashboardChartControlsAction {
+  type: typeof SET_DASHBOARD_CHART_CONTROLS;
+  dashboardChartControls: DashboardState['dashboardChartControls'];
+}
+
+/** 看板级图表开关更新 Redux 会话；Header 负责同步当前用户的浏览器偏好，不参与看板保存请求。 */
+export function setDashboardChartControls(
+  dashboardChartControls: NonNullable<DashboardState['dashboardChartControls']>,
+): SetDashboardChartControlsAction {
+  return { type: SET_DASHBOARD_CHART_CONTROLS, dashboardChartControls };
+}
+
 export const SET_UNSAVED_CHANGES = 'SET_UNSAVED_CHANGES';
 
 interface SetUnsavedChangesAction {

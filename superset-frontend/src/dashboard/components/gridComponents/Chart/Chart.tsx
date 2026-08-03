@@ -70,6 +70,10 @@ import {
   getAppliedFilterValues,
 } from '../../../util/activeDashboardFilters';
 import getFormDataWithExtraFilters from '../../../util/charts/getFormDataWithExtraFilters';
+import {
+  DEFAULT_DASHBOARD_CHART_CONTROLS,
+  getDashboardChartExtraControls,
+} from '../../../util/charts/getDashboardChartControls';
 import { useChartCustomizationFromRedux } from '../../nativeFilters/state';
 import { PLACEHOLDER_DATASOURCE } from '../../../constants';
 
@@ -424,6 +428,22 @@ const Chart = (props: ChartProps) => {
       state.dashboardInfo?.metadata?.shared_label_colors,
     ),
   );
+  const dashboardChartControls = useSelector(
+    (state: RootState) =>
+      state.dashboardState.dashboardChartControls ||
+      DEFAULT_DASHBOARD_CHART_CONTROLS,
+  );
+  // 看板级开关只在图表 formData 入口覆盖显示字段，不修改图表实体或看板保存数据。
+  const chartExtraControls = useMemo(
+    () => ({
+      ...(props.extraControls || {}),
+      ...getDashboardChartExtraControls(
+        dashboardChartControls,
+        chart?.form_data as JsonObject | undefined,
+      ),
+    }),
+    [chart?.form_data, dashboardChartControls, props.extraControls],
+  );
 
   const formData = useMemo(
     () =>
@@ -439,7 +459,7 @@ const Chart = (props: ChartProps) => {
         nativeFilters,
         allSliceIds,
         dataMask,
-        extraControls: (props.extraControls || {}) as Record<
+        extraControls: chartExtraControls as Record<
           string,
           string | boolean | null
         >,
@@ -454,7 +474,7 @@ const Chart = (props: ChartProps) => {
       chartConfiguration,
       chartCustomizationItems,
       props.id,
-      props.extraControls,
+      chartExtraControls,
       colorScheme,
       colorNamespace,
       nativeFilters,

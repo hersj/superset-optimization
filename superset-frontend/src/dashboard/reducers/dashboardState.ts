@@ -55,6 +55,7 @@ import {
   REMOVE_CHART_STATE,
   RESTORE_CHART_STATES,
   CLEAR_ALL_CHART_STATES,
+  SET_DASHBOARD_CHART_CONTROLS,
 } from '../actions/dashboardState';
 import { HYDRATE_DASHBOARD } from '../actions/hydrate';
 import {
@@ -67,6 +68,8 @@ import {
   SET_AUTO_REFRESH_PAUSE_ON_INACTIVE_TAB,
 } from '../actions/autoRefresh';
 import { AutoRefreshStatus, ERROR_THRESHOLD_COUNT } from '../types/autoRefresh';
+import type { DashboardChartControls } from '../types';
+import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../util/charts/getDashboardChartControls';
 
 interface ChartStateEntry {
   chartId: number;
@@ -105,6 +108,7 @@ interface DashboardStateShape {
   overwriteConfirmMetadata?: JsonObject;
   nativeFiltersBarOpen?: boolean;
   chartStates?: Record<string, ChartStateEntry>;
+  dashboardChartControls?: DashboardChartControls;
   css?: string;
   preselectNativeFilters?: JsonObject;
   autoRefreshStatus?: AutoRefreshStatus;
@@ -147,6 +151,7 @@ interface DashboardStateAction {
   chartState?: JsonObject;
   lastModified?: number;
   chartStates?: Record<string, ChartStateEntry>;
+  dashboardChartControls?: DashboardChartControls;
   status?: string;
   isPaused?: boolean;
   isPausedByTab?: boolean;
@@ -174,6 +179,10 @@ export default function dashboardStateReducer(
       const hydratedState: DashboardStateShape = {
         ...state,
         ...action.data?.dashboardState,
+        // 每次载入看板都从 hydrate 数据恢复当前用户偏好；没有偏好时使用默认开启。
+        dashboardChartControls:
+          action.data?.dashboardState.dashboardChartControls ||
+          DEFAULT_DASHBOARD_CHART_CONTROLS,
       };
       // Initialize tab activation times for initially active tabs
       if (hydratedState.activeTabs && hydratedState.activeTabs.length > 0) {
@@ -421,6 +430,12 @@ export default function dashboardStateReducer(
       return {
         ...state,
         nativeFiltersBarOpen: action.isOpen,
+      };
+    },
+    [SET_DASHBOARD_CHART_CONTROLS](): DashboardStateShape {
+      return {
+        ...state,
+        dashboardChartControls: action.dashboardChartControls,
       };
     },
     [UPDATE_CHART_STATE](): DashboardStateShape {
