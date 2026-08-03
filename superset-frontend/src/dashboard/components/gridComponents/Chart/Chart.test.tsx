@@ -16,12 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { fireEvent, render } from 'spec/helpers/testing-library';
+import {
+  createStore,
+  fireEvent,
+  render,
+  waitFor,
+} from 'spec/helpers/testing-library';
 import { FeatureFlag, VizType } from '@superset-ui/core';
 import * as redux from 'redux';
 
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
+import { setDashboardChartControls } from '../../../actions/dashboardState';
+import {
+  DEFAULT_DASHBOARD_CHART_CONTROLS,
+} from '../../../util/charts/getDashboardChartControls';
+import reducerIndex from 'spec/helpers/reducerIndex';
 import { sliceEntitiesForChart as sliceEntities } from 'spec/fixtures/mockSliceEntities';
 import mockDatasource from 'spec/fixtures/mockDatasource';
 import chartQueries, {
@@ -144,6 +154,43 @@ test('should render a SliceHeader', () => {
 test('should render a ChartContainer', () => {
   const { getByTestId } = setup();
   expect(getByTestId('chart-container')).toBeInTheDocument();
+});
+
+test('should trigger a query when dashboard chart controls change', async () => {
+  const store = createStore(
+    {
+      ...defaultState,
+      dashboardState: {
+        ...defaultState.dashboardState,
+        dashboardChartControls: DEFAULT_DASHBOARD_CHART_CONTROLS,
+      },
+    },
+    reducerIndex,
+  );
+  const dispatchSpy = jest.spyOn(store, 'dispatch');
+
+  render(<Chart {...props} />, {
+    store,
+    useRouter: true,
+  });
+
+  store.dispatch(
+    setDashboardChartControls({
+      ...DEFAULT_DASHBOARD_CHART_CONTROLS,
+      showValueEnabled: false,
+    }),
+  );
+
+  await waitFor(() => {
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    });
+    expect(capturedChartContainerProps.formData).toEqual(
+      expect.objectContaining({ show_value: false }),
+    );
+  });
 });
 
 test('should render a description if it has one and isExpanded=true', () => {
