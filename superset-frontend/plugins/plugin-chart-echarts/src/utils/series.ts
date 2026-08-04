@@ -33,7 +33,7 @@ import {
 } from '@superset-ui/core';
 import { SupersetTheme } from '@apache-superset/core/theme';
 import { GenericDataType } from '@apache-superset/core/common';
-import { SortSeriesType, LegendPaddingType } from '@superset-ui/chart-controls';
+import { LegendPaddingType, SortSeriesType } from '@superset-ui/chart-controls';
 import { format } from 'echarts/core';
 import type { LegendComponentOption } from 'echarts/components';
 import type { SeriesOption } from 'echarts';
@@ -53,6 +53,150 @@ import { defaultLegendPadding } from '../defaults';
 
 function isDefined<T>(value: T | undefined | null): boolean {
   return value !== undefined && value !== null;
+}
+
+export type LegendGroupKind = 'current' | 'comparison';
+
+export interface LegendGroupMetadata {
+  groups: Record<string, string[]>;
+  labels: Record<string, string>;
+  kinds: Record<string, LegendGroupKind>;
+  parents: Record<string, string>;
+}
+
+export interface LegendGroupInput {
+  name: string;
+  currentLabel: string;
+  timeOffset?: string;
+}
+
+/**
+ * 功能审计（可重写规格）：时序图真实系列图例元数据
+ * - 功能目的与触发方式：标准时序图和混合时序图在转换查询结果后调用，把真实 ECharts 系列合并为当前指标组和时间偏移组。
+ * - 输入契约：每项提供唯一的真实系列 name、去除维度后的当前指标显示名，以及可选的 timeOffset；空偏移表示当前期。
+ * - 输出契约：groups 的键和成员全部是真实系列 name；labels 为代表系列到显示文本的映射；kinds 区分当前组和对比组；parents 将对比系列映射到同一指标的当前代表系列。
+ * - 处理流程：先按当前指标或偏移建立桶并保留首次真实系列为代表值，再将当前组排在对比组之前，最后建立对比到当前的归属关系。
+ * - 业务规则：同一当前指标的多个维度只产生一个当前图例；同一 timeOffset 的所有指标和维度只产生一个对比图例；代表值永远不能是虚拟偏移名称。
+ * - 状态与副作用：纯函数，只生成内存元数据，不修改查询结果、图表配置、看板数据库或浏览器存储。
+ * - 外部依赖：仅依赖调用方提供的已转换真实系列名；调用方负责使用 resolveLegendState 和 ECharts action 应用状态。
+ * - 异常与边界：空输入返回四个空对象；缺失父当前组的对比系列仍保留在偏移组，只不建立 parents 映射。
+ * - 不变量与约束：每个真实系列最多属于一个组；组内成员顺序稳定；调用结果可重复且无副作用。
+ * - 验证方式：series.test.ts 覆盖维度合并、真实代表值、偏移合并和父组映射。
+ */
+export function buildLegendGroupMetadata(
+  inputs: LegendGroupInput[],
+): LegendGroupMetadata {
+  type Group = {
+    kind: LegendGroupKind;
+    label: string;
+    members: string[];
+  };
+
+  const groups = new Map<string, Group>();
+  const currentRepresentativeByLabel = new Map<string, string>();
+  const currentLabelByMember = new Map<string, string>();
+
+  inputs.forEach(({ name, currentLabel, timeOffset }) => {
+    const member = String(name);
+    const label = String(currentLabel ?? '');
+    const kind: LegendGroupKind = timeOffset ? 'comparison' : 'current';
+    const groupLabel = kind === 'comparison' ? String(timeOffset) : label;
+    const key = `${kind}\u0000${groupLabel}`;
+    const group = groups.get(key) ?? { kind, label: groupLabel, members: [] };
+
+    if (!group.members.includes(member)) group.members.push(member);
+    groups.set(key, group);
+    currentLabelByMember.set(member, label);
+    if (kind === 'current' && !currentRepresentativeByLabel.has(label)) {
+      currentRepresentativeByLabel.set(label, member);
+    }
+  });
+
+  const orderedGroups = [...groups.values()].sort(
+    (left, right) =>
+      Number(left.kind === 'comparison') - Number(right.kind === 'comparison'),
+  );
+  const metadata: LegendGroupMetadata = {
+    groups: {},
+    labels: {},
+    kinds: {},
+    parents: {},
+  };
+
+  orderedGroups.forEach(group => {
+    const [representative] = group.members;
+    if (!representative) return;
+    metadata.groups[representative] = group.members;
+    metadata.labels[representative] = group.label;
+    metadata.kinds[representative] = group.kind;
+    if (group.kind === 'comparison') {
+      group.members.forEach(member => {
+        const parent = currentRepresentativeByLabel.get(
+          currentLabelByMember.get(member) ?? '',
+        );
+        if (parent) metadata.parents[member] = parent;
+      });
+    }
+  });
+
+  return metadata;
+}
+
+/**
+ * 功能审计（可重写规格）：时序图逻辑图例状态解析
+ * - 功能目的与触发方式：标准时序图和混合时序图在生成选项、处理图例事件或刷新查询后调用，统一解析当前指标与时间对比图例的可见状态。
+ * - 输入契约：selected 为 ECharts 图例代表系列或显示标签到布尔值的映射，可为空；metadata 提供真实代表系列、成员系列、图例标签、分组类型和对比成员所属的当前指标。
+ * - 输出契约：返回保留未知图例状态的完整映射，并为每个真实系列写入最终可见状态；当前组默认打开，对比组默认关闭。
+ * - 处理流程：先解析每个逻辑图例组状态，再按当前组状态约束对比成员，最后展开到所有真实系列成员。
+ * - 业务规则：显式逻辑代表值或显示标签状态优先于旧版真实成员状态；对比成员只有在自身 offset 组和所属当前指标均打开时可见；没有父当前组的对比成员只受 offset 组控制。
+ * - 状态与副作用：纯函数，不修改输入对象，不写入数据库、缓存或浏览器存储。
+ * - 异常与边界：缺失组类型按当前组处理；缺失父组的对比成员只受自身组状态控制。
+ * - 不变量与约束：逻辑组代表值必须是真实系列名；同一成员只允许由一个逻辑组决定状态；调用必须是幂等的。
+ * - 验证方式：series.test.ts 覆盖父组关闭、默认值、旧成员状态和真实成员展开。
+ */
+export function resolveLegendState(
+  selected: LegendState | undefined,
+  metadata: LegendGroupMetadata,
+): LegendState {
+  const input = selected ?? {};
+  const state: LegendState = { ...input };
+  const groupSelected: Record<string, boolean> = {};
+
+  Object.entries(metadata.groups).forEach(([representative, members]) => {
+    const kind = metadata.kinds[representative] ?? 'current';
+    const label = metadata.labels[representative];
+    const selectedByRepresentative = input[representative];
+    const selectedByLabel = label ? input[label] : undefined;
+    const hasExplicitGroupState =
+      selectedByRepresentative !== undefined || selectedByLabel !== undefined;
+    const hasHiddenMember =
+      !hasExplicitGroupState &&
+      kind === 'current' &&
+      members.some(member => input[member] === false);
+    const isSelected =
+      selectedByRepresentative === false ||
+      selectedByLabel === false ||
+      hasHiddenMember
+        ? false
+        : (selectedByRepresentative ??
+          selectedByLabel ??
+          kind !== 'comparison');
+
+    groupSelected[representative] = isSelected;
+    state[representative] = isSelected;
+  });
+
+  Object.entries(metadata.groups).forEach(([representative, members]) => {
+    const kind = metadata.kinds[representative] ?? 'current';
+    members.forEach(member => {
+      const parent = metadata.parents[member];
+      state[member] =
+        groupSelected[representative] &&
+        (kind !== 'comparison' || !parent || groupSelected[parent] !== false);
+    });
+  });
+
+  return state;
 }
 
 export function extractDataTotalValues(

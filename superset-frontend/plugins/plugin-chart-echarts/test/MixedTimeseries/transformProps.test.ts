@@ -144,6 +144,191 @@ const queriesData: ChartDataResponseResult[] = [
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
 ];
 
+test('keeps grouped LT counts as counts and preserves the BSR dimension in the tooltip', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      x_axis: 'ds',
+      metrics: [
+        {
+          expressionType: 'SQL',
+          label: 'LT数',
+          sqlExpression:
+            'COUNT(DISTINCT asin) filter(where is_internal_asin is true )',
+        },
+      ],
+      metricsB: [
+        {
+          expressionType: 'SQL',
+          label: '销售额占比',
+          sqlExpression:
+            'sum(revenue_30d)filter (where is_internal_asin is true) / sum(revenue_30d)',
+        },
+      ],
+      groupby: [
+        {
+          expressionType: 'SQL',
+          label: 'BSR分组',
+          sqlExpression: 'case ... end',
+        },
+      ],
+      groupbyB: [],
+      yAxisFormat: '~g',
+      yAxisFormatSecondary: '.2%',
+      richTooltip: true,
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      seriesTypeB: EchartsTimeseriesSeriesType.Line,
+      yAxisIndex: 0,
+      yAxisIndexB: 1,
+      showLegend: true,
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: [
+      createTestQueryData(
+        [{ '101-200': 13, '201-300': 11, TOP100: 43, ds: 1720000000000 }],
+        {
+          label_map: {
+            ds: ['ds'],
+            '101-200': ['101-200'],
+            '201-300': ['201-300'],
+            TOP100: ['TOP100'],
+            LT数: [
+              'COUNT(DISTINCT asin) filter(where is_internal_asin is true )',
+            ],
+          },
+        },
+      ),
+      createTestQueryData([{ 销售额占比: 0.1623, ds: 1720000000000 }], {
+        label_map: {
+          ds: ['ds'],
+          销售额占比: [
+            'sum(revenue_30d)filter (where is_internal_asin is true) / sum(revenue_30d)',
+          ],
+        },
+      }),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+  const series = transformed.echartOptions.series as any[];
+  expect(series.map(item => item.id)).toEqual(
+    expect.arrayContaining(['LT数, TOP100', 'LT数, 101-200', 'LT数, 201-300']),
+  );
+  expect(series.map(item => item.id)).not.toContain('LT数');
+  expect(series.map(item => item.id)).not.toContain('LT数 (1)');
+
+  const tooltip = (transformed.echartOptions.tooltip as any).formatter([
+    { seriesId: 'LT数, TOP100', marker: '', value: [1720000000000, 43] },
+    { seriesId: 'LT数, 101-200', marker: '', value: [1720000000000, 13] },
+    { seriesId: 'LT数, 201-300', marker: '', value: [1720000000000, 11] },
+    { seriesId: '销售额占比', marker: '', value: [1720000000000, 0.1623] },
+  ]);
+  expect(tooltip).toContain('LT数, TOP100');
+  expect(tooltip).toContain('43');
+  expect(tooltip).not.toContain('4,300.00%');
+  expect(tooltip).toContain('16.23%');
+});
+
+test('keeps duplicate primary series on the primary formatter', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      metrics: [
+        { expressionType: 'SQL', label: 'LT数', sqlExpression: 'COUNT(*)' },
+      ],
+      metricsB: [
+        { expressionType: 'SQL', label: 'LT数', sqlExpression: 'COUNT(*)' },
+      ],
+      groupby: [],
+      groupbyB: [],
+      yAxisFormat: '~g',
+      yAxisFormatSecondary: '.2%',
+      yAxisIndex: 0,
+      yAxisIndexB: 0,
+      richTooltip: true,
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: [
+      createTestQueryData([{ LT数: 43, ds: 1720000000000 }]),
+      createTestQueryData([{ LT数: 11, ds: 1720000000000 }]),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+  const series = transformed.echartOptions.series as any[];
+  expect(series.map(item => item.id)).toEqual(['LT数', 'LT数 (1)']);
+
+  const tooltip = (transformed.echartOptions.tooltip as any).formatter([
+    { seriesId: 'LT数', marker: '', value: [1720000000000, 43] },
+    { seriesId: 'LT数 (1)', marker: '', value: [1720000000000, 11] },
+  ]);
+  expect(tooltip).toContain('43');
+  expect(tooltip).toContain('>11</td>');
+  expect(tooltip).not.toContain('1100.00%');
+  expect(tooltip).not.toContain('1,100.00%');
+});
+
+test('shows only metric names in grouped legend labels', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      metrics: [
+        {
+          expressionType: 'SQL',
+          label: '产品成本',
+          sqlExpression: 'SUM(cost)',
+        },
+      ],
+      metricsB: [
+        {
+          expressionType: 'SQL',
+          label: '运费成本',
+          sqlExpression: 'SUM(freight)',
+        },
+      ],
+      groupby: [
+        { expressionType: 'SQL', label: '产品', sqlExpression: 'product' },
+      ],
+      groupbyB: [
+        { expressionType: 'SQL', label: '产品', sqlExpression: 'product' },
+      ],
+      showLegend: true,
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: [
+      createTestQueryData([{ 水晶框1: 10, 'LED5-EU': 20, ds: 1720000000000 }], {
+        label_map: { ds: ['ds'], 水晶框1: ['水晶框1'], 'LED5-EU': ['LED5-EU'] },
+      }),
+      createTestQueryData([{ 水晶框1: 3, 'LED5-EU': 4, ds: 1720000000000 }], {
+        label_map: { ds: ['ds'], 水晶框1: ['水晶框1'], 'LED5-EU': ['LED5-EU'] },
+      }),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+  const legend = transformed.echartOptions.legend as any;
+
+  expect(legend.data).toEqual([
+    '产品成本, 水晶框1',
+    '产品成本, LED5-EU',
+    '运费成本, 水晶框1',
+    '运费成本, LED5-EU',
+  ]);
+  expect(legend.formatter('产品成本, 水晶框1')).toBe('产品成本');
+  expect(legend.formatter('产品成本, LED5-EU')).toBe('产品成本');
+  expect(legend.formatter('运费成本, 水晶框1')).toBe('运费成本');
+  expect(legend.formatter('运费成本, LED5-EU')).toBe('运费成本');
+});
+
 test('should transform chart props for viz with showQueryIdentifiers=false', () => {
   const chartProps = createEchartsTimeseriesTestChartProps<
     EchartsMixedTimeseriesFormData,
@@ -226,6 +411,48 @@ test('should transform chart props for viz with showQueryIdentifiers=true', () =
     'sum__num (Query B), girl',
     'sum__num (Query B), boy',
   ]);
+});
+
+test('keeps the legend visible and hides only the offset series by default', () => {
+  const comparisonRows = [
+    {
+      LED5: 100,
+      '1 month ago, LED5': 80,
+      ds: 599616000000,
+    },
+    {
+      LED5: 150,
+      '1 month ago, LED5': 120,
+      ds: 599916000000,
+    },
+  ];
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      time_compare: ['1 month ago'],
+      groupbyB: [],
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: [
+      createTestQueryData(comparisonRows, { label_map: defaultLabelMap }),
+      createTestQueryData([], { label_map: defaultLabelMap }),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+  const legend = transformed.echartOptions.legend as any;
+
+  expect(legend.data).toEqual([
+    'sum__num, LED5',
+    'sum__num, 1 month ago, LED5',
+  ]);
+  expect(legend.show).toBe(true);
+  expect(legend.selected).toMatchObject({
+    'sum__num, 1 month ago, LED5': false,
+  });
 });
 
 describe('legend sorting', () => {

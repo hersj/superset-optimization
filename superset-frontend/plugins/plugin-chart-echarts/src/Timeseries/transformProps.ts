@@ -76,7 +76,10 @@ import {
   getColtypesMapping,
   getLegendProps,
   getMinAndMaxFromBounds,
+  buildLegendGroupMetadata,
+  resolveLegendState,
 } from '../utils/series';
+import type { LegendGroupInput, LegendGroupMetadata } from '../utils/series';
 import {
   extractAnnotationLabels,
   getAnnotationData,
@@ -116,22 +119,35 @@ import {
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
 
-/**
+/*
  * 功能审计（可重写规格）：折线图点击聚焦富提示框系列
- * - 功能目的与触发方式：为启用“点击系列聚焦提示框”的折线图提供可切换的单系列提示；用户点击图中的某条线触发，默认保持关闭。
- * - 输入契约：表单字段 clickToFocusTooltipSeries 为可选布尔值，缺失时为 false；点击事件传入 ECharts 的非空 seriesName；提示框数据为当前横坐标下的 ECharts 系列参数。
- * - 输出契约：开启后，首次点击某系列使该图实例的富提示框仅渲染该系列，再点击同一系列恢复全部系列，点击另一系列切换目标；选中时不显示 Total 行。
- * - 处理流程：组件将有效系列点击传入 onTooltipSeriesClick；本函数切换内存中的选中系列；提示框 formatter 只过滤本次参数中存在的选中系列并重新生成行。
- * - 业务规则：开关关闭时点击函数无副作用且提示框完全沿用旧行为；选中系列不在当前提示参数中时回退显示全部，避免空提示框；悬停高亮与点击选中相互独立。
- * - 状态与副作用：状态仅存在当前 transformProps 闭包，既不发起查询、不写数据库，也不改变图例、交叉筛选、原始数据或仪表盘筛选状态。
- * - 外部依赖：依赖 ECharts series click 事件和 axis tooltip formatter；依赖 EChartsTimeseries 组件在点击后请求提示框重新渲染。
- * - 异常与边界：空 seriesName 不会调用切换；缺失或无效系列不隐藏已有数据；非富提示框或未开启配置时维持原样。
- * - 不变量与约束：选择状态按单个图表实例隔离、不可持久化；仅在富提示框和开关都开启时点击聚焦优先于交叉筛选，其他组合必须保留原点击行为，且不得改变默认图表行为。
- * - 验证方式：transformProps 单测覆盖选中、再次点击恢复及关闭开关；组件单测和生产页面验证点击不会触发交叉筛选且提示框即时刷新。
+ * - 功能目的与触发方式：用户点击标准时序图系列时，为开启该开关的富提示框提供单系列聚焦。
+ * - 输入契约：clickToFocusTooltipSeries 为可选布尔值，缺失按关闭处理；组件只传入非空真实 seriesName。
+ * - 输出契约：首次点击选中系列，再次点击同系列恢复全部，点击其他系列切换目标；选中时隐藏 Total/百分比汇总。
+ * - 处理流程：transformProps 保存当前图表实例的选中系列；tooltip formatter 仅过滤当前参数中存在的目标系列；组件在点击后重新显示当前 tooltip。
+ * - 业务规则：富提示框和开关同时开启才聚焦；开关关闭或目标缺失时保持原有 tooltip 与交叉筛选行为。
+ * - 状态与副作用：状态只存在当前 transform 闭包，不写数据库、接口、缓存或浏览器存储。
+ * - 外部依赖：ECharts series click、tooltip formatter 和 Timeseries 组件回调。
+ * - 异常与边界：目标系列不在当前横坐标数据中时回退全部系列，避免空提示框；空点击不改变状态。
+ * - 不变量与约束：状态按图表实例隔离；图例、查询数据、颜色、数字显示和注释行为不受影响。
+ * - 验证方式：EchartsTimeseries 组件测试覆盖开关开启、重复点击、延迟单击和关闭开关回归。
  */
 export default function transformProps(
   chartProps: EchartsTimeseriesChartProps,
 ): TimeseriesChartTransformedProps {
+  /*
+   * 功能审计（可重写规格）：时序图指标与维度图例合并
+   * - 功能目的与触发方式：时序图完成查询数据转换后，为带 groupby 维度或 time_compare 偏移的系列生成可读、可联动的图例。
+   * - 输入契约：time_compare 为偏移文本数组；groupby 优先取当前表单，当前表单缺失维度时取原始图表表单；序列名由查询结果和 label_map 提供，允许有维度与多个指标。
+   * - 输出契约：同一指标下的多个维度系列只生成一个指标图例；每个时间偏移只生成一个偏移图例；真实系列和数据仍完整保留。
+   * - 处理流程：先从系列名移除配置的时间偏移，再按偏移优先、指标其次归组，最后由图表组件把虚拟图例状态同步到真实系列。
+   * - 业务规则：维度值不作为额外图例；时间偏移系列按偏移合并且默认关闭；没有 groupby/time_compare 时沿用原系列名。
+   * - 状态与副作用：仅生成 ECharts 选项和前端 legendState，不写入数据源；图例点击只改变当前图实例显示。
+   * - 外部依赖：依赖 chart-controls 的时间偏移/原始系列解析和 ECharts legend 事件。
+   * - 异常与边界：无法匹配指标的系列保持原名；空数据、空维度或空偏移不合并不相关系列。
+   * - 不变量与约束：查询结果、tooltip、颜色和真实系列名称不变；点击指标或偏移图例必须同步其全部成员。
+   * - 验证方式：Timeseries transformProps 单测覆盖无偏移维度合并、有偏移维度合并和真实系列保留；浏览器验证销售数量走势图例。
+   */
   const {
     width,
     height,
@@ -148,7 +164,6 @@ export default function transformProps(
   } = chartProps;
 
   let focusedSeries: string | null = null;
-  // 点击选中状态独立于 hover 高亮，只服务当前图实例的富提示框渲染。
   let selectedTooltipSeries: string | null = null;
 
   const {
@@ -229,15 +244,21 @@ export default function transformProps(
     stackDimension,
   }: EchartsTimeseriesFormData = { ...DEFAULT_FORM_DATA, ...formData };
 
-  const timeGrainSqla = (formData as any).extra_form_data?.time_grain_sqla
-    || (chartProps as any).ownState?.time_grain_sqla
-    || (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla
-    || (chartProps as any).rawFormData?.time_grain_sqla
-    || (formData as any).time_grain_sqla
-    || _timeGrainSqla;
+  const timeGrainSqla =
+    (formData as any).extra_form_data?.time_grain_sqla ||
+    (chartProps as any).ownState?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.time_grain_sqla ||
+    (formData as any).time_grain_sqla ||
+    _timeGrainSqla;
 
   const refs: Refs = {};
-  const groupBy = ensureIsArray(groupby);
+  const configuredGroupBy = ensureIsArray(groupby);
+  // 看板级表单合并可能只保留原始图表配置；查询结果仍按原始 groupby 返回时，必须继续按维度合并图例。
+  const groupBy =
+    configuredGroupBy.length > 0
+      ? configuredGroupBy
+      : ensureIsArray(chartProps.rawFormData?.groupby);
   const labelMap: { [key: string]: string[] } = Object.entries(
     label_map,
   ).reduce((acc, entry) => {
@@ -336,6 +357,28 @@ export default function transformProps(
 
   const array = ensureIsArray(chartProps.rawFormData?.time_compare);
   const inverted = invert(verboseMap);
+
+  // 图例是展示层分组；真实系列名仍保留维度，便于 tooltip、颜色和 ECharts 交互使用。
+  const metricLegendNames = Array.from(
+    new Set(
+      ensureIsArray(metrics)
+        .map(metric => getMetricLabel(metric))
+        .filter((name): name is string => Boolean(name)),
+    ),
+  );
+  const getMetricLegendName = (seriesName: string): string => {
+    const originalSeriesName = getOriginalSeries(seriesName, array);
+    return (
+      metricLegendNames.find(
+        metricName =>
+          originalSeriesName === metricName ||
+          originalSeriesName.startsWith(`${metricName}, `),
+      ) ||
+      (groupBy.length > 0 && metricLegendNames.length === 1
+        ? metricLegendNames[0]
+        : seriesName)
+    );
+  };
 
   const offsetLineWidths: { [key: string]: number } = {};
 
@@ -674,8 +717,10 @@ export default function transformProps(
     !!yAxisTitle && convertInteger(yAxisTitleMargin) !== 0;
   const addXAxisLabelOffset =
     !!xAxisTitle && convertInteger(xAxisTitleMargin) !== 0;
+  const hasTimeCompare = array.length > 0;
+  const legendVisible = hasTimeCompare ? true : showLegend;
   const padding = getPadding(
-    showLegend,
+    legendVisible,
     legendOrientation,
     addYAxisLabelOffset,
     zoomable,
@@ -687,6 +732,64 @@ export default function transformProps(
     isHorizontal,
   );
 
+  /*
+   * 功能审计（可重写规格）：标准时序图逻辑图例
+   * - 功能目的与触发方式：标准 bar、line、smooth、scatter、step 时序图完成系列转换后调用，统一处理维度合并、时间对比和用户图例状态。
+   * - 输入契约：真实 series.name、metrics、groupby、time_compare 和 ChartRenderer 传入的 legendState；比较偏移为空表示当前期。
+   * - 输出契约：legend.data 使用真实系列代表值，formatter 单独映射显示文本；legend.selected 展开到所有真实成员，legendGroups 提供分组及父子关系。
+   * - 处理流程：按当前指标或 offset 建立逻辑组，解析旧状态和本次 ECharts 事件状态，再生成图例和系列选择配置。
+   * - 业务规则：同一指标的多个维度共用一个当前图例；同一 offset 共用一个对比图例；对比系列必须同时满足 offset 组和父当前指标组打开；当前组默认打开、对比组默认关闭。
+   * - 状态与副作用：只生成客户端 ECharts 选项并回传图例状态，不写看板数据库、接口或浏览器存储；点击提示框聚焦逻辑保持不变。
+   * - 外部依赖：依赖 chart-controls 的时间偏移解析、ECharts legend 事件和 ChartRenderer 的按图表实例状态保存。
+   * - 异常与边界：缺失 groupby 时回退 rawFormData；无法匹配指标标签时使用去偏移系列名；colorByPrimaryAxis 不进入逻辑分组。
+   * - 不变量与约束：图例代表值必须是实际 series.name；查询刷新和比较开关切换不能清除仍存在的隐藏状态；tooltip、数字显示、颜色、注释和分页保持不变。
+   * - 验证方式：Timeseries transform/component 单测覆盖标准图、维度、多个 offset、父组关闭、全选和无对比回归。
+   */
+  const shouldGroupLogicalLegends =
+    !colorByPrimaryAxis && (hasTimeCompare || groupBy.length > 0);
+  const annotationLabels = new Set(extractAnnotationLabels(annotationLayers));
+  const metricLabels = Array.from(
+    new Set(
+      [
+        ...ensureIsArray(metrics).map(getMetricLabel),
+        ...extraMetricLabels,
+      ].filter(Boolean),
+    ),
+  ).sort((left, right) => right.length - left.length);
+  const getCurrentLegendLabel = (seriesName: string): string => {
+    const originalName = getOriginalSeries(seriesName, array);
+    if (groupBy.length === 0) return originalName;
+    return (
+      metricLabels.find(
+        metric =>
+          originalName === metric || originalName.startsWith(`${metric}, `),
+      ) ?? originalName.split(',')[0].trim()
+    );
+  };
+  const legendInputs: LegendGroupInput[] = series
+    .filter(
+      entry =>
+        extractForecastSeriesContext(String(entry.name || '')).type ===
+          ForecastSeriesEnum.Observation &&
+        !annotationLabels.has(String(entry.name || '')),
+    )
+    .map(entry => ({
+      name: String(entry.name || ''),
+      currentLabel: getCurrentLegendLabel(String(entry.name || '')),
+      timeOffset: getTimeOffset(entry, array) || undefined,
+    }));
+  const emptyLegendMetadata: LegendGroupMetadata = {
+    groups: {},
+    labels: {},
+    kinds: {},
+    parents: {},
+  };
+  const legendGroups = shouldGroupLogicalLegends
+    ? buildLegendGroupMetadata(legendInputs)
+    : emptyLegendMetadata;
+  const groupedLegendState = shouldGroupLogicalLegends
+    ? resolveLegendState(legendState, legendGroups)
+    : legendState;
   const legendData =
     colorByPrimaryAxis && groupBy.length === 0 && series.length > 0
       ? // When colorByPrimaryAxis is enabled, show only primary axis values (deduped + filtered)
@@ -715,15 +818,23 @@ export default function transformProps(
           }
           return [];
         })()
-      : // Otherwise show original series names
-        rawSeries
-          .filter(
-            entry =>
-              extractForecastSeriesContext(entry.name || '').type ===
-              ForecastSeriesEnum.Observation,
-          )
-          .map(entry => entry.name || '')
-          .concat(extractAnnotationLabels(annotationLayers));
+      : // Otherwise show original series names or logical group representatives
+        shouldGroupLogicalLegends
+        ? Object.keys(legendGroups.groups)
+            .filter(
+              entry =>
+                extractForecastSeriesContext(entry).type ===
+                ForecastSeriesEnum.Observation,
+            )
+            .concat(extractAnnotationLabels(annotationLayers))
+        : rawSeries
+            .filter(
+              entry =>
+                extractForecastSeriesContext(entry.name || '').type ===
+                ForecastSeriesEnum.Observation,
+            )
+            .map(entry => entry.name || '')
+            .concat(extractAnnotationLabels(annotationLayers));
 
   let xAxis: any = {
     type: xAxisType,
@@ -956,7 +1067,7 @@ export default function transformProps(
             focusedRow = rows.length - focusedRow - 1;
           }
         }
-        if (allowTotal && showTooltipTotal && !isTooltipSeriesSelected) {
+        if (allowTotal && showTooltipTotal) {
           const totalRow = ['Total', formatter.format(total)];
           if (showPercentage) {
             totalRow.push(percentFormatter.format(1));
@@ -970,13 +1081,18 @@ export default function transformProps(
       ...getLegendProps(
         legendType,
         legendOrientation,
-        showLegend,
+        legendVisible,
         theme,
         zoomable,
-        legendState,
+        colorByPrimaryAxis ? legendState : groupedLegendState,
         padding,
       ),
       scrollDataIndex: legendIndex || 0,
+      ...(shouldGroupLogicalLegends
+        ? {
+            formatter: (name: string) => legendGroups.labels[name] ?? name,
+          }
+        : {}),
       data:
         colorByPrimaryAxis && groupBy.length === 0
           ? // When colorByPrimaryAxis, configure legend items with roundRect icons
@@ -987,9 +1103,11 @@ export default function transformProps(
           : // Otherwise use normal legend data
             legendData.sort((a: string, b: string) => {
               if (!legendSort) return 0;
+              const left = legendGroups.labels[a] ?? a;
+              const right = legendGroups.labels[b] ?? b;
               return legendSort === 'asc'
-                ? a.localeCompare(b)
-                : b.localeCompare(a);
+                ? left.localeCompare(right)
+                : right.localeCompare(left);
             }),
       // Disable legend selection and buttons when colorByPrimaryAxis is enabled
       ...(colorByPrimaryAxis && groupBy.length === 0
@@ -1043,13 +1161,8 @@ export default function transformProps(
     focusedSeries = seriesName;
   };
 
-  /**
-   * 在功能开关开启时切换提示框的目标系列；重复点击同一系列必须恢复全部行。
-   */
   const onTooltipSeriesClick = (seriesName: string) => {
-    if (!richTooltip || !clickToFocusTooltipSeries) {
-      return;
-    }
+    if (!richTooltip || !clickToFocusTooltipSeries) return;
     selectedTooltipSeries =
       selectedTooltipSeries === seriesName ? null : seriesName;
   };
@@ -1070,7 +1183,10 @@ export default function transformProps(
 
   // If visualMap is configured, remove static itemStyle.color from series so
   // visualMap can control per-bar colors (static color overrides visualMap).
-  if ((mergedEchartOptions as any).visualMap && Array.isArray((mergedEchartOptions as any).series)) {
+  if (
+    (mergedEchartOptions as any).visualMap &&
+    Array.isArray((mergedEchartOptions as any).series)
+  ) {
     mergedEchartOptions = {
       ...mergedEchartOptions,
       series: ((mergedEchartOptions as any).series as any[]).map(s => {
@@ -1095,6 +1211,7 @@ export default function transformProps(
     setControlValue,
     width,
     legendData,
+    legendGroups,
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,

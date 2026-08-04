@@ -42,6 +42,8 @@ import {
   sortAndFilterSeries,
   sortRows,
   getTimeCompareStackId,
+  buildLegendGroupMetadata,
+  resolveLegendState,
 } from '../../src/utils/series';
 import {
   EchartsTimeseriesSeriesType,
@@ -1260,4 +1262,27 @@ test('extractTooltipKeys with rich tooltip and sorting by metrics', () => {
 test('extractTooltipKeys with non-rich tooltip', () => {
   const result = extractTooltipKeys(forecastValue, 1, false, false);
   expect(result).toEqual(['foo']);
+});
+
+test('preserves logical legend state over stale dimension members', () => {
+  const metadata = buildLegendGroupMetadata([
+    { name: 'orders, LED5', currentLabel: '订购数量' },
+    { name: 'orders, LED5-EU', currentLabel: '订购数量' },
+    {
+      name: 'orders, 1 day ago, LED5',
+      currentLabel: '订购数量',
+      timeOffset: '1 day ago',
+    },
+  ]);
+
+  expect(
+    resolveLegendState(
+      { 'orders, LED5': true, 'orders, LED5-EU': false, 'orders, 1 day ago, LED5': true },
+      metadata,
+    ),
+  ).toMatchObject({
+    'orders, LED5': true,
+    'orders, LED5-EU': true,
+    'orders, 1 day ago, LED5': true,
+  });
 });

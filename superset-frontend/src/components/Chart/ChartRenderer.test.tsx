@@ -26,6 +26,7 @@ import {
 } from '@superset-ui/core';
 import ChartRenderer, {
   ChartRendererProps,
+  mergeLegendState,
 } from 'src/components/Chart/ChartRenderer';
 import { ChartSource } from 'src/types/ChartSource';
 import type { Dispatch } from 'redux';
@@ -117,6 +118,12 @@ test('should render SuperChart', () => {
     />,
   );
   expect(getByTestId('mock-super-chart')).toBeInTheDocument();
+});
+
+test('merges new legend state without dropping comparison state', () => {
+  expect(
+    mergeLegendState({ current: false, comparison: true }, { current: true }),
+  ).toEqual({ current: true, comparison: true });
 });
 
 test('should use latestQueryFormData instead of formData when chartIsStale is true', () => {

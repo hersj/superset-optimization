@@ -175,6 +175,26 @@ const BIG_NO_RESULT_MIN_HEIGHT = 220;
 
 const behaviors = [Behavior.InteractiveChart];
 
+/**
+ * 功能审计（可重写规格）：看板图例状态合并
+ * - 功能目的与触发方式：图表组件回传新的图例选择状态时调用，避免查询刷新或时间对比开关切换丢失仍存在的用户隐藏选择。
+ * - 输入契约：previous 为当前 ChartRenderer 内存中的按用户图例状态，可为空；next 为本次 ECharts 事件产生的布尔映射，键为真实系列或逻辑代表值。
+ * - 输出契约：返回一个新映射，保留 previous 未出现在 next 中的键，并由 next 对同名键覆盖；不改变输入对象。
+ * - 处理流程：浅拷贝旧映射，再按事件顺序覆盖本次明确返回的键。
+ * - 业务规则：明确的 true/false 都必须保留；过期键由图表 transform 忽略，当前仍存在的对比键不能因当前图例事件消失。
+ * - 状态与副作用：纯函数；调用方随后以 React setState 保存，不写数据库、接口或浏览器存储。
+ * - 外部依赖：仅依赖 ECharts LegendState 的字符串到布尔值结构和 React 状态更新。
+ * - 异常与边界：previous 为空按空映射处理；next 为空返回旧映射副本；不对未知键做删除或格式化。
+ * - 不变量与约束：合并结果不修改输入，且同一键的结果等于 next 的值；时间对比关闭再打开时旧 offset 状态可被 transform 重新消费。
+ * - 验证方式：ChartRenderer.test.tsx 覆盖当前图例更新后仍保留对比图例状态。
+ */
+export function mergeLegendState(
+  previous: LegendState | undefined,
+  next: LegendState,
+): LegendState {
+  return { ...previous, ...next };
+}
+
 const defaultProps: Partial<ChartRendererProps> = {
   addFilter: () => BLANK,
   onFilterMenuOpen: () => BLANK,
@@ -395,7 +415,9 @@ class ChartRenderer extends Component<ChartRendererProps, ChartRendererState> {
   }
 
   handleLegendStateChanged(legendState: LegendState): void {
-    this.setState({ legendState });
+    this.setState(previousState => ({
+      legendState: mergeLegendState(previousState.legendState, legendState),
+    }));
   }
 
   // When viz plugins don't handle `contextmenu` event, fallback handler

@@ -35,6 +35,7 @@ import {
   StackType,
   TitleFormData,
 } from '../types';
+import type { LegendGroupMetadata } from '../utils/series';
 import {
   DEFAULT_LEGEND_FORM_DATA,
   DEFAULT_TITLE_FORM_DATA,
@@ -151,6 +152,7 @@ export type EchartsMixedTimeseriesChartTransformedProps =
     CrossFilterTransformedProps & {
       groupbyB: QueryFormColumn[];
       labelMapB: Record<string, string[]>;
+      legendGroups?: LegendGroupMetadata;
       seriesBreakdown: number;
       xValueFormatter: TimeFormatter | StringConstructor;
       xAxis: {

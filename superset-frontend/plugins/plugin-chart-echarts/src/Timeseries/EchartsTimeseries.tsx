@@ -33,7 +33,7 @@ import type ComponentModel from 'echarts/types/src/model/Component';
 import { EchartsHandler, EventHandlers } from '../types';
 import Echart from '../components/Echart';
 import { TimeseriesChartTransformedProps } from './types';
-import { formatSeriesName } from '../utils/series';
+import { formatSeriesName, resolveLegendState } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 
 const TIMER_DURATION = 300;
@@ -49,6 +49,7 @@ export default function EchartsTimeseries({
   setDataMask,
   setControlValue,
   legendData = [],
+  legendGroups = { groups: {}, labels: {}, kinds: {}, parents: {} },
   onContextMenu,
   onLegendStateChanged,
   onFocusedSeries,
@@ -61,6 +62,7 @@ export default function EchartsTimeseries({
   onLegendScroll,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
+  const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
   const echartRef = useRef<EchartsHandler | null>(null);
   // eslint-disable-next-line no-param-reassign
   refs.echartRef = echartRef;
@@ -217,18 +219,46 @@ export default function EchartsTimeseries({
   const canCrossFilterByXAxis =
     !hasDimensions && xAxis.type === AxisType.Category;
 
+  // 中文职责：把逻辑图例状态展开到真实维度系列；对比系列还受父当前指标状态约束。
+  const syncTimeComparisonLegend = useCallback(
+    (selected: LegendState) => {
+      const echartInstance = echartRef.current?.getEchartInstance();
+      const resolved = resolveLegendState(selected, legendGroups);
+      Object.entries(legendGroups.groups).forEach(([, seriesNames]) => {
+        seriesNames
+          .filter(name => name !== seriesNames[0])
+          .forEach(name => {
+            echartInstance?.dispatchAction({
+              type:
+                resolved[name] === false ? 'legendUnSelect' : 'legendSelect',
+              name,
+            });
+          });
+      });
+      return resolved;
+    },
+    [legendGroups],
+  );
+
+  useEffect(() => {
+    const selected = (echartOptions.legend as any)?.selected as
+      | LegendState
+      | undefined;
+    if (selected) {
+      syncTimeComparisonLegend(selected);
+    }
+  }, [echartOptions.legend, legendGroups, syncTimeComparisonLegend]);
+
   const eventHandlers: EventHandlers = {
     click: props => {
-      // 仅在点到真实数据系列时接管点击；开启后不再落入交叉筛选路径。
       if (
         richTooltip &&
-        clickToFocusTooltipSeries &&
-        props.componentType === 'series' &&
-        props.seriesName
+        shouldFocusTooltipSeries &&
+        props.seriesName &&
+        (props.componentType === undefined || props.componentType === 'series')
       ) {
         onTooltipSeriesClick(props.seriesName);
         const chart = echartRef.current?.getEchartInstance();
-        // 先隐藏再显示可强制 ECharts 重新执行 formatter，使当前鼠标位置即时看到切换后的行。
         chart?.dispatchAction({ type: 'hideTip' });
         chart?.dispatchAction({
           type: 'showTip',
@@ -266,13 +296,13 @@ export default function EchartsTimeseries({
       onLegendScroll?.(payload.scrollDataIndex);
     },
     legendselectchanged: payload => {
-      onLegendStateChanged?.(payload.selected);
+      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
     },
     legendselectall: payload => {
-      onLegendStateChanged?.(payload.selected);
+      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
     },
     legendinverseselect: payload => {
-      onLegendStateChanged?.(payload.selected);
+      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
     },
     contextmenu: async eventParams => {
       if (onContextMenu) {
@@ -363,6 +393,16 @@ export default function EchartsTimeseries({
         const model = getModelInfo(params.target, globalModel);
         if (model) {
           const { name } = model;
+          if (richTooltip && shouldFocusTooltipSeries && name) {
+            onTooltipSeriesClick(name);
+            echartInstance.dispatchAction({ type: 'hideTip' });
+            echartInstance.dispatchAction({
+              type: 'showTip',
+              x: params.offsetX,
+              y: params.offsetY,
+            });
+            return;
+          }
           const legendState: LegendState = legendData.reduce(
             (previous, datum) => ({
               ...previous,

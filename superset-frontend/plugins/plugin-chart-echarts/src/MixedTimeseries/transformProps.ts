@@ -43,7 +43,7 @@ import {
   ValueFormatter,
 } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
-import { getOriginalSeries } from '@superset-ui/chart-controls';
+import { getOriginalSeries, getTimeOffset } from '@superset-ui/chart-controls';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { SeriesOption } from 'echarts';
 import {
@@ -70,7 +70,10 @@ import {
   getLegendProps,
   getMinAndMaxFromBounds,
   getOverMaxHiddenFormatter,
+  buildLegendGroupMetadata,
+  resolveLegendState,
 } from '../utils/series';
+import type { LegendGroupInput, LegendGroupMetadata } from '../utils/series';
 import {
   extractAnnotationLabels,
   getAnnotationData,
@@ -121,6 +124,19 @@ const getFormatter = (
 export default function transformProps(
   chartProps: EchartsMixedTimeseriesProps,
 ): EchartsMixedTimeseriesChartTransformedProps {
+  /*
+   * 功能审计（可重写规格）：混合时序图逻辑图例
+   * - 功能目的与触发方式：混合时序图转换 Query A/B 后调用，统一处理维度合并、时间对比、父指标归属和按图表实例保存的图例状态。
+   * - 输入契约：两组查询的真实系列、groupby/groupby_b、time_compare/time_compare_b、showQueryIdentifiers 和 ChartRenderer 传入的 legendState。
+   * - 输出契约：有对比时 legend.data 使用真实 series.name 代表值并由 formatter 映射文本；legendGroups 描述当前组、offset 组及父子关系；无对比时保留既有维度图例行为。
+   * - 处理流程：分别转换 Query A/B，记录真实系列的当前指标标签和偏移，按指标或 offset 建组，解析新旧状态后生成 ECharts 选项。
+   * - 业务规则：同一指标的维度共用一个当前图例；同一 offset 的 Query A/B、指标和维度共用一个对比图例；对比成员只有在 offset 组及父当前组都打开时显示；当前默认打开、对比默认关闭。
+   * - 状态与副作用：只生成客户端选项并回传图例状态，不修改看板数据库、后端接口或 localStorage；无对比路径不改变既有维度图例。
+   * - 外部依赖：依赖 chart-controls 的时间偏移解析、ECharts legend 事件和 ChartRenderer 状态合并；支持两组 offset 配置。
+   * - 异常与边界：任一 offset 配置为空时只处理另一组；无父当前组的对比线仍属于 offset 组；注释图例不参与业务分组。
+   * - 不变量与约束：图例 key 必须是实际 series.name；查询、tooltip、数字显示、颜色、注释、分页和主副轴 formatter 行为保持不变。
+   * - 验证方式：MixedTimeseries transform/component 单测覆盖 Query A/B、维度、offset、父组关闭、全选和无对比回归。
+   */
   const {
     width,
     height,
@@ -253,6 +269,27 @@ export default function transformProps(
   const MetricDisplayNameB: string =
     getMetricDisplayName(metricsB[0], verboseMap) || '';
 
+  // 图例属于展示层；保留完整序列名称供交互和 tooltip 使用，只去掉分组维度文本。
+  const metricLegendFormatter = (name: string): string => {
+    const metricParts = [
+      groupby.length > 0
+        ? showQueryIdentifiers
+          ? `${MetricDisplayNameA} (Query A)`
+          : MetricDisplayNameA
+        : undefined,
+      groupbyB.length > 0
+        ? showQueryIdentifiers
+          ? `${MetricDisplayNameB} (Query B)`
+          : MetricDisplayNameB
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+    return (
+      metricParts.find(
+        metric => name === metric || name.startsWith(`${metric}, `),
+      ) || name
+    );
+  };
+
   const dataTypes = getColtypesMapping(queriesData[0]);
   const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
   const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
@@ -334,18 +371,6 @@ export default function transformProps(
     currencyCodeColumn,
   );
 
-  const primarySeries = new Set<string>();
-  const secondarySeries = new Set<string>();
-  const mapSeriesIdToAxis = (
-    seriesOption: SeriesOption,
-    index?: number,
-  ): void => {
-    if (index === 1) {
-      secondarySeries.add(seriesOption.id as string);
-    } else {
-      primarySeries.add(seriesOption.id as string);
-    }
-  };
   const showValueIndexesA = extractShowValueIndexes(rawSeriesA, {
     stack,
     onlyTotal,
@@ -413,17 +438,19 @@ export default function transformProps(
   );
 
   const array = ensureIsArray(chartProps.rawFormData?.time_compare);
+  const arrayB = ensureIsArray((chartProps.rawFormData as any)?.time_compare_b);
+  const allTimeCompare = Array.from(new Set([...array, ...arrayB]));
   const inverted = invert(verboseMap);
+  const legendInputs: LegendGroupInput[] = [];
 
   rawSeriesA.forEach(entry => {
     const entryName = String(entry.name || '');
     const seriesName = inverted[entryName] || entryName;
-    const colorScaleKey = getOriginalSeries(seriesName, array);
+    const colorScaleKey = getOriginalSeries(seriesName, allTimeCompare);
 
     let displayName: string;
 
     if (groupby.length > 0) {
-      // When we have groupby, format as "metric, dimension"
       const metricPart: string = showQueryIdentifiers
         ? `${MetricDisplayNameA} (Query A)`
         : MetricDisplayNameA;
@@ -431,8 +458,13 @@ export default function transformProps(
         ? entryName
         : `${metricPart}, ${entryName}`;
     } else {
-      // When no groupby, format as just the entry name with optional query identifier
       displayName = showQueryIdentifiers ? `${entryName} (Query A)` : entryName;
+    }
+    const timeOffset = allTimeCompare.some(offset => entryName.includes(offset))
+      ? getTimeOffset(entry, allTimeCompare)
+      : undefined;
+    if (timeOffset && !displayName.includes(timeOffset)) {
+      displayName = `${displayName}, ${timeOffset}`;
     }
 
     const seriesFormatter = getFormatter(
@@ -483,7 +515,18 @@ export default function transformProps(
 
     if (transformedSeries) {
       series.push(transformedSeries);
-      mapSeriesIdToAxis(transformedSeries, yAxisIndex);
+      const transformedName = String(transformedSeries.name || '');
+      legendInputs.push({
+        name: transformedName,
+        currentLabel:
+          groupby.length > 0
+            ? showQueryIdentifiers
+              ? `${MetricDisplayNameA} (Query A)`
+              : MetricDisplayNameA
+            : getOriginalSeries(transformedName, allTimeCompare),
+        timeOffset:
+          getTimeOffset({ name: transformedName }, allTimeCompare) || undefined,
+      });
     }
   });
 
@@ -491,12 +534,11 @@ export default function transformProps(
     const entryName = String(entry.name || '');
     const seriesEntry = inverted[entryName] || entryName;
     const seriesName = `${seriesEntry} (1)`;
-    const colorScaleKey = getOriginalSeries(seriesEntry, array);
+    const colorScaleKey = getOriginalSeries(seriesEntry, allTimeCompare);
 
     let displayName: string;
 
     if (groupbyB.length > 0) {
-      // When we have groupby, format as "metric, dimension"
       const metricPart: string = showQueryIdentifiers
         ? `${MetricDisplayNameB} (Query B)`
         : MetricDisplayNameB;
@@ -504,8 +546,13 @@ export default function transformProps(
         ? entryName
         : `${metricPart}, ${entryName}`;
     } else {
-      // When no groupby, format as just the entry name with optional query identifier
       displayName = showQueryIdentifiers ? `${entryName} (Query B)` : entryName;
+    }
+    const timeOffset = allTimeCompare.some(offset => entryName.includes(offset))
+      ? getTimeOffset(entry, allTimeCompare)
+      : undefined;
+    if (timeOffset && !displayName.includes(timeOffset)) {
+      displayName = `${displayName}, ${timeOffset}`;
     }
 
     const seriesFormatter = getFormatter(
@@ -557,7 +604,18 @@ export default function transformProps(
 
     if (transformedSeries) {
       series.push(transformedSeries);
-      mapSeriesIdToAxis(transformedSeries, yAxisIndexB);
+      const transformedName = String(transformedSeries.name || '');
+      legendInputs.push({
+        name: transformedName,
+        currentLabel:
+          groupbyB.length > 0
+            ? showQueryIdentifiers
+              ? `${MetricDisplayNameB} (Query B)`
+              : MetricDisplayNameB
+            : getOriginalSeries(transformedName, allTimeCompare),
+        timeOffset:
+          getTimeOffset({ name: transformedName }, allTimeCompare) || undefined,
+      });
     }
   });
 
@@ -569,10 +627,11 @@ export default function transformProps(
     if (maxSecondary === undefined) maxSecondary = 1;
   }
 
-  const timeGrainSqla = (formData as any).extra_form_data?.time_grain_sqla
-    || (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla
-    || (chartProps as any).rawFormData?.time_grain_sqla
-    || _timeGrainSqla;
+  const timeGrainSqla =
+    (formData as any).extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.time_grain_sqla ||
+    _timeGrainSqla;
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
       ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla)
@@ -587,9 +646,23 @@ export default function transformProps(
     convertInteger(yAxisTitleMargin) !== 0;
   const addXAxisTitleOffset =
     !!xAxisTitle && convertInteger(xAxisTitleMargin) !== 0;
+  const hasTimeCompare = allTimeCompare.length > 0;
+  const legendVisible = hasTimeCompare ? true : showLegend;
+  const emptyLegendMetadata: LegendGroupMetadata = {
+    groups: {},
+    labels: {},
+    kinds: {},
+    parents: {},
+  };
+  const legendGroups = hasTimeCompare
+    ? buildLegendGroupMetadata(legendInputs)
+    : emptyLegendMetadata;
+  const legendStateWithTimeCompare = hasTimeCompare
+    ? resolveLegendState(legendState, legendGroups)
+    : legendState;
 
   const chartPadding = getPadding(
-    showLegend,
+    legendVisible,
     legendOrientation,
     addYAxisTitleOffset,
     zoomable,
@@ -600,8 +673,18 @@ export default function transformProps(
     convertInteger(xAxisTitleMargin),
   );
 
-  const { setDataMask = () => {}, onContextMenu } = hooks;
+  const { setDataMask = () => {}, onContextMenu, onLegendStateChanged } = hooks;
   const alignTicks = yAxisIndex !== yAxisIndexB;
+
+  // dedupSeries 会修改重复序列的最终 id；tooltip 必须按去重后的序列轴归属选择 formatter。
+  const dedupedSeries = dedupSeries(
+    reorderForecastSeries(series) as SeriesOption[],
+  );
+  const primarySeries = new Set(
+    dedupedSeries
+      .filter(entry => entry.yAxisIndex !== 1)
+      .map(entry => String(entry.id || '')),
+  );
 
   const echartOptions: EChartsCoreOption = {
     useUTC: true,
@@ -759,26 +842,39 @@ export default function transformProps(
       ...getLegendProps(
         legendType,
         legendOrientation,
-        showLegend,
+        legendVisible,
         theme,
         zoomable,
-        legendState,
+        legendStateWithTimeCompare,
         chartPadding,
       ),
-      data: series
-        .filter(
-          entry =>
-            extractForecastSeriesContext((entry.name || '') as string).type ===
-            ForecastSeriesEnum.Observation,
-        )
-        .map(entry => entry.id || entry.name || '')
-        .concat(extractAnnotationLabels(annotationLayers))
-        .sort((a: string, b: string) => {
-          if (!legendSort) return 0;
-          return legendSort === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
-        }),
+      formatter: hasTimeCompare
+        ? (name: string) => legendGroups.labels[name] ?? name
+        : metricLegendFormatter,
+      data: (hasTimeCompare
+        ? Object.keys(legendGroups.groups).filter(
+            name =>
+              extractForecastSeriesContext(name).type ===
+              ForecastSeriesEnum.Observation,
+          )
+        : series
+            .filter(
+              entry =>
+                extractForecastSeriesContext((entry.name || '') as string)
+                  .type === ForecastSeriesEnum.Observation,
+            )
+            .map(entry => entry.name || '')
+            .concat(extractAnnotationLabels(annotationLayers))
+      ).sort((a: string, b: string) => {
+        if (!legendSort) return 0;
+        const left = legendGroups.labels[a] ?? a;
+        const right = legendGroups.labels[b] ?? b;
+        return legendSort === 'asc'
+          ? left.localeCompare(right)
+          : right.localeCompare(left);
+      }),
     },
-    series: dedupSeries(reorderForecastSeries(series) as SeriesOption[]),
+    series: dedupedSeries,
     toolbox: {
       show: zoomable,
       top: TIMESERIES_CONSTANTS.toolboxTop,
@@ -837,6 +933,8 @@ export default function transformProps(
     seriesBreakdown: rawSeriesA.length,
     selectedValues: filterState.selectedValues || [],
     onContextMenu,
+    onLegendStateChanged,
+    legendGroups,
     onFocusedSeries,
     xValueFormatter: tooltipFormatter,
     xAxis: {

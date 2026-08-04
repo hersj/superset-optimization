@@ -35,6 +35,7 @@ import {
   StackType,
   TitleFormData,
 } from '../types';
+import type { LegendGroupMetadata } from '../utils/series';
 
 export enum OrientationType {
   Vertical = 'vertical',
@@ -79,7 +80,6 @@ export type EchartsTimeseriesFormData = QueryFormData & {
   tooltipTimeFormat?: string;
   showTooltipTotal?: boolean;
   showTooltipPercentage?: boolean;
-  clickToFocusTooltipSeries?: boolean;
   truncateXAxis: boolean;
   truncateYAxis: boolean;
   yAxisFormat?: string;
@@ -112,6 +112,7 @@ export type TimeseriesChartTransformedProps =
     ContextMenuTransformedProps &
     CrossFilterTransformedProps & {
       legendData?: OptionName[];
+      legendGroups?: LegendGroupMetadata;
       isRefreshing?: boolean;
       xValueFormatter: TimeFormatter | StringConstructor;
       xAxis: {

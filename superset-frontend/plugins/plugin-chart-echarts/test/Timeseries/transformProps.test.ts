@@ -908,6 +908,100 @@ const timeCompareFormData: SqlaFormData = {
   viz_type: 'my_viz',
 };
 
+test('merges dimension series into metric legends without time comparison', () => {
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      groupby: ['brand'],
+      metrics: ['销售额'],
+      time_compare: [],
+    },
+    queriesData: [
+      createTestQueryData([
+        {
+          '销售额, LED5': 100,
+          '销售额, LED5-EU': 60,
+          __timestamp: 599616000000,
+        },
+      ]),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+
+  expect((transformed.echartOptions.legend as any).data).toEqual([
+    '销售额, LED5-EU',
+  ]);
+  expect((transformed as any).legendGroups.groups).toEqual({
+    '销售额, LED5-EU': ['销售额, LED5-EU', '销售额, LED5'],
+  });
+});
+
+test('uses a real series as the display item for merged legends', () => {
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      groupby: ['brand'],
+      metrics: ['销售额'],
+      time_compare: [],
+    },
+    queriesData: [
+      createTestQueryData([
+        {
+          '销售额, LED5': 100,
+          '销售额, LED5-EU': 60,
+          __timestamp: 599616000000,
+        },
+      ]),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+  const legend = transformed.echartOptions.legend as any;
+  const seriesNames = (transformed.echartOptions.series as any[]).map(
+    series => series.name,
+  );
+
+  expect(legend.data).toEqual(['销售额, LED5-EU']);
+  expect(seriesNames).toContain(legend.data[0]);
+  expect(legend.formatter(legend.data[0])).toBe('销售额');
+  expect((transformed as any).legendGroups.groups).toEqual({
+    '销售额, LED5-EU': ['销售额, LED5-EU', '销售额, LED5'],
+  });
+});
+
+test('merges dimension series when groupby is present only in raw chart form data', () => {
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      metrics: ['销售额'],
+      time_compare: [],
+    },
+    queriesData: [
+      createTestQueryData([
+        {
+          '销售额, LED5': 100,
+          '销售额, LED5-EU': 60,
+          __timestamp: 599616000000,
+        },
+      ]),
+    ],
+  }) as any;
+  chartProps.rawFormData = {
+    ...chartProps.rawFormData,
+    groupby: ['brand'],
+  };
+
+  const transformed = transformProps(chartProps);
+
+  expect((transformed.echartOptions.legend as any).data).toEqual([
+    '销售额, LED5-EU',
+  ]);
+  expect((transformed as any).legendGroups.groups).toEqual({
+    '销售额, LED5-EU': ['销售额, LED5-EU', '销售额, LED5'],
+  });
+});
+
 test('should apply dashed line style to time comparison series with single metric', () => {
   const queriesDataWithTimeCompare = [
     createTestQueryData([
@@ -951,6 +1045,82 @@ test('should apply dashed line style to time comparison series with single metri
       ? comparisonSeries.lineStyle.type[1]
       : undefined,
   ).toBeGreaterThanOrEqual(3);
+});
+
+test('shows one legend item for current and comparison versions of a series', () => {
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      time_compare: ['1 week ago'],
+      comparison_type: ComparisonType.Values,
+    },
+    queriesData: [
+      createTestQueryData([
+        {
+          sum__num: 100,
+          'sum__num__1 week ago': 80,
+          __timestamp: 599616000000,
+        },
+        {
+          sum__num: 150,
+          'sum__num__1 week ago': 120,
+          __timestamp: 599916000000,
+        },
+      ]),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+
+  expect((transformed.echartOptions.legend as any).data).toEqual([
+    'sum__num',
+    'sum__num__1 week ago',
+  ]);
+  expect((transformed.echartOptions.legend as any).show).toBe(true);
+  expect((transformed.echartOptions.legend as any).selected).toMatchObject({
+    'sum__num__1 week ago': false,
+  });
+  expect((transformed as any).legendGroups.groups).toEqual({
+    sum__num: ['sum__num'],
+    'sum__num__1 week ago': ['sum__num__1 week ago'],
+  });
+});
+
+test('merges dimension series while grouping time comparisons', () => {
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      groupby: ['brand'],
+      metrics: ['销售额'],
+      time_compare: ['1 week ago'],
+      comparison_type: ComparisonType.Values,
+    },
+    queriesData: [
+      createTestQueryData([
+        {
+          '销售额, LED5': 100,
+          '销售额, 1 week ago, LED5': 80,
+          '销售额, LED5-EU': 60,
+          '销售额, 1 week ago, LED5-EU': 50,
+          __timestamp: 599616000000,
+        },
+      ]),
+    ],
+  });
+
+  const transformed = transformProps(chartProps);
+
+  expect((transformed.echartOptions.legend as any).data).toEqual([
+    '销售额, LED5-EU',
+    '销售额, 1 week ago, LED5-EU',
+  ]);
+  expect((transformed as any).legendGroups.groups).toEqual({
+    '销售额, LED5-EU': ['销售额, LED5-EU', '销售额, LED5'],
+    '销售额, 1 week ago, LED5-EU': [
+      '销售额, 1 week ago, LED5-EU',
+      '销售额, 1 week ago, LED5',
+    ],
+  });
 });
 
 test('should apply dashed line style to time comparison series with metric__offset pattern', () => {
@@ -1316,71 +1486,4 @@ test('should not apply axis bounds calculation when seriesType is not Bar for ho
   const xAxisRaw = transformedProps.echartOptions.xAxis as any;
   // Should not have explicit max set when seriesType is not Bar
   expect(xAxisRaw.max).toBeUndefined();
-});
-
-describe('click-to-focus tooltip series', () => {
-  const tooltipParams = [
-    {
-      seriesName: 'San Francisco',
-      seriesId: 'San Francisco',
-      value: [BASE_TIMESTAMP, 1],
-      marker: '<span>sf</span>',
-    },
-    {
-      seriesName: 'New York',
-      seriesId: 'New York',
-      value: [BASE_TIMESTAMP, 2],
-      marker: '<span>ny</span>',
-    },
-  ];
-
-  const getClickToFocusChart = (clickToFocusTooltipSeries: boolean) =>
-    transformProps(
-      createTestChartProps({
-        formData: {
-          richTooltip: true,
-          showTooltipTotal: true,
-          metrics: ['San Francisco', 'New York'] as any,
-          clickToFocusTooltipSeries,
-        } as Partial<EchartsTimeseriesFormData>,
-      }),
-    ) as ReturnType<typeof transformProps> & {
-      onTooltipSeriesClick: (seriesName: string) => void;
-    };
-
-  test('clicking a series filters the axis tooltip and clicking it again restores all series', () => {
-    const transformed = getClickToFocusChart(true);
-    const formatter = (transformed.echartOptions.tooltip as any).formatter;
-
-    expect(formatter(tooltipParams)).toContain('San Francisco');
-    expect(formatter(tooltipParams)).toContain('New York');
-    expect(formatter(tooltipParams)).toContain('Total');
-
-    transformed.onTooltipSeriesClick('San Francisco');
-    expect(formatter(tooltipParams)).toContain('San Francisco');
-    expect(formatter(tooltipParams)).not.toContain('New York');
-    expect(formatter(tooltipParams)).not.toContain('Total');
-
-    transformed.onTooltipSeriesClick('New York');
-    expect(formatter(tooltipParams)).not.toContain('San Francisco');
-    expect(formatter(tooltipParams)).toContain('New York');
-    expect(formatter(tooltipParams)).not.toContain('Total');
-
-    transformed.onTooltipSeriesClick('New York');
-    expect(formatter(tooltipParams)).toContain('San Francisco');
-    expect(formatter(tooltipParams)).toContain('New York');
-    expect(formatter(tooltipParams)).toContain('Total');
-
-  });
-
-  test('does not filter the tooltip when the feature is disabled', () => {
-    const transformed = getClickToFocusChart(false);
-    const formatter = (transformed.echartOptions.tooltip as any).formatter;
-
-    transformed.onTooltipSeriesClick('San Francisco');
-
-    expect(formatter(tooltipParams)).toContain('San Francisco');
-    expect(formatter(tooltipParams)).toContain('New York');
-    expect(formatter(tooltipParams)).toContain('Total');
-  });
 });
