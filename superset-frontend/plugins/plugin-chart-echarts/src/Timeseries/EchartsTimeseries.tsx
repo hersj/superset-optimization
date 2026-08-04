@@ -74,6 +74,7 @@ export default function EchartsTimeseries({
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
   const echartRef = useRef<EchartsHandler | null>(null);
+  const isProgrammaticLegendSync = useRef(false);
   // eslint-disable-next-line no-param-reassign
   refs.echartRef = echartRef;
   const clickTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -235,6 +236,7 @@ export default function EchartsTimeseries({
    * - 输入契约：selected 为 ECharts 选择映射，changedName 仅由单击事件提供；legendGroups 由 transformProps 生成。
    * - 输出契约：真实成员由当前逻辑组和父当前指标展开；单击返回一个逻辑组的增量，全选/反选返回全部逻辑组。
    * - 处理流程：先恢复稳定逻辑状态，再 dispatch 非代表成员，最后交由 ChartRenderer 合并增量状态。
+   * - 用户事件边界：同步期间使用 dispatchAction(payload, { silent: true }) 更新 ECharts 成员，不触发用户图例回调；只有用户单击、全选、反选和双击才产生状态增量。
    * - 业务规则：当前指标默认打开、offset 默认关闭；offset 必须同时受自身开关和父当前指标开关约束；不修改查询或看板配置。
    * - 状态与副作用：只更新当前 ECharts 实例和 ChartRenderer 内存状态，保留数字显示、tooltip、颜色、分页和注释图例。
    * - 外部依赖：ECharts legend 事件、共享 series 状态工具、ChartRenderer。
@@ -254,17 +256,29 @@ export default function EchartsTimeseries({
         ...resolveLegendState(selected, legendGroups),
         ...stateChange,
       };
-      Object.entries(legendGroups.groups).forEach(([, seriesNames]) => {
-        seriesNames
-          .filter(name => name !== seriesNames[0])
-          .forEach(name => {
-            echartInstance?.dispatchAction({
-              type:
-                resolved[name] === false ? 'legendUnSelect' : 'legendSelect',
-              name,
-            });
+      if (echartInstance) {
+        isProgrammaticLegendSync.current = true;
+        try {
+          Object.entries(legendGroups.groups).forEach(([, seriesNames]) => {
+            seriesNames
+              .filter(name => name !== seriesNames[0])
+              .forEach(name => {
+                echartInstance.dispatchAction(
+                  {
+                    type:
+                      resolved[name] === false
+                        ? 'legendUnSelect'
+                        : 'legendSelect',
+                    name,
+                  },
+                  { silent: true },
+                );
+              });
           });
-      });
+        } finally {
+          isProgrammaticLegendSync.current = false;
+        }
+      }
       return stateChange;
     },
     [legendGroups],
@@ -326,14 +340,17 @@ export default function EchartsTimeseries({
       onLegendScroll?.(payload.scrollDataIndex);
     },
     legendselectchanged: payload => {
+      if (isProgrammaticLegendSync.current) return;
       onLegendStateChanged?.(
         syncTimeComparisonLegend(payload.selected, payload.name),
       );
     },
     legendselectall: payload => {
+      if (isProgrammaticLegendSync.current) return;
       onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
     },
     legendinverseselect: payload => {
+      if (isProgrammaticLegendSync.current) return;
       onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
     },
     contextmenu: async eventParams => {
