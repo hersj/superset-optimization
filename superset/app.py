@@ -106,6 +106,27 @@ def create_app(
 
 
 class SupersetApp(Flask):
+    # 功能审计（可重写规格）：静态资源版本发现与缓存
+    # - 功能目的与触发方式：浏览器请求 Flask 静态资源时，
+    #   确保新前端部署能发现新的 manifest。
+    # - 输入契约：filename 是相对 static 目录的 POSIX 路径；
+    #   空值或不存在文件仍由 Flask 原有逻辑处理。
+    # - 输出契约：返回原始静态响应；manifest 使用可重新验证缓存头，
+    #   其他资源保持原缓存头。
+    # - 处理流程：先保留 hot-update 文件的原有 204 降级，
+    #   再调用 Flask 发送文件，最后按精确路径覆盖 manifest 缓存头。
+    # - 业务规则：仅 assets/manifest.json 禁止一年期 freshness；
+    #   带 hash 的 JS/CSS 不改变缓存策略。
+    # - 状态与副作用：只修改当前 HTTP 响应头，
+    #   不写数据库、文件、Redux 状态或浏览器存储。
+    # - 外部依赖：依赖 Flask static route、SEND_FILE_MAX_AGE_DEFAULT
+    #   和现有 webpack manifest。
+    # - 异常与边界：普通静态文件及缺失 hot-update 文件继续沿用
+    #   Flask/现有 204 行为。
+    # - 不变量与约束：不改变文件内容、ETag、权限和 hot-update 日志行为；
+    #   manifest 必须支持部署后重新请求。
+    # - 验证方式：运行 initialization_test.py 的 manifest 用例，
+    #   并用 curl 检查实际响应头。
     def send_static_file(self, filename: str) -> Response:
         """Override to prevent webpack hot-update 404s from spamming logs.
 
@@ -123,7 +144,12 @@ class SupersetApp(Flask):
                     filename,
                 )
                 return Response("", status=204)  # No Content
-        return super().send_static_file(filename)
+        response = super().send_static_file(filename)
+        if filename == "assets/manifest.json":
+            response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     def _is_database_up_to_date(self) -> bool:
         """

@@ -25,6 +25,45 @@ from superset.initialization import SupersetAppInitializer
 
 
 class TestSupersetApp:
+    def test_manifest_is_revalidated_after_static_bundle_deploy(self, tmp_path):
+        """The bundle manifest must not stay fresh across frontend deployments."""
+        assets = tmp_path / "assets"
+        assets.mkdir()
+        (assets / "manifest.json").write_text("{}")
+        app = SupersetApp(
+            __name__,
+            static_folder=str(tmp_path),
+            static_url_path="/static",
+        )
+        app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000
+
+        response = app.test_client().get("/static/assets/manifest.json")
+
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == (
+            "no-cache, max-age=0, must-revalidate"
+        )
+        assert response.headers["Pragma"] == "no-cache"
+        assert response.headers["Expires"] == "0"
+
+    def test_hashed_static_assets_keep_long_cache(self, tmp_path):
+        """Hashed assets keep the existing long cache lifetime."""
+        assets = tmp_path / "assets"
+        assets.mkdir()
+        (assets / "spa.test.js").write_text(";")
+        app = SupersetApp(
+            __name__,
+            static_folder=str(tmp_path),
+            static_url_path="/static",
+        )
+        app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000
+
+        response = app.test_client().get("/static/assets/spa.test.js")
+
+        assert response.status_code == 200
+        assert response.cache_control.max_age == 31536000
+        assert response.cache_control.public
+
     @patch("superset.app.logger")
     def test_sync_config_to_db_skips_when_no_tables(self, mock_logger):
         """Test that sync is skipped when database is not up-to-date."""
