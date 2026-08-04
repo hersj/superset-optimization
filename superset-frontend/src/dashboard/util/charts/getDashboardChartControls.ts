@@ -46,14 +46,14 @@ function isDashboardChartControls(
  * 功能审计（可重写规格）：解析看板图表开关的会话状态
  * - 功能目的与触发方式：在首次 hydrate、图表刷新或再次 hydrate 时，为 Header 和图表链路确定两个看板级开关的有效状态。
  * - 输入契约：current 是当前 Redux 会话中的两个布尔字段，persisted 是当前用户 localStorage 偏好或 hydrate 传入的两个布尔字段；任一输入可为 null、undefined 或字段类型错误。
- * - 输出契约：始终返回包含 timeCompareEnabled 和 showValueEnabled 的 DashboardChartControls 对象，不写入存储、不改变看板配置。
- * - 处理流程：先校验并保留当前会话值；当前会话没有完整有效值时读取已持久化值；两者都无效时返回两个开关均开启的默认值。
- * - 业务规则：状态优先级固定为当前 Redux 会话 > 当前用户持久化偏好 > 默认开启；单个字段缺失的对象整体无效，不能用默认值拼接覆盖已存在会话选择。
+ * - 输出契约：返回有效的 DashboardChartControls；当前会话和持久化值都无效时返回 undefined，由 Header 和图表选择器使用默认开启值，不写入存储、不改变看板配置。
+ * - 处理流程：先校验并保留当前会话值；当前会话没有完整有效值时读取已持久化值；两者都无效时保持未初始化，避免把默认显示值误记为用户选择。
+ * - 业务规则：状态优先级固定为当前 Redux 会话 > 当前用户持久化偏好 > 未初始化默认值；单个字段缺失的对象整体无效，不能用默认值拼接覆盖已存在会话选择。
  * - 状态与副作用：纯函数，只产生新的状态判定；用户点击产生的持久化由 Header 现有逻辑负责。
- * - 外部依赖：依赖 DashboardChartControls 类型和默认常量，不依赖网络、数据库或新的存储 key。
+ * - 外部依赖：依赖 DashboardChartControls 类型，以及 Header/图表选择器提供的默认常量；不依赖网络、数据库或新的存储 key。
  * - 异常与边界：null、undefined、数组、空对象及任一字段非布尔值均视为无效并继续按优先级降级。
- * - 不变量与约束：图表查询、图表刷新和 hydrate 不能把有效的当前会话选择恢复成默认开启；两个字段必须作为一个完整状态一起解析。
- * - 验证方式：getDashboardChartControls.test.ts 覆盖会话优先、持久化回退和默认回退；dashboardState.test.ts 覆盖刷新 hydrate 保持选择。
+ * - 不变量与约束：图表查询、图表刷新和 hydrate 不能把有效的当前会话选择恢复成默认开启；两个字段必须作为一个完整状态一起解析；未初始化状态不得冒充用户选择。
+ * - 验证方式：Header 测试覆盖无状态时默认开启；dashboardState.test.ts 覆盖默认不入会话、后续 hydrate 恢复持久化值及显式会话选择优先。
  */
 export function resolveDashboardChartControls({
   current,
@@ -61,10 +61,10 @@ export function resolveDashboardChartControls({
 }: {
   current?: DashboardChartControls | null;
   persisted?: DashboardChartControls | null;
-}): DashboardChartControls {
+}): DashboardChartControls | undefined {
   if (isDashboardChartControls(current)) return current;
   if (isDashboardChartControls(persisted)) return persisted;
-  return DEFAULT_DASHBOARD_CHART_CONTROLS;
+  return undefined;
 }
 
 function getStoredDashboardChartControls(): Record<

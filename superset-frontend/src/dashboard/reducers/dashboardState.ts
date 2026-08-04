@@ -201,7 +201,7 @@ export default function dashboardStateReducer(
       const hydratedState: DashboardStateShape = {
         ...state,
         ...action.data?.dashboardState,
-        // hydrate 只提供首次进入的持久化值；重新 hydrate 时保留当前会话中的用户选择。
+        // hydrate 只提供首次进入的持久化值；未读取到有效偏好时保持未初始化，避免默认显示值覆盖后续 hydrate。
         dashboardChartControls: resolveDashboardChartControls({
           current: state.dashboardChartControls,
           persisted: action.data?.dashboardState.dashboardChartControls,

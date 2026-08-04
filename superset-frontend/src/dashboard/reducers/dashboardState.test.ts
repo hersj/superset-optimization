@@ -522,15 +522,66 @@ describe('DashboardState reducer', () => {
     });
   });
 
-  test('defaults dashboard chart controls to enabled during hydrate', () => {
+  test('leaves chart controls unset so selectors apply the enabled default', () => {
     const result = typedDashboardStateReducer(createMockDashboardState(), {
       type: HYDRATE_DASHBOARD,
       data: { dashboardState: {} },
     });
 
+    expect(result.dashboardChartControls).toBeUndefined();
+  });
+
+  test('does not treat the hydrate default as a user choice on a later hydrate', () => {
+    const firstHydrate = typedDashboardStateReducer(
+      createMockDashboardState(),
+      {
+        type: HYDRATE_DASHBOARD,
+        data: { dashboardState: {} },
+      },
+    );
+
+    const secondHydrate = typedDashboardStateReducer(firstHydrate, {
+      type: HYDRATE_DASHBOARD,
+      data: {
+        dashboardState: {
+          dashboardChartControls: {
+            timeCompareEnabled: false,
+            showValueEnabled: false,
+          },
+        },
+      },
+    });
+
+    expect(secondHydrate.dashboardChartControls).toEqual({
+      timeCompareEnabled: false,
+      showValueEnabled: false,
+    });
+  });
+
+  test('keeps an explicit session choice over later persisted controls', () => {
+    const result = typedDashboardStateReducer(
+      createMockDashboardState({
+        dashboardChartControls: {
+          timeCompareEnabled: false,
+          showValueEnabled: false,
+        },
+      }),
+      {
+        type: HYDRATE_DASHBOARD,
+        data: {
+          dashboardState: {
+            dashboardChartControls: {
+              timeCompareEnabled: true,
+              showValueEnabled: true,
+            },
+          },
+        },
+      },
+    );
+
     expect(result.dashboardChartControls).toEqual({
-      timeCompareEnabled: true,
-      showValueEnabled: true,
+      timeCompareEnabled: false,
+      showValueEnabled: false,
     });
   });
 });
