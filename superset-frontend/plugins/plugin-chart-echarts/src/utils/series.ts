@@ -62,6 +62,7 @@ export interface LegendGroupMetadata {
   labels: Record<string, string>;
   kinds: Record<string, LegendGroupKind>;
   parents: Record<string, string>;
+  stateKeys: Record<string, string>;
 }
 
 export interface LegendGroupInput {
@@ -74,12 +75,12 @@ export interface LegendGroupInput {
  * 功能审计（可重写规格）：时序图真实系列图例元数据
  * - 功能目的与触发方式：标准时序图和混合时序图在转换查询结果后调用，把真实 ECharts 系列合并为当前指标组和时间偏移组。
  * - 输入契约：每项提供唯一的真实系列 name、去除维度后的当前指标显示名，以及可选的 timeOffset；空偏移表示当前期。
- * - 输出契约：groups 的键和成员全部是真实系列 name；labels 为代表系列到显示文本的映射；kinds 区分当前组和对比组；parents 将对比系列映射到同一指标的当前代表系列。
- * - 处理流程：先按当前指标或偏移建立桶并保留首次真实系列为代表值，再将当前组排在对比组之前，最后建立对比到当前的归属关系。
+ * - 输出契约：groups 的键和成员全部是真实系列 name；labels 为代表系列到显示文本的映射；kinds 区分当前组和对比组；parents 将对比系列映射到同一指标的当前代表系列；stateKeys 提供稳定的 current:<指标> 或 comparison:<offset> 状态键。
+ * - 处理流程：先按当前指标或偏移建立桶并保留首次真实系列为代表值，再将当前组排在对比组之前，最后建立对比到当前的归属关系和稳定状态键。
  * - 业务规则：同一当前指标的多个维度只产生一个当前图例；同一 timeOffset 的所有指标和维度只产生一个对比图例；代表值永远不能是虚拟偏移名称。
  * - 状态与副作用：纯函数，只生成内存元数据，不修改查询结果、图表配置、看板数据库或浏览器存储。
  * - 外部依赖：仅依赖调用方提供的已转换真实系列名；调用方负责使用 resolveLegendState 和 ECharts action 应用状态。
- * - 异常与边界：空输入返回四个空对象；缺失父当前组的对比系列仍保留在偏移组，只不建立 parents 映射。
+ * - 异常与边界：空输入返回五个空对象；缺失父当前组的对比系列仍保留在偏移组，只不建立 parents 映射。
  * - 不变量与约束：每个真实系列最多属于一个组；组内成员顺序稳定；调用结果可重复且无副作用。
  * - 验证方式：series.test.ts 覆盖维度合并、真实代表值、偏移合并和父组映射。
  */
@@ -121,12 +122,14 @@ export function buildLegendGroupMetadata(
     labels: {},
     kinds: {},
     parents: {},
+    stateKeys: {},
   };
 
   orderedGroups.forEach(group => {
     const [representative] = group.members;
     if (!representative) return;
     metadata.groups[representative] = group.members;
+    metadata.stateKeys[representative] = `${group.kind}:${group.label}`;
     metadata.labels[representative] = group.label;
     metadata.kinds[representative] = group.kind;
     if (group.kind === 'comparison') {
@@ -145,10 +148,10 @@ export function buildLegendGroupMetadata(
 /**
  * 功能审计（可重写规格）：时序图逻辑图例状态解析
  * - 功能目的与触发方式：标准时序图和混合时序图在生成选项、处理图例事件或刷新查询后调用，统一解析当前指标与时间对比图例的可见状态。
- * - 输入契约：selected 为 ECharts 图例代表系列或显示标签到布尔值的映射，可为空；metadata 提供真实代表系列、成员系列、图例标签、分组类型和对比成员所属的当前指标。
- * - 输出契约：返回保留未知图例状态的完整映射，并为每个真实系列写入最终可见状态；当前组默认打开，对比组默认关闭。
- * - 处理流程：先解析每个逻辑图例组状态，再按当前组状态约束对比成员，最后展开到所有真实系列成员。
- * - 业务规则：显式逻辑代表值或显示标签状态优先于旧版真实成员状态；对比成员只有在自身 offset 组和所属当前指标均打开时可见；没有父当前组的对比成员只受 offset 组控制。
+ * - 输入契约：selected 为稳定逻辑键、ECharts 真实代表系列、显示标签或旧维度成员到布尔值的映射，可为空；metadata 提供这些键的优先级所需的代表系列、成员系列、图例标签、分组类型和对比成员所属的当前指标。
+ * - 输出契约：返回保留未知图例状态的完整映射，并为每个真实系列写入最终可见状态；当前组默认打开，对比组默认关闭，稳定逻辑键保留其独立开关。
+ * - 处理流程：按稳定逻辑键、真实代表系列、显示标签、旧成员状态、默认值的顺序恢复逻辑状态，再按当前组状态约束对比成员，最后展开到所有真实系列成员。
+ * - 业务规则：稳定逻辑键优先于代表系列、显示标签和旧维度成员；对比成员只有在自身 offset 组和所属当前指标均打开时可见；没有父当前组的对比成员只受 offset 组控制。
  * - 状态与副作用：纯函数，不修改输入对象，不写入数据库、缓存或浏览器存储。
  * - 异常与边界：缺失组类型按当前组处理；缺失父组的对比成员只受自身组状态控制。
  * - 不变量与约束：逻辑组代表值必须是真实系列名；同一成员只允许由一个逻辑组决定状态；调用必须是幂等的。
@@ -165,24 +168,29 @@ export function resolveLegendState(
   Object.entries(metadata.groups).forEach(([representative, members]) => {
     const kind = metadata.kinds[representative] ?? 'current';
     const label = metadata.labels[representative];
+    const stateKey =
+      metadata.stateKeys[representative] ?? `${kind}:${label ?? ''}`;
+    const selectedByStateKey = input[stateKey];
     const selectedByRepresentative = input[representative];
-    const selectedByLabel = label ? input[label] : undefined;
-    const hasExplicitGroupState =
-      selectedByRepresentative !== undefined || selectedByLabel !== undefined;
-    const hasHiddenMember =
-      !hasExplicitGroupState &&
-      kind === 'current' &&
-      members.some(member => input[member] === false);
+    const selectedByLabel = label !== undefined ? input[label] : undefined;
+    const memberValues = members
+      .map(member => input[member])
+      .filter((value): value is boolean => value !== undefined);
+    const legacyMemberState =
+      memberValues.length === 0
+        ? undefined
+        : kind === 'current'
+          ? memberValues.every(Boolean)
+          : memberValues.some(Boolean);
     const isSelected =
-      selectedByRepresentative === false ||
-      selectedByLabel === false ||
-      hasHiddenMember
-        ? false
-        : (selectedByRepresentative ??
-          selectedByLabel ??
-          kind !== 'comparison');
+      selectedByStateKey ??
+      selectedByRepresentative ??
+      selectedByLabel ??
+      legacyMemberState ??
+      kind !== 'comparison';
 
     groupSelected[representative] = isSelected;
+    state[stateKey] = isSelected;
     state[representative] = isSelected;
   });
 
@@ -197,6 +205,80 @@ export function resolveLegendState(
   });
 
   return state;
+}
+
+/**
+ * 中文职责：把一次 ECharts 图例事件压缩成只影响被操作逻辑组的增量状态；全选和反选不提供 changedName，因此更新全部逻辑组。
+ */
+export function getLegendStateChange(
+  selected: LegendState | undefined,
+  metadata: LegendGroupMetadata,
+  changedName?: string,
+): LegendState {
+  const input = selected ?? {};
+  if (Object.keys(metadata.groups).length === 0) {
+    return { ...input };
+  }
+
+  const changedRepresentative = changedName
+    ? Object.entries(metadata.groups).find(
+        ([representative, members]) =>
+          representative === changedName ||
+          members.includes(changedName) ||
+          metadata.labels[representative] === changedName ||
+          metadata.stateKeys[representative] === changedName,
+      )?.[0]
+    : undefined;
+  const representatives = changedRepresentative
+    ? [changedRepresentative]
+    : changedName
+      ? []
+      : Object.keys(metadata.groups);
+  const selectedForResolution = { ...input };
+  if (changedRepresentative) {
+    const stateKey = metadata.stateKeys[changedRepresentative];
+    if (stateKey) delete selectedForResolution[stateKey];
+  } else if (!changedName) {
+    Object.values(metadata.stateKeys).forEach(stateKey => {
+      delete selectedForResolution[stateKey];
+    });
+  }
+  const resolved = resolveLegendState(selectedForResolution, metadata);
+  const result: LegendState = {};
+
+  representatives.forEach(representative => {
+    const stateKey = metadata.stateKeys[representative];
+    const groupSelected = stateKey
+      ? (resolved[stateKey] ?? resolved[representative] ?? false)
+      : (resolved[representative] ?? false);
+    if (stateKey) result[stateKey] = groupSelected;
+    result[representative] = resolved[representative] ?? groupSelected;
+    metadata.groups[representative].forEach(member => {
+      result[member] = resolved[member] ?? groupSelected;
+    });
+  });
+
+  if (changedName && !changedRepresentative) {
+    const value = input[changedName];
+    if (value !== undefined) result[changedName] = value;
+    return result;
+  }
+
+  if (!changedName) {
+    const knownKeys = new Set(
+      Object.entries(metadata.groups).flatMap(([representative, members]) => [
+        representative,
+        metadata.labels[representative],
+        metadata.stateKeys[representative],
+        ...members,
+      ]),
+    );
+    Object.entries(input).forEach(([key, value]) => {
+      if (!knownKeys.has(key)) result[key] = value;
+    });
+  }
+
+  return result;
 }
 
 export function extractDataTotalValues(

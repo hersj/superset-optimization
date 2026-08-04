@@ -33,7 +33,11 @@ import type ComponentModel from 'echarts/types/src/model/Component';
 import { EchartsHandler, EventHandlers } from '../types';
 import Echart from '../components/Echart';
 import { TimeseriesChartTransformedProps } from './types';
-import { formatSeriesName, resolveLegendState } from '../utils/series';
+import {
+  formatSeriesName,
+  getLegendStateChange,
+  resolveLegendState,
+} from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 
 const TIMER_DURATION = 300;
@@ -49,7 +53,13 @@ export default function EchartsTimeseries({
   setDataMask,
   setControlValue,
   legendData = [],
-  legendGroups = { groups: {}, labels: {}, kinds: {}, parents: {} },
+  legendGroups = {
+    groups: {},
+    labels: {},
+    kinds: {},
+    parents: {},
+    stateKeys: {},
+  },
   onContextMenu,
   onLegendStateChanged,
   onFocusedSeries,
@@ -219,11 +229,31 @@ export default function EchartsTimeseries({
   const canCrossFilterByXAxis =
     !hasDimensions && xAxis.type === AxisType.Category;
 
-  // 中文职责：把逻辑图例状态展开到真实维度系列；对比系列还受父当前指标状态约束。
+  /*
+   * 功能审计（可重写规格）：标准时序图图例事件增量
+   * - 功能目的与触发方式：处理标准 bar、line、smooth、scatter、step 图的图例事件和查询刷新。
+   * - 输入契约：selected 为 ECharts 选择映射，changedName 仅由单击事件提供；legendGroups 由 transformProps 生成。
+   * - 输出契约：真实成员由当前逻辑组和父当前指标展开；单击返回一个逻辑组的增量，全选/反选返回全部逻辑组。
+   * - 处理流程：先恢复稳定逻辑状态，再 dispatch 非代表成员，最后交由 ChartRenderer 合并增量状态。
+   * - 业务规则：当前指标默认打开、offset 默认关闭；offset 必须同时受自身开关和父当前指标开关约束；不修改查询或看板配置。
+   * - 状态与副作用：只更新当前 ECharts 实例和 ChartRenderer 内存状态，保留数字显示、tooltip、颜色、分页和注释图例。
+   * - 外部依赖：ECharts legend 事件、共享 series 状态工具、ChartRenderer。
+   * - 异常与边界：无 ECharts 实例时仍返回状态；无逻辑分组时保持原始映射。
+   * - 不变量与约束：ECharts 图例 key 始终是真实系列名，事件不会重置未点击逻辑组。
+   * - 验证方式：EchartsTimeseries.test.tsx 覆盖单击增量，transform 测试覆盖刷新和标准图类型。
+   */
   const syncTimeComparisonLegend = useCallback(
-    (selected: LegendState) => {
+    (selected: LegendState, changedName?: string) => {
       const echartInstance = echartRef.current?.getEchartInstance();
-      const resolved = resolveLegendState(selected, legendGroups);
+      const stateChange = getLegendStateChange(
+        selected,
+        legendGroups,
+        changedName,
+      );
+      const resolved = {
+        ...resolveLegendState(selected, legendGroups),
+        ...stateChange,
+      };
       Object.entries(legendGroups.groups).forEach(([, seriesNames]) => {
         seriesNames
           .filter(name => name !== seriesNames[0])
@@ -235,7 +265,7 @@ export default function EchartsTimeseries({
             });
           });
       });
-      return resolved;
+      return stateChange;
     },
     [legendGroups],
   );
@@ -296,7 +326,9 @@ export default function EchartsTimeseries({
       onLegendScroll?.(payload.scrollDataIndex);
     },
     legendselectchanged: payload => {
-      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
+      onLegendStateChanged?.(
+        syncTimeComparisonLegend(payload.selected, payload.name),
+      );
     },
     legendselectall: payload => {
       onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));

@@ -32,6 +32,7 @@ import Echart from '../components/Echart';
 import { EchartsHandler, EventHandlers } from '../types';
 import {
   formatSeriesName,
+  getLegendStateChange,
   resolveLegendState,
 } from '../utils/series';
 
@@ -51,7 +52,13 @@ export default function EchartsMixedTimeseries({
   onContextMenu,
   onFocusedSeries,
   onLegendStateChanged,
-  legendGroups = { groups: {}, labels: {}, kinds: {}, parents: {} },
+  legendGroups = {
+    groups: {},
+    labels: {},
+    kinds: {},
+    parents: {},
+    stateKeys: {},
+  },
   xValueFormatter,
   xAxis,
   refs,
@@ -139,10 +146,10 @@ export default function EchartsMixedTimeseries({
   /*
    * 功能审计（可重写规格）：混合时序图逻辑图例状态同步
    * - 功能目的与触发方式：响应图例单击、全选、反选及查询刷新，把代表图例的逻辑状态同步到所有真实系列。
-   * - 输入契约：selected 是 ECharts 当前图例选择映射；legendGroups.groups 的 key 是真实系列代表值，value 是同一逻辑组的真实系列名。
-   * - 输出契约：返回合并后的逻辑状态，并向 ECharts 对非代表真实系列发出 legendSelect/legendUnSelect；不修改查询数据或看板配置。
-   * - 处理流程：先由共享解析器补齐新系列默认值并保留旧状态，再按组展开实际成员；对比成员只有在 offset 组和对应当前指标同时打开时显示。
-   * - 业务规则：当前指标组默认打开、offset 组默认关闭；显式逻辑代表值优先于旧维度成员状态；无对比时不改变既有维度图例行为。
+   * - 输入契约：selected 是 ECharts 当前图例选择映射；单击时另有 changedName；legendGroups.groups 的 key 是真实系列代表值，value 是同一逻辑组的真实系列名。
+   * - 输出契约：真实成员按逻辑状态展开；单击只返回被修改逻辑组的增量，全选/反选返回全部逻辑组；不修改查询数据或看板配置。
+   * - 处理流程：刷新先由共享解析器按稳定 key 恢复状态；事件以本次真实代表系列值覆盖对应旧 key，再按组展开实际成员；对比成员只有在 offset 组和对应当前指标同时打开时显示。
+   * - 业务规则：当前指标组默认打开、offset 组默认关闭；稳定 key 优先用于刷新，事件组优先使用 ECharts 本次选择；无对比时不改变既有维度图例行为。
    * - 状态与副作用：仅改变当前 ECharts 实例的选择状态，并把状态交给 ChartRenderer 合并保存。
    * - 外部依赖：ECharts dispatchAction、resolveLegendState 和 transformProps 生成的 legendGroups。
    * - 异常与边界：实例尚未挂载时只返回解析后的状态；空分组或空 selected 不抛错。
@@ -150,20 +157,29 @@ export default function EchartsMixedTimeseries({
    * - 验证方式：MixedTimeseries 组件图例事件测试及看板 74 的 Query A/B、维度、offset 交互冒烟。
    */
   const syncTimeComparisonLegend = useCallback(
-    (selected: LegendState) => {
-      const resolved = resolveLegendState(selected, legendGroups);
+    (selected: LegendState, changedName?: string) => {
+      const stateChange = getLegendStateChange(
+        selected,
+        legendGroups,
+        changedName,
+      );
+      const resolved = {
+        ...resolveLegendState(selected, legendGroups),
+        ...stateChange,
+      };
       const echartInstance = echartRef.current?.getEchartInstance();
       Object.values(legendGroups.groups).forEach(seriesNames => {
         seriesNames
           .filter(name => name !== seriesNames[0])
           .forEach(name => {
             echartInstance?.dispatchAction({
-              type: resolved[name] === false ? 'legendUnSelect' : 'legendSelect',
+              type:
+                resolved[name] === false ? 'legendUnSelect' : 'legendSelect',
               name,
             });
           });
       });
-      return resolved;
+      return stateChange;
     },
     [legendGroups],
   );
@@ -189,7 +205,9 @@ export default function EchartsMixedTimeseries({
       onFocusedSeries(params.seriesName);
     },
     legendselectchanged: payload => {
-      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
+      onLegendStateChanged?.(
+        syncTimeComparisonLegend(payload.selected, payload.name),
+      );
     },
     legendselectall: payload => {
       onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));

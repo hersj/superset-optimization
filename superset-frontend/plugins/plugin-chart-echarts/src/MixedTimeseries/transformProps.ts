@@ -653,6 +653,7 @@ export default function transformProps(
     labels: {},
     kinds: {},
     parents: {},
+    stateKeys: {},
   };
   const legendGroups = hasTimeCompare
     ? buildLegendGroupMetadata(legendInputs)

@@ -783,6 +783,7 @@ export default function transformProps(
     labels: {},
     kinds: {},
     parents: {},
+    stateKeys: {},
   };
   const legendGroups = shouldGroupLogicalLegends
     ? buildLegendGroupMetadata(legendInputs)
