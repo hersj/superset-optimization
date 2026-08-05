@@ -34,6 +34,40 @@ export interface PivotMetricLayout {
 
 export const PIVOT_METRIC_LAYOUT_VERSION = 1;
 
+export type MetricMovePosition = 'first' | 'up' | 'down' | 'last';
+
+/**
+ * 个人列模板排序按钮的纯函数：只重排传入的指标 ID，不修改显隐状态或原数组。
+ * 弹窗拖拽和四个精确移动按钮都通过此函数保持同一排序语义。
+ */
+export function moveMetricId(
+  metricIds: string[],
+  metricId: string,
+  position: MetricMovePosition,
+): string[] {
+  const sourceIndex = metricIds.indexOf(metricId);
+  if (sourceIndex < 0) {
+    return metricIds;
+  }
+
+  const targetIndex =
+    position === 'first'
+      ? 0
+      : position === 'up'
+        ? Math.max(0, sourceIndex - 1)
+        : position === 'down'
+          ? Math.min(metricIds.length - 1, sourceIndex + 1)
+          : metricIds.length - 1;
+  if (sourceIndex === targetIndex) {
+    return metricIds;
+  }
+
+  const nextMetricIds = [...metricIds];
+  nextMetricIds.splice(sourceIndex, 1);
+  nextMetricIds.splice(targetIndex, 0, metricId);
+  return nextMetricIds;
+}
+
 /** 仅用于读取上线前已保存的 layout；新模板永远不再写入此格式。 */
 function getLegacyMetricId(metric: QueryFormMetric): string {
   const normalized =

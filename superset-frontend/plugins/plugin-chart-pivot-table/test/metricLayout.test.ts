@@ -1,6 +1,7 @@
 import {
   buildMetricDescriptors,
   getMetricId,
+  moveMetricId,
   reconcileMetricLayout,
 } from '../src/metricLayout';
 
@@ -93,5 +94,33 @@ describe('personal column template metric identities', () => {
 
     expect(result.orderedMetricIds).toEqual(['sales', 'new_cost']);
     expect(result.hiddenMetricIds).toEqual(['new_cost']);
+  });
+
+  test.each([
+    ['first', ['sales', 'profit', 'cost'], 'cost', ['cost', 'sales', 'profit']],
+    ['up', ['sales', 'profit', 'cost'], 'profit', ['profit', 'sales', 'cost']],
+    [
+      'down',
+      ['sales', 'profit', 'cost'],
+      'profit',
+      ['sales', 'cost', 'profit'],
+    ],
+    ['last', ['sales', 'profit', 'cost'], 'sales', ['profit', 'cost', 'sales']],
+  ] as const)(
+    'moves a metric %s without changing other metric ids',
+    (position, ids, metricId, expected) => {
+      expect(moveMetricId(ids, metricId, position)).toEqual(expected);
+    },
+  );
+
+  test('keeps first and last metrics in place when the requested move is unavailable', () => {
+    expect(moveMetricId(['sales', 'profit'], 'sales', 'up')).toEqual([
+      'sales',
+      'profit',
+    ]);
+    expect(moveMetricId(['sales', 'profit'], 'profit', 'down')).toEqual([
+      'sales',
+      'profit',
+    ]);
   });
 });

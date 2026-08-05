@@ -50,6 +50,8 @@ import type {
 } from 'src/dashboard/actions/personalChartLayout';
 import {
   buildMetricDescriptors,
+  type MetricMovePosition,
+  moveMetricId,
   PIVOT_METRIC_LAYOUT_VERSION,
   reconcileMetricLayout,
 } from '../../../../plugins/plugin-chart-pivot-table/src/metricLayout';
@@ -122,16 +124,22 @@ type SortableMetricRowProps = {
   id: string;
   label: string;
   checked: boolean;
+  isFirst: boolean;
+  isLast: boolean;
   disableToggle: boolean;
   onToggle: (id: string) => void;
+  onMove: (id: string, position: MetricMovePosition) => void;
 };
 
 const SortableMetricRow = ({
   id,
   label,
   checked,
+  isFirst,
+  isLast,
   disableToggle,
   onToggle,
+  onMove,
 }: SortableMetricRowProps) => {
   const {
     attributes,
@@ -165,6 +173,38 @@ const SortableMetricRow = ({
         onChange={() => onToggle(id)}
       />
       <MetricLabel title={label}>{label}</MetricLabel>
+      <Button
+        buttonStyle="link"
+        aria-label={t('Move metric to first')}
+        disabled={isFirst}
+        onClick={() => onMove(id, 'first')}
+      >
+        {t('置顶')}
+      </Button>
+      <Button
+        buttonStyle="link"
+        aria-label={t('Move metric up')}
+        disabled={isFirst}
+        onClick={() => onMove(id, 'up')}
+      >
+        {t('上移')}
+      </Button>
+      <Button
+        buttonStyle="link"
+        aria-label={t('Move metric down')}
+        disabled={isLast}
+        onClick={() => onMove(id, 'down')}
+      >
+        {t('下移')}
+      </Button>
+      <Button
+        buttonStyle="link"
+        aria-label={t('Move metric to last')}
+        disabled={isLast}
+        onClick={() => onMove(id, 'last')}
+      >
+        {t('置底')}
+      </Button>
     </Row>
   );
 };
@@ -205,13 +245,13 @@ export default function PivotMetricLayoutModal({
    * - 功能目的与触发方式：用户从透视表“自定义列”打开后调整列顺序/显隐，并选择使用、保存、设默认或删除三格个人模板。
    * - 输入契约：metrics 是当前图表指标；templates 是当前用户、dashboard、chart 的已持久化 slot；initialLayout 是当前会话布局。
    * - 输出契约：使用系统默认或模板只回调 onApply；保存、设默认、删除通过父组件回调发起服务端写入；关闭不产生草稿写入。
-   * - 处理流程：模板区固定显示在指标列表之前，打开时由 initialLayout 生成内存草稿；拖动/勾选仅更新草稿；保存到选定 slot 成功后应用草稿；使用模板立即应用后关闭。
+   * - 处理流程：模板区固定显示在指标列表之前，打开时由 initialLayout 生成内存草稿；拖动、置顶/上移/下移/置底和勾选仅更新草稿；保存到选定 slot 成功后应用草稿；使用模板立即应用后关闭。
    * - 业务规则：系统默认不删除模板也不清除 is_default；非默认模板使用不修改默认；删除默认后不补选；失败保留当前草稿和会话视图。
    * - 状态与副作用：组件 state 仅保存打开期间草稿、目标 slot 和名称；网络/Redux 副作用由父图表处理。
    * - 外部依赖：metricLayout 的 identity/reconcile 规则、父组件模板 API 回调、dnd-kit。
    * - 异常与边界：至少保留一个可见指标；空 slot 可新建；关闭、取消和离开图表均丢弃未保存草稿。
    * - 不变量与约束：不将草稿写入服务端；应用历史模板时不自动展示新增指标，编辑并保存时必须将新增指标追加到排序且保持隐藏；不以点击模板改变默认。
-   * - 验证方式：前端类型检查及模板 API 单测；服务器实机验收三 slot 保存、跨刷新恢复、默认和系统默认语义。
+   * - 验证方式：metricLayout.test.ts 覆盖四种精确移动；服务器实机验收三 slot 保存、跨刷新恢复、默认和系统默认语义。
    */
   const metricDescriptors = useMemo(
     () => buildMetricDescriptors(metrics),
@@ -268,6 +308,12 @@ export default function PivotMetricLayoutModal({
       }
       return [...currentHiddenMetricIds, metricId];
     });
+  };
+
+  const handleMove = (metricId: string, position: MetricMovePosition) => {
+    setOrderedMetricIds(currentMetricIds =>
+      moveMetricId(currentMetricIds, metricId, position),
+    );
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -384,7 +430,7 @@ export default function PivotMetricLayoutModal({
     >
       <Description>
         {t(
-          '拖动可调整指标顺序，取消勾选可隐藏指标。修改内容仅是草稿，保存到模板后才会生效。',
+          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿，保存到模板后才会生效。',
         )}
       </Description>
       {!canPersistTemplate && (
@@ -456,17 +502,20 @@ export default function PivotMetricLayoutModal({
           strategy={verticalListSortingStrategy}
         >
           <List>
-            {orderedMetrics.map(metric => (
+            {orderedMetrics.map((metric, index) => (
               <SortableMetricRow
                 key={metric!.id}
                 id={metric!.id}
                 label={metric!.label}
                 checked={!hiddenMetricIds.includes(metric!.id)}
+                isFirst={index === 0}
+                isLast={index === orderedMetrics.length - 1}
                 disableToggle={
                   !hiddenMetricIds.includes(metric!.id) &&
                   visibleMetricCount <= 1
                 }
                 onToggle={handleToggle}
+                onMove={handleMove}
               />
             ))}
           </List>

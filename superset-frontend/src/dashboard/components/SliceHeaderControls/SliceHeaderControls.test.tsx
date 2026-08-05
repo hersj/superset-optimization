@@ -611,3 +611,47 @@ test('Should pass formData to Share menu for embed code feature', () => {
   openMenu();
   expect(screen.getByText('Share')).toBeInTheDocument();
 });
+
+test('shows the active personal column template on a pivot chart and applies another template', async () => {
+  const props = createProps(VizType.PivotTable);
+  const salesLayout = {
+    version: 1,
+    ordered_metric_ids: ['sales', 'profit'],
+    hidden_metric_ids: [],
+  };
+  const profitLayout = {
+    version: 1,
+    ordered_metric_ids: ['profit', 'sales'],
+    hidden_metric_ids: ['sales'],
+  };
+  Object.assign(props, {
+    formData: {
+      ...props.formData,
+      viz_type: VizType.PivotTable,
+      metrics: ['sales', 'profit'],
+    },
+    personalChartTemplates: [
+      { slot: 1, name: '销量优先', is_default: true, layout: salesLayout },
+      { slot: 2, name: '利润优先', is_default: false, layout: profitLayout },
+    ],
+    personalChartTemplateActiveSlot: 1,
+    onApplyPersonalChartLayout: jest.fn(),
+  });
+
+  renderWrapper(props);
+  const selector = screen.getByRole('button', {
+    name: '列模板：销量优先',
+  });
+  expect(selector).toBeInTheDocument();
+
+  userEvent.click(selector);
+  userEvent.click(await screen.findByText('利润优先'));
+  expect(props.onApplyPersonalChartLayout).toHaveBeenCalledWith(
+    profitLayout,
+    2,
+  );
+
+  userEvent.click(selector);
+  userEvent.click(await screen.findByText('系统默认'));
+  expect(props.onApplyPersonalChartLayout).toHaveBeenLastCalledWith(null, null);
+});
