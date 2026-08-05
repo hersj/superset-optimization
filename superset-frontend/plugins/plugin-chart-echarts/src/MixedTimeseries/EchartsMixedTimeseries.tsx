@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   AxisType,
   BinaryQueryObjectFilterClause,
@@ -25,16 +25,11 @@ import {
   getColumnLabel,
   getNumberFormatter,
   getTimeFormatter,
-  LegendState,
 } from '@superset-ui/core';
 import { EchartsMixedTimeseriesChartTransformedProps } from './types';
 import Echart from '../components/Echart';
 import { EchartsHandler, EventHandlers } from '../types';
-import {
-  formatSeriesName,
-  getLegendStateChange,
-  resolveLegendState,
-} from '../utils/series';
+import { formatSeriesName, getLegendStateChange } from '../utils/series';
 
 export default function EchartsMixedTimeseries({
   height,
@@ -65,7 +60,6 @@ export default function EchartsMixedTimeseries({
   coltypeMapping,
 }: EchartsMixedTimeseriesChartTransformedProps) {
   const echartRef = useRef<EchartsHandler | null>(null);
-  const isProgrammaticLegendSync = useRef(false);
   refs.echartRef = echartRef;
   const isFirstQuery = useCallback(
     (seriesIndex: number) => seriesIndex < seriesBreakdown,
@@ -146,67 +140,18 @@ export default function EchartsMixedTimeseries({
 
   /*
    * 功能审计（可重写规格）：混合时序图逻辑图例状态同步
-   * - 功能目的与触发方式：响应图例单击、全选、反选及查询刷新，把代表图例的逻辑状态同步到所有真实系列。
+   * - 功能目的与触发方式：响应混合时序图的用户图例单击、全选和反选。
    * - 输入契约：selected 是 ECharts 当前图例选择映射；单击时另有 changedName；legendGroups.groups 的 key 是真实系列代表值，value 是同一逻辑组的真实系列名。
    * - 输出契约：真实成员按逻辑状态展开；单击只返回被修改逻辑组的增量，全选/反选返回全部逻辑组；不修改查询数据或看板配置。
-   * - 处理流程：刷新先由共享解析器按稳定 key 恢复状态；事件以本次真实代表系列值覆盖对应旧 key，再按组展开实际成员；对比成员只有在 offset 组和对应当前指标同时打开时显示。
-   * - 用户事件边界：同步期间使用 dispatchAction(payload, { silent: true }) 更新 ECharts 成员，不触发用户图例回调；只有用户单击、全选、反选才产生状态增量。
+   * - 处理流程：事件以本次真实代表系列值生成逻辑组增量；查询刷新仅通过 transformProps 的 legend.selected 和 ECharts setOption 恢复真实成员。
+   * - 用户事件边界：只有用户单击、全选、反选才产生状态增量；刷新不得 dispatchAction 图例事件或回写默认选择。
    * - 业务规则：当前指标组默认打开、offset 组默认关闭；稳定 key 优先用于刷新，事件组优先使用 ECharts 本次选择；无对比时不改变既有维度图例行为。
-   * - 状态与副作用：仅改变当前 ECharts 实例的选择状态，并把状态交给 ChartRenderer 合并保存。
-   * - 外部依赖：ECharts dispatchAction、resolveLegendState 和 transformProps 生成的 legendGroups。
-   * - 异常与边界：实例尚未挂载时只返回解析后的状态；空分组或空 selected 不抛错。
+   * - 状态与副作用：仅把用户状态交给 ChartRenderer 合并保存，不直接修改 ECharts 实例。
+   * - 外部依赖：ECharts legend 事件、getLegendStateChange 和 transformProps 生成的 legendGroups。
+   * - 异常与边界：空分组或空 selected 不抛错；数字显示和时间对比切换不改变已有状态。
    * - 不变量与约束：代表值必须是真实系列名，不能使用虚拟 offset 名称；同一事件不可重置其他逻辑组。
    * - 验证方式：MixedTimeseries 组件图例事件测试及看板 74 的 Query A/B、维度、offset 交互冒烟。
    */
-  const syncTimeComparisonLegend = useCallback(
-    (selected: LegendState, changedName?: string) => {
-      const stateChange = getLegendStateChange(
-        selected,
-        legendGroups,
-        changedName,
-      );
-      const resolved = {
-        ...resolveLegendState(selected, legendGroups),
-        ...stateChange,
-      };
-      const echartInstance = echartRef.current?.getEchartInstance();
-      if (echartInstance) {
-        isProgrammaticLegendSync.current = true;
-        try {
-          Object.values(legendGroups.groups).forEach(seriesNames => {
-            seriesNames
-              .filter(name => name !== seriesNames[0])
-              .forEach(name => {
-                echartInstance.dispatchAction(
-                  {
-                    type:
-                      resolved[name] === false
-                        ? 'legendUnSelect'
-                        : 'legendSelect',
-                    name,
-                  },
-                  { silent: true },
-                );
-              });
-          });
-        } finally {
-          isProgrammaticLegendSync.current = false;
-        }
-      }
-      return stateChange;
-    },
-    [legendGroups],
-  );
-
-  useEffect(() => {
-    const selected = (echartOptions.legend as any)?.selected as
-      | LegendState
-      | undefined;
-    if (selected) {
-      syncTimeComparisonLegend(selected);
-    }
-  }, [echartOptions.legend, syncTimeComparisonLegend]);
-
   const eventHandlers: EventHandlers = {
     click: props => {
       const { seriesName, seriesIndex } = props;
@@ -219,18 +164,19 @@ export default function EchartsMixedTimeseries({
       onFocusedSeries(params.seriesName);
     },
     legendselectchanged: payload => {
-      if (isProgrammaticLegendSync.current) return;
       onLegendStateChanged?.(
-        syncTimeComparisonLegend(payload.selected, payload.name),
+        getLegendStateChange(payload.selected, legendGroups, payload.name),
       );
     },
     legendselectall: payload => {
-      if (isProgrammaticLegendSync.current) return;
-      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
+      onLegendStateChanged?.(
+        getLegendStateChange(payload.selected, legendGroups),
+      );
     },
     legendinverseselect: payload => {
-      if (isProgrammaticLegendSync.current) return;
-      onLegendStateChanged?.(syncTimeComparisonLegend(payload.selected));
+      onLegendStateChanged?.(
+        getLegendStateChange(payload.selected, legendGroups),
+      );
     },
     contextmenu: async eventParams => {
       if (onContextMenu) {
