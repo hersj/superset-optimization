@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { SqlaFormData, VizType } from '@superset-ui/core';
+import { ComparisonType, SqlaFormData, VizType } from '@superset-ui/core';
 import buildQuery from '../../src/Timeseries/buildQuery';
 
 describe('Timeseries buildQuery', () => {
@@ -58,6 +58,19 @@ describe('Timeseries buildQuery', () => {
     expect(query.series_limit_metric).toEqual('bar');
     expect(query.order_desc).toEqual(true);
     expect(query.orderby).toEqual([['foo', true]]);
+  });
+
+  test('uses the native time-filter comparison over the saved chart offset', () => {
+    const {
+      queries: [query],
+    } = buildQuery({
+      ...formData,
+      comparison_type: ComparisonType.Values,
+      time_compare: ['30 days ago'],
+      extra_form_data: { time_compare: '1 week ago' },
+    });
+
+    expect(query.time_offsets).toEqual(['1 week ago']);
   });
 });
 

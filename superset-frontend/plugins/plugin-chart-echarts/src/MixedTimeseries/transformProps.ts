@@ -437,8 +437,14 @@ export default function transformProps(
     parseAxisBound,
   );
 
-  const array = ensureIsArray(chartProps.rawFormData?.time_compare);
-  const arrayB = ensureIsArray((chartProps.rawFormData as any)?.time_compare_b);
+  const nativeTimeCompare = (chartProps.rawFormData as any)?.extra_form_data
+    ?.time_compare;
+  const array = ensureIsArray(
+    nativeTimeCompare ?? chartProps.rawFormData?.time_compare,
+  );
+  const arrayB = ensureIsArray(
+    nativeTimeCompare ?? (chartProps.rawFormData as any)?.time_compare_b,
+  );
   const allTimeCompare = Array.from(new Set([...array, ...arrayB]));
   const inverted = invert(verboseMap);
   const legendInputs: LegendGroupInput[] = [];

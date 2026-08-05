@@ -40,9 +40,28 @@ import {
   timeCompareOperator,
 } from '@superset-ui/chart-controls';
 
+/**
+ * 功能审计（可重写规格）：时序图使用自定义时间筛选器的过去对比
+ * - 功能目的与触发方式：看板自定义时间筛选器改变日、周、月粒度时构建时序查询。
+ * - 输入契约：extra_form_data.time_compare 是本次筛选器覆盖值，图表 time_compare 是保存的兜底值。
+ * - 输出契约：查询、后处理与 time_offsets 使用同一偏移数组。
+ * - 处理流程：筛选器偏移优先，缺失时使用图表偏移，再复用既有查询构建。
+ * - 业务规则：日、周、月分别采用 1 day ago、1 week ago、1 month ago。
+ * - 状态与副作用：纯前端查询转换，不写图表、看板或存储。
+ * - 外部依赖：原生筛选器 extra_form_data 与 Superset query builder。
+ * - 异常与边界：缺失偏移返回空数组；空数组代表不比较。
+ * - 不变量与约束：保存的 30 days ago 不得覆盖本次周或月筛选器偏移。
+ * - 验证方式：Timeseries buildQuery 覆盖 30 days ago -> 1 week ago。
+ */
 export default function buildQuery(formData: QueryFormData) {
-  const { groupby } = formData;
-  return buildQueryContext(formData, baseQueryObject => {
+  const effectiveFormData = {
+    ...formData,
+    time_compare: ensureIsArray(
+      (formData.extra_form_data as any)?.time_compare ?? formData.time_compare,
+    ),
+  };
+  const { groupby } = effectiveFormData;
+  return buildQueryContext(effectiveFormData, baseQueryObject => {
     /* the `pivotOperatorInRuntime` determines how to pivot the dataframe returned from the raw query.
        1. If it's a time compared query, there will return a pivoted dataframe that append time compared metrics. for instance:
 
@@ -64,22 +83,24 @@ export default function buildQuery(formData: QueryFormData) {
 
      */
     // only add series limit metric if it's explicitly needed e.g. for sorting
-    const extra_metrics = extractExtraMetrics(formData);
+    const extra_metrics = extractExtraMetrics(effectiveFormData);
 
     const pivotOperatorInRuntime: PostProcessingPivot = isTimeComparison(
-      formData,
+      effectiveFormData,
       baseQueryObject,
     )
-      ? timeComparePivotOperator(formData, baseQueryObject)
-      : pivotOperator(formData, baseQueryObject);
+      ? timeComparePivotOperator(effectiveFormData, baseQueryObject)
+      : pivotOperator(effectiveFormData, baseQueryObject);
 
     const columns = [
-      ...(isXAxisSet(formData) ? ensureIsArray(getXAxisColumn(formData)) : []),
+      ...(isXAxisSet(effectiveFormData)
+        ? ensureIsArray(getXAxisColumn(effectiveFormData))
+        : []),
       ...ensureIsArray(groupby),
     ];
 
-    const time_offsets = isTimeComparison(formData, baseQueryObject)
-      ? formData.time_compare
+    const time_offsets = isTimeComparison(effectiveFormData, baseQueryObject)
+      ? effectiveFormData.time_compare
       : [];
 
     return [
@@ -88,7 +109,7 @@ export default function buildQuery(formData: QueryFormData) {
         metrics: [...(baseQueryObject.metrics || []), ...extra_metrics],
         columns,
         series_columns: groupby,
-        ...(isXAxisSet(formData) ? {} : { is_timeseries: true }),
+        ...(isXAxisSet(effectiveFormData) ? {} : { is_timeseries: true }),
         // todo: move `normalizeOrderBy to extractQueryFields`
         orderby: normalizeOrderBy(baseQueryObject).orderby,
         time_offsets,
@@ -100,15 +121,19 @@ export default function buildQuery(formData: QueryFormData) {
         */
         post_processing: [
           pivotOperatorInRuntime,
-          resampleOperator(formData, baseQueryObject),
-          rollingWindowOperator(formData, baseQueryObject),
-          timeCompareOperator(formData, baseQueryObject),
-          renameOperator(formData, baseQueryObject),
-          contributionOperator(formData, baseQueryObject, time_offsets),
-          sortOperator(formData, baseQueryObject),
-          flattenOperator(formData, baseQueryObject),
+          resampleOperator(effectiveFormData, baseQueryObject),
+          rollingWindowOperator(effectiveFormData, baseQueryObject),
+          timeCompareOperator(effectiveFormData, baseQueryObject),
+          renameOperator(effectiveFormData, baseQueryObject),
+          contributionOperator(
+            effectiveFormData,
+            baseQueryObject,
+            time_offsets,
+          ),
+          sortOperator(effectiveFormData, baseQueryObject),
+          flattenOperator(effectiveFormData, baseQueryObject),
           // todo: move prophet before flatten
-          prophetOperator(formData, baseQueryObject),
+          prophetOperator(effectiveFormData, baseQueryObject),
         ],
       },
     ];

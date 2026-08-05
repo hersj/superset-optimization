@@ -42,8 +42,13 @@ import {
 } from '../utils/formDataSuffix';
 
 export default function buildQuery(formData: QueryFormData) {
+  const nativeTimeCompare = (formData.extra_form_data as any)?.time_compare;
   const baseFormData = {
     ...formData,
+    time_compare: ensureIsArray(nativeTimeCompare ?? formData.time_compare),
+    time_compare_b: ensureIsArray(
+      nativeTimeCompare ?? (formData as any).time_compare_b,
+    ),
   };
 
   const formData1 = removeFormDataSuffix(baseFormData, '_b');
@@ -75,7 +80,9 @@ export default function buildQuery(formData: QueryFormData) {
           (fd.extra_form_data && fd.extra_form_data.time_grain_sqla) ||
           fd.time_grain_sqla;
         const comparisonAllowed =
-          activeGrain === 'P1D' || activeGrain === 'P1M';
+          activeGrain === 'P1D' ||
+          activeGrain === 'P1W' ||
+          activeGrain === 'P1M';
         if (!comparisonAllowed) {
           fd.time_compare = [];
         }

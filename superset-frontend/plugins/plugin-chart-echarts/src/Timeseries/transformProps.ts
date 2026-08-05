@@ -355,7 +355,14 @@ export default function transformProps(
     currencyCodeColumn,
   );
 
-  const array = ensureIsArray(chartProps.rawFormData?.time_compare);
+  const array = ensureIsArray(
+    (chartProps.rawFormData as any)?.extra_form_data?.time_compare ??
+      chartProps.rawFormData?.time_compare,
+  );
+  const effectiveRawFormData = {
+    ...chartProps.rawFormData,
+    time_compare: array,
+  };
   const inverted = invert(verboseMap);
 
   // 图例是展示层分组；真实系列名仍保留维度，便于 tooltip、颜色和 ECharts 交互使用。
@@ -399,7 +406,7 @@ export default function transformProps(
     // - exact match "1 day ago" (via seriesName parameter)
     const derivedSeries = isDerivedSeries(
       entry,
-      chartProps.rawFormData,
+      effectiveRawFormData,
       seriesName,
     );
 
@@ -458,7 +465,7 @@ export default function transformProps(
         s =>
           !isDerivedSeries(
             s,
-            chartProps.rawFormData,
+            effectiveRawFormData,
             inverted[String(s.name || '')] || String(s.name || ''),
           ),
       );

@@ -1013,7 +1013,10 @@ test('should apply dashed line style to time comparison series with single metri
   const chartProps = createTestChartProps({
     formData: {
       ...timeCompareFormData,
-      time_compare: ['1 week ago'],
+      time_compare: ['30 days ago'],
+      extra_form_data: {
+        time_compare: '1 week ago',
+      },
       comparison_type: ComparisonType.Values,
     },
     queriesData: queriesDataWithTimeCompare,

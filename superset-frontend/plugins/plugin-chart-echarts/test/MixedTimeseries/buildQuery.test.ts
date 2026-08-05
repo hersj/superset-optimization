@@ -240,6 +240,19 @@ test('should compile AA in query A', () => {
   });
 });
 
+test('uses a weekly native time comparison instead of the saved day offset', () => {
+  const query = buildQuery({
+    ...formDataMixedChartWithAA,
+    time_compare: ['30 days ago'],
+    extra_form_data: {
+      time_compare: '1 week ago',
+      time_grain_sqla: TimeGranularity.WEEK,
+    },
+  }).queries[0];
+
+  expect(query.time_offsets).toEqual(['1 week ago']);
+});
+
 test('should compile AA in query B', () => {
   const query = buildQuery(formDataMixedChartWithAA).queries[1];
   // time comparison
