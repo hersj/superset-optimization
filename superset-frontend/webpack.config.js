@@ -71,11 +71,22 @@ const isDevServer = process.argv[1]?.includes('webpack-dev-server') ?? false;
 // TypeScript checker memory limit (in MB)
 const TYPESCRIPT_MEMORY_LIMIT = 8192;
 
+/**
+ * 功能审计（可重写规格）：生产静态入口缓存失效
+ * - 功能目的与触发方式：生产构建生成浏览器长期缓存的入口脚本；任一前端模块或动态 chunk 改变时，入口运行时映射必须使用新 URL。
+ * - 输入契约：生产 webpack 编译结果、入口名称和完整构建 hash；开发模式继续使用 contenthash，生产模式不依赖旧入口的 chunkhash。
+ * - 输出契约：每个生产入口脚本的文件名包含本次完整构建 hash，manifest 只引用本次构建的文件；动态 chunk 的命名规则保持不变。
+ * - 处理流程：webpack 完成模块图和动态依赖计算后生成 fullhash，再由入口文件名和 manifest 同时引用该 hash；浏览器因此不会把旧入口运行时映射当作新版本。
+ * - 业务规则：只有生产入口启用 fullhash；service-worker 仍输出到固定路径；不改变查询参数、图表状态或后端接口。
+ * - 状态与副作用：只生成或清理静态前端文件，不写数据库、用户偏好、看板配置或业务数据。
+ * - 外部依赖：依赖 webpack 的 fullhash、WebpackManifestPlugin 和正式静态资源服务的长期缓存策略。
+ * - 异常与边界：构建失败时不应将未完成的 manifest 作为发布版本；旧静态文件可由正式发布流程清理，不影响当前容器数据。
+ * - 不变量与约束：入口 URL 在依赖 chunk 改变时必须变化；同一构建的 manifest、入口和动态 chunk 必须相互匹配。
+ * - 验证方式：生产构建后检查 manifest 文件存在、入口 URL 含新 hash、入口映射的动态 chunk 均返回 200，并核对服务器实际加载资源。
+ */
 const defaultEntryFilename = isDevMode
   ? '[name].[contenthash:8].entry.js'
-  : nameChunks
-    ? '[name].[chunkhash].entry.js'
-    : '[name].[chunkhash].entry.js';
+  : '[name].[fullhash].entry.js';
 
 const defaultChunkFilename = isDevMode
   ? '[name].[contenthash:8].chunk.js'
