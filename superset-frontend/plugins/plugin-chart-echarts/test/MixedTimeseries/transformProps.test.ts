@@ -455,6 +455,53 @@ test('keeps the legend visible and hides only the offset series by default', () 
   });
 });
 
+test('expands a hidden current logical legend when time comparison closes', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      metrics: ['毛利润'],
+      metricsB: ['毛利润'],
+      groupby: [
+        { expressionType: 'SQL', label: '店铺', sqlExpression: 'shop' },
+      ],
+      groupbyB: [],
+      time_compare: [],
+      showLegend: true,
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: [
+      createTestQueryData([{ 乔熹6: 100, 乔熹4: 50, ds: 1720000000000 }]),
+      createTestQueryData([]),
+    ],
+  });
+  (chartProps as any).legendState = { 'current:毛利润': false };
+
+  const transformed = transformProps(chartProps);
+  const selected = (transformed.echartOptions.legend as any).selected;
+  const currentSeriesNames = (transformed.echartOptions.series as any[]).map(
+    series => series.name,
+  );
+
+  expect(currentSeriesNames).toHaveLength(2);
+  currentSeriesNames.forEach(name => {
+    expect(selected[name]).toBe(false);
+  });
+  const memberStateProps = {
+    ...chartProps,
+    legendState: {
+      [currentSeriesNames[0]]: false,
+      [currentSeriesNames[1]]: true,
+    },
+  } as any;
+  const memberSelected = (
+    transformProps(memberStateProps).echartOptions.legend as any
+  ).selected;
+  expect(memberSelected[currentSeriesNames[0]]).toBe(false);
+});
+
 describe('legend sorting', () => {
   const getChartProps = (overrides = {}) =>
     createEchartsTimeseriesTestChartProps<

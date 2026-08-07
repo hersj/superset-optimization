@@ -661,12 +661,52 @@ export default function transformProps(
     parents: {},
     stateKeys: {},
   };
-  const legendGroups = hasTimeCompare
-    ? buildLegendGroupMetadata(legendInputs)
-    : emptyLegendMetadata;
+  const stateLegendGroups = buildLegendGroupMetadata(legendInputs);
+  const legendGroups = hasTimeCompare ? stateLegendGroups : emptyLegendMetadata;
   const legendStateWithTimeCompare = hasTimeCompare
     ? resolveLegendState(legendState, legendGroups)
-    : legendState;
+    : (() => {
+        /*
+         * 功能审计（可重写规格）：混合图关闭时间对比时的图例状态投影
+         * - 功能目的与触发方式：时间对比从开启切换为关闭后，仍按当前图的真实维度系列恢复用户刚才的当前指标选择。
+         * - 输入契约：legendState 可能同时包含 current:<指标>、真实代表系列和维度成员键；stateLegendGroups 只包含当前期真实系列。
+         * - 输出契约：保留原状态，并把明确的当前逻辑组状态展开到其所有真实成员；没有逻辑组状态时保留每个维度成员自己的状态。
+         * - 处理流程：稳定状态键优先，其次代表系列键和显示标签键；只有找到这些逻辑状态时才覆盖成员，避免把无对比维度的独立选择合并成一个默认值。
+         * - 业务规则：关闭对比只移除 offset 图例，不恢复当前指标默认值；新增成员没有旧状态时继续交给 ECharts 默认开启。
+         * - 状态与副作用：纯内存映射，不发查询、不写 Redux、数据库、localStorage 或看板配置。
+         * - 异常与边界：空 legendState 或没有成员时返回副本；Query A/B 同名指标按现有分组规则共同投影。
+         * - 不变量与约束：无对比混合图继续显示维度图例，用户单独隐藏的维度在没有逻辑组覆盖时不被改写。
+         * - 验证方式：MixedTimeseries transform 测试覆盖隐藏当前逻辑组后关闭对比，以及无对比维度状态回归。
+         */
+        const input = legendState ?? {};
+        const projected = { ...input };
+        Object.entries(stateLegendGroups.groups).forEach(
+          ([representative, members]) => {
+            const stateKey = stateLegendGroups.stateKeys[representative];
+            const label = stateLegendGroups.labels[representative];
+            const stableState =
+              stateKey && input[stateKey] !== undefined
+                ? input[stateKey]
+                : undefined;
+            const hasMemberState = members.some(
+              member => input[member] !== undefined,
+            );
+            const groupState =
+              stableState ??
+              (!hasMemberState
+                ? (input[representative] ?? (label ? input[label] : undefined))
+                : undefined);
+            if (groupState !== undefined) {
+              members.forEach(member => {
+                if (input[member] === undefined) {
+                  projected[member] = groupState;
+                }
+              });
+            }
+          },
+        );
+        return projected;
+      })();
 
   const chartPadding = getPadding(
     legendVisible,
