@@ -120,6 +120,39 @@ describe('getFormDataWithExtraFilters', () => {
     expect(result.extra_form_data).toMatchObject({ time_compare: [] });
   });
 
+  test('keeps the dashboard comparison override after chart customizations merge', () => {
+    const customizationId = 'CHART_CUSTOMIZATION-TIME_COMPARE';
+    const result = getFormDataWithExtraFilters({
+      ...mockArgs,
+      chartConfiguration: {
+        [filterId]: {
+          id: filterId,
+          targets: [{ datasetId: 123, column: { name: 'country_name' } }],
+          scope: { rootPath: ['ROOT_ID'], excluded: [] },
+          cascadeParentIds: [],
+        },
+      } as any,
+      chartCustomizationItems: [{ id: customizationId }] as any,
+      dataMask: {
+        [filterId]: {
+          id: filterId,
+          extraFormData: { time_compare: '1 week ago' },
+          filterState: {},
+          ownState: {},
+        },
+        [customizationId]: {
+          id: customizationId,
+          extraFormData: { time_compare: '1 day ago' },
+          filterState: {},
+          ownState: {},
+        },
+      },
+      extraControls: { time_compare: [] },
+    });
+
+    expect(result.time_compare).toEqual([]);
+    expect(result.extra_form_data).toMatchObject({ time_compare: [] });
+  });
   test('should merge extraFormData from chart customizations', () => {
     const customizationId = 'CHART_CUSTOMIZATION-1';
     const argsWithCustomization: GetFormDataWithExtraFiltersArguments = {
