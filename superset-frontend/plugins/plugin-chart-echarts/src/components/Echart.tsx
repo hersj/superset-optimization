@@ -276,9 +276,22 @@ function Echart(
       if (!notMerge) {
         chartRef.current?.dispatchAction({ type: 'hideTip' });
       }
+      /*
+       * 功能审计（可重写规格）：看板刷新时 ECharts 选项替换
+       * - 功能目的与触发方式：看板右上角显示开关或筛选器触发查询刷新时，更新图表数据、图例和展示参数，同时保留 ChartRenderer 提供的用户图例状态。
+       * - 输入契约：themedEchartOptions 是当前查询转换后的完整 ECharts 选项；isDashboardRefreshing 表示看板是否处于批量刷新状态。
+       * - 输出契约：非刷新使用完整替换；刷新使用延迟合并但替换 series 和 legend 两个组件，使本轮真实系列、图例项和 selected 映射完整生效。
+       * - 处理流程：刷新时先隐藏提示框，再以 replaceMerge 替换数据和图例；非刷新保持原有 notMerge 完整替换路径。
+       * - 业务规则：legend.selected 只来自当前图表的 legendState 转换结果；不能让 ECharts 上一轮的 legend.data 或 selected 合并覆盖当前图例选择。
+       * - 状态与副作用：只改变当前 ECharts 实例；不写 Redux、看板配置、数据库或 localStorage，查询和图表状态仍由上层现有链路管理。
+       * - 外部依赖：依赖 ECharts setOption、ChartRenderer 的 legendState 和看板刷新标记；其他图表继续使用相同刷新策略。
+       * - 异常与边界：空 legend 或无系列时按当前选项替换；非看板刷新、探索页渲染和无图例图表不改变原有行为。
+       * - 不变量与约束：切换数字显示或时间对比不得恢复旧图例；series、legend、tooltip、颜色和注释配置必须来自同一轮选项。
+       * - 验证方式：Echart.test.tsx 断言刷新 setOption 同时 replaceMerge series/legend；标准和混合时序 transform 测试覆盖状态映射。
+       */
       chartRef.current?.setOption(themedEchartOptions, {
         notMerge,
-        replaceMerge: notMerge ? undefined : ['series'],
+        replaceMerge: notMerge ? undefined : ['series', 'legend'],
         lazyUpdate: isDashboardRefreshing,
       });
     }
