@@ -146,6 +146,37 @@ const SliceContainer = styled.div`
 
 const EMPTY_OBJECT: Record<string, never> = {};
 
+/**
+ * 功能审计（可重写规格）：判断看板开关是否已经反映到最近一次图表查询
+ * - 功能目的与触发方式：比较当前派生 formData 与图表最近一次查询使用的三个显示相关字段，补足首次 hydrate 或图表配置晚到时遗漏的重新查询。
+ * - 输入契约：formData 与 latestQueryFormData 可为空；time_compare 可为字符串、字符串数组、空数组或未定义；show_value/show_valueB 可为布尔值或未定义。
+ * - 输出契约：返回稳定字符串；相同的有效时间对比和数字显示设置必须得到相同结果。
+ * - 处理流程：优先读取 extra_form_data.time_compare，再读取顶层 time_compare；把单值归一为数组，并与两个数字显示字段组合。
+ * - 业务规则：空数组表示关闭对比；show_valueB 缺失时不人为补值；只比较会被看板级开关覆盖的字段，不把普通筛选变化混入本判断。
+ * - 状态与副作用：纯函数，不发请求、不写 Redux、不写存储。
+ * - 外部依赖：依赖图表 formData 的顶层与嵌套时间对比字段约定。
+ * - 异常与边界：null、undefined 和非数组时间偏移均安全归一；未知 formData 字段忽略。
+ * - 不变量与约束：不能把保存的 1 day ago 误判为关闭后的有效值；相同输入在刷新期间不得产生变化。
+ * - 验证方式：Chart 组件测试覆盖开关已关闭但最近查询仍带时间对比的首次加载顺序。
+ */
+const getDashboardChartControlQuerySignature = (
+  formData?: JsonObject,
+): string => {
+  const extraFormData = formData?.extra_form_data as JsonObject | undefined;
+  const timeCompare = extraFormData?.time_compare ?? formData?.time_compare;
+  const normalizedTimeCompare = Array.isArray(timeCompare)
+    ? timeCompare
+    : timeCompare == null
+      ? []
+      : [timeCompare];
+
+  return JSON.stringify({
+    timeCompare: normalizedTimeCompare,
+    showValue: formData?.show_value,
+    showValueB: formData?.show_valueB,
+  });
+};
+
 // Helper function to get chart state with fallback
 const getChartStateWithFallback = (
   chartState: { state?: JsonObject } | undefined,
@@ -278,6 +309,23 @@ const Chart = (props: ChartProps) => {
   const [width, setWidth] = useState(props.width);
   const [isSavingPersonalChartLayout, setIsSavingPersonalChartLayout] =
     useState(false);
+
+  /*
+   * 功能审计（可重写规格）：看板图例会话状态
+   * - 功能目的与触发方式：看板虚拟化卸载不可视 ChartRenderer 后，右上角开关触发查询刷新时仍恢复该图表的用户图例选择。
+   * - 输入契约：图表子组件回传的真实系列/逻辑图例布尔映射；首次挂载为空。
+   * - 输出契约：按 chart 组件实例保存内存状态并传给 ChartContainer，不写数据库、localStorage 或后端接口。
+   * - 处理流程：ChartRenderer 回传状态 -> 本组件保存 -> 子组件卸载后重新挂载时作为初始 legendState 传入。
+   * - 业务规则：状态只属于当前图表实例；数字显示和时间对比开关只改变查询/标注，不覆盖该映射；未出现的新系列继续使用图表默认规则。
+   * - 状态与副作用：仅产生 React 会话状态；图表离开可视区时子渲染器可卸载，但本容器保持状态。
+   * - 外部依赖：ChartContainer/ChartRenderer 的 legendState 和 onLegendStateChanged 透传。
+   * - 异常与边界：容器本身卸载或页面刷新时状态清空，符合不新增图例持久化的约束。
+   * - 不变量与约束：不同 chartId 的状态互不共享，不影响看板保存配置。
+   * - 验证方式：ChartRenderer 卸载重挂测试，以及看板 54/74 多图表切换右上角开关后逐图核对。
+   */
+  const [legendState, setLegendState] = useState<
+    Record<string, boolean> | undefined
+  >();
 
   const [isStreamingModalVisible, setIsStreamingModalVisible] = useState(false);
   const { progress, startExport, cancelExport, resetExport, retryExport } =
@@ -470,15 +518,9 @@ const Chart = (props: ChartProps) => {
       DEFAULT_DASHBOARD_CHART_CONTROLS,
   );
   const previousDashboardChartControls = useRef(dashboardChartControls);
-
-  // 看板开关只会改变派生 formData；这里补发 triggerQuery，才能让已挂载图表重新请求并应用开关。
-  useEffect(() => {
-    if (previousDashboardChartControls.current === dashboardChartControls) {
-      return;
-    }
-    previousDashboardChartControls.current = dashboardChartControls;
-    dispatch(triggerQuery(true, props.id));
-  }, [dashboardChartControls, dispatch, props.id]);
+  const lastRequestedDashboardChartControlSignature = useRef<string | null>(
+    null,
+  );
 
   // 看板级开关只在图表 formData 入口覆盖显示字段，不修改图表实体或看板保存数据。
   const chartExtraControls = useMemo(
@@ -533,6 +575,75 @@ const Chart = (props: ChartProps) => {
       ownColorScheme,
     ],
   );
+
+  const dashboardChartControlQuerySignature =
+    getDashboardChartControlQuerySignature(formData as JsonObject);
+  const latestQueryChartControlSignature =
+    getDashboardChartControlQuerySignature(
+      chart?.latestQueryFormData as JsonObject | undefined,
+    );
+  const latestQueryFormData = chart?.latestQueryFormData as
+    | JsonObject
+    | undefined;
+  const latestQueryExtraFormData = latestQueryFormData?.extra_form_data as
+    | JsonObject
+    | undefined;
+  const latestQueryHasDashboardChartControls =
+    ['time_compare', 'show_value', 'show_valueB'].some(field =>
+      Object.prototype.hasOwnProperty.call(latestQueryFormData || {}, field),
+    ) ||
+    Object.prototype.hasOwnProperty.call(
+      latestQueryExtraFormData || {},
+      'time_compare',
+    );
+  const dashboardChartControlQueryMismatch =
+    latestQueryHasDashboardChartControls &&
+    dashboardChartControlQuerySignature !== latestQueryChartControlSignature;
+
+  /**
+   * 功能审计（可重写规格）：看板开关查询同步
+   * - 功能目的与触发方式：看板右上角“和过去对比”或“数字显示”改变，或首次 hydrate 后图表配置晚于开关状态到达时，确保当前图表提交一次使用最新覆盖项的查询。
+   * - 输入契约：当前 dashboardChartControls、当前 formData、最近一次 query formData、chart.triggerQuery 和 chartId。
+   * - 输出契约：仅在必要时 dispatch 一次 triggerQuery(true, chartId)；图表随后由现有 Chart -> postChartFormData 链路重新查询。
+   * - 处理流程：先判断开关对象引用是否改变，再判断当前三个显示字段与最近查询是否不一致；查询进行中不重复触发；同一签名已请求但 Redux 尚未回写时不重复触发。
+   * - 业务规则：当前时间对比值优先读取 extra_form_data.time_compare；空数组和保存的偏移不同；数字显示同时比较 Query A/B 字段；普通筛选和图例状态不在此处处理。
+   * - 状态与副作用：只触发既有 Redux 查询动作，不修改图表、看板配置、数据库或用户偏好。
+   * - 外部依赖：依赖 Chart reducer 的 latestQueryFormData/triggerQuery 和现有 query abort 机制。
+   * - 异常与边界：没有最近查询时不因初始化额外发起请求；查询已在进行时跳过；请求签名回写后清除去重标记。
+   * - 不变量与约束：关闭对比后的查询不得继续使用旧 offset；一个图表的判断和请求不影响其他图表。
+   * - 验证方式：Chart.test.tsx 覆盖首次加载错位和控制开关切换；真实看板检查请求与图例。
+   */
+  useEffect(() => {
+    const controlsChanged =
+      previousDashboardChartControls.current !== dashboardChartControls;
+    previousDashboardChartControls.current = dashboardChartControls;
+
+    if (chart?.triggerQuery) {
+      return;
+    }
+    if (!controlsChanged && !dashboardChartControlQueryMismatch) {
+      lastRequestedDashboardChartControlSignature.current = null;
+      return;
+    }
+    if (
+      !controlsChanged &&
+      lastRequestedDashboardChartControlSignature.current ===
+        dashboardChartControlQuerySignature
+    ) {
+      return;
+    }
+
+    lastRequestedDashboardChartControlSignature.current =
+      dashboardChartControlQuerySignature;
+    dispatch(triggerQuery(true, props.id));
+  }, [
+    chart?.triggerQuery,
+    dashboardChartControlQueryMismatch,
+    dashboardChartControlQuerySignature,
+    dashboardChartControls,
+    dispatch,
+    props.id,
+  ]);
 
   (formData as JsonObject).dashboardId = dashboardInfo.id;
 
@@ -940,6 +1051,8 @@ const Chart = (props: ChartProps) => {
           onChartStateChange={handleChartStateChange}
           suppressLoadingSpinner={suppressLoadingSpinner}
           filterState={dataMask[props.id]?.filterState}
+          legendState={legendState}
+          onLegendStateChanged={setLegendState}
         />
       </ChartWrapper>
 

@@ -509,6 +509,42 @@ test('should merge base ownState with converted chart state', () => {
   expect(getByTestId('chart-container')).toBeInTheDocument();
 });
 
+test('should re-query when persisted comparison differs from the last query', async () => {
+  const chartWithOldComparison = {
+    ...chartQueries[queryId],
+    triggerQuery: false,
+    latestQueryFormData: {
+      ...(chartQueries[queryId].latestQueryFormData || {}),
+      time_compare: ['1 day ago'],
+      extra_form_data: { time_compare: ['1 day ago'] },
+    },
+  };
+  const store = createStore(
+    {
+      ...defaultState,
+      charts: { ...chartQueries, [queryId]: chartWithOldComparison },
+      dashboardState: {
+        ...defaultState.dashboardState,
+        dashboardChartControls: {
+          timeCompareEnabled: false,
+          showValueEnabled: true,
+        },
+      },
+    },
+    reducerIndex,
+  );
+  const dispatchSpy = jest.spyOn(store, 'dispatch');
+
+  render(<Chart {...props} />, { store, useRouter: true });
+
+  await waitFor(() => {
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    });
+  });
+});
 test('should pass filterState from dataMask to ChartContainer', () => {
   const mockFilterState = { value: ['bar'], selectedValues: ['bar'] };
 
