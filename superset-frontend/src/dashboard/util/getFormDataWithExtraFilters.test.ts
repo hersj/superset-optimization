@@ -94,6 +94,32 @@ describe('getFormDataWithExtraFilters', () => {
     expect(result.stack).toEqual('Stacked');
   });
 
+  test('lets an explicit dashboard comparison disable override the native filter', () => {
+    const result = getFormDataWithExtraFilters({
+      ...mockArgs,
+      chartConfiguration: {
+        [filterId]: {
+          id: filterId,
+          targets: [{ datasetId: 123, column: { name: 'country_name' } }],
+          scope: { rootPath: ['ROOT_ID'], excluded: [] },
+          cascadeParentIds: [],
+        },
+      } as any,
+      dataMask: {
+        [filterId]: {
+          id: filterId,
+          extraFormData: { time_compare: '1 week ago' },
+          filterState: {},
+          ownState: {},
+        },
+      },
+      extraControls: { time_compare: [] },
+    });
+
+    expect(result.time_compare).toEqual([]);
+    expect(result.extra_form_data).toMatchObject({ time_compare: [] });
+  });
+
   test('should merge extraFormData from chart customizations', () => {
     const customizationId = 'CHART_CUSTOMIZATION-1';
     const argsWithCustomization: GetFormDataWithExtraFiltersArguments = {

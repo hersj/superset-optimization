@@ -76,7 +76,7 @@ const cachedFormdataByChart: Record<
   number,
   CachedFormData & {
     dataMask: DataMask;
-    extraControls: Record<string, string | boolean | null>;
+    extraControls: Record<string, string | boolean | null | string[]>;
     nativeFilters: PartialFilters;
   }
 > = {};
@@ -92,7 +92,7 @@ export interface GetFormDataWithExtraFiltersArguments {
   sliceId: number;
   dataMask: DataMaskStateWithId;
   nativeFilters: PartialFilters;
-  extraControls: Record<string, string | boolean | null>;
+  extraControls: Record<string, string | boolean | null | string[]>;
   labelsColor?: Record<string, string>;
   labelsColorMap?: Record<string, string>;
   sharedLabelsColors?: string[];
@@ -504,6 +504,28 @@ export default function getFormDataWithExtraFilters({
       );
       extraData.filter_data_mapping = filterDataMapping;
     }
+  }
+  /**
+   * 功能审计（可重写规格）：右上角“和过去对比”覆盖原生时间筛选
+   * - 功能目的与触发方式：看板右上角关闭对比后，图表查询在此合并筛选器与控制参数。
+   * - 输入契约：extraControls 显式含 time_compare 时代表用户操作；extraData 可含原生筛选器的 extra_form_data。
+   * - 输出契约：返回表单的顶层与 extra_form_data.time_compare 都使用该显式值。
+   * - 处理流程：先聚合适用原生筛选器，再以显式看板控制覆盖同名嵌套字段。
+   * - 业务规则：仅显式键覆盖；未提供键时完整保留原生筛选器，空数组表示关闭全部时间对比。
+   * - 状态与副作用：仅构造本次查询表单和缓存；不写数据库、看板定义或用户偏好。
+   * - 外部依赖：时间序列查询构造优先读取 extra_form_data.time_compare。
+   * - 异常与边界：没有适用原生筛选器时仍生成必要嵌套字段；未知控制字段不处理。
+   * - 不变量与约束：数字显示及其他原生筛选器不得改变；顶层与嵌套对比值必须一致。
+   * - 验证方式：getFormDataWithExtraFilters 测试覆盖“1 week ago”被显式空数组关闭。
+   */
+  if (Object.prototype.hasOwnProperty.call(extraControls, 'time_compare')) {
+    extraData = {
+      ...extraData,
+      extra_form_data: {
+        ...(extraData.extra_form_data as JsonObject | undefined),
+        time_compare: extraControls.time_compare,
+      },
+    };
   }
 
   let layerFilterScope: { [filterId: string]: number[] } | undefined;
