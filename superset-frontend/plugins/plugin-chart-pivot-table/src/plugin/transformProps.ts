@@ -191,15 +191,15 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   /**
    * 功能审计（可重写规格）：透视表中文星期日期显示
    * - 功能目的与触发方式：用户在透视表选择“YYYY-MM-DD（周几）”时，为日期维度附加中文星期。
-   * - 输入契约：处理后端返回的 YYYY-MM-DD 日期字符串或毫秒时间戳；日期列由响应 Temporal 类型或数据集 is_dttm/isDttm 元数据识别；运行时 timeGrainSqla 优先于保存的时间粒度；其他值保持原样。
+   * - 输入契约：处理后端返回的 YYYY-MM-DD 日期字符串或毫秒时间戳；日期列由响应 Temporal 类型或数据集 is_dttm/isDttm 元数据识别；自定义筛选器 extra_form_data.time_grain_sqla 优先于运行时和保存的时间粒度；其他值保持原样。
    * - 输出契约：日粒度展示 YYYY-MM-DD（周X）；周、月、季、年展示现有对应粒度标签；原始日期键、查询和排序不变。
    * - 处理流程：查询结果转换时先识别日期列，再按运行时粒度建立展示 formatter，表格渲染阶段调用该 formatter。
-   * - 业务规则：响应将日期降为 Numeric 时，以保留蛇形键的 datasource 元数据或驼峰元数据回退识别；仅 P1D 追加中文星期，其他粒度复用 Superset 原有时间粒度 formatter。
+   * - 业务规则：响应将日期降为 Numeric 时，以保留蛇形键的 datasource 元数据或驼峰元数据回退识别；粒度优先级必须与 buildQuery 一致；仅 P1D 追加中文星期，其他粒度复用 Superset 原有时间粒度 formatter。
    * - 状态与副作用：仅生成前端 props，不写入数据库、缓存或筛选状态。
    * - 外部依赖：依赖数据集标记的 Temporal 列和现有 date_format 控制项。
    * - 异常与边界：非日期、无效日期与非该格式选择均回退既有显示。
    * - 不变量与约束：显示文本不得参与透视键、排序、交叉筛选或钻取过滤。
-   * - 验证方式：transformProps 测试覆盖日期字符串、P1D 毫秒时间戳、Numeric 响应的 is_dttm 回退及自定义筛选器切换 P1W；控制项测试覆盖格式可选。
+   * - 验证方式：transformProps 测试覆盖日期字符串、P1D 毫秒时间戳、Numeric 响应的 is_dttm 回退及自定义筛选器 extra_form_data 切换 P3M_FISCAL；控制项测试覆盖格式可选。
    */
   /**
    * This function is called after a successful response has been
@@ -311,7 +311,13 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       .dimension_label_config;
   const dimensionLabelOverrides =
     getDimensionLabelOverrides(dimensionLabelConfig);
-  const granularity = timeGrainSqla || extractTimegrain(rawFormData);
+  const extraTimeGrain = (
+    rawFormData as {
+      extra_form_data?: { time_grain_sqla?: string };
+    }
+  ).extra_form_data?.time_grain_sqla;
+  const granularity =
+    extraTimeGrain || timeGrainSqla || extractTimegrain(rawFormData);
   const dateColumns = new Set(
     (
       columns as Array<{

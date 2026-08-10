@@ -143,13 +143,14 @@ test('formats date dimensions when the query reports epoch values as numeric', (
   );
 });
 
-test('uses the custom filter grain instead of the saved daily grain', () => {
+test('uses the custom filter extra time grain instead of the saved daily grain', () => {
   const chartProps = new ChartProps<QueryFormData>({
     width: 400,
     height: 300,
     formData: {
       date_format: '%Y-%m-%d（%a）',
       time_grain_sqla: 'P1D',
+      extra_form_data: { time_grain_sqla: 'P3M_FISCAL' },
       groupbyRows: ['配送日期'],
       groupbyColumns: [],
       metrics: [],
@@ -165,13 +166,9 @@ test('uses the custom filter grain instead of the saved daily grain', () => {
     filterState: {},
     datasource: {},
   });
-  (chartProps.formData as any).timeGrainSqla = 'P1W_SUN';
-
   const transformed = transformProps(chartProps) as any;
 
-  expect(transformed.dateFormatters.配送日期(1766505600000)).toBe(
-    '2025年第52周',
-  );
+  expect(transformed.dateFormatters.配送日期(1766505600000)).toBe('2025年Q3');
 });
 
 test('offers the Chinese weekday date format', () => {
