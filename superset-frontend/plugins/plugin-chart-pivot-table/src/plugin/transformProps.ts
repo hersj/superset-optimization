@@ -191,15 +191,15 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   /**
    * 功能审计（可重写规格）：透视表中文星期日期显示
    * - 功能目的与触发方式：用户在透视表选择“YYYY-MM-DD（周几）”时，为日期维度附加中文星期。
-   * - 输入契约：处理后端返回的 YYYY-MM-DD 日期字符串或毫秒时间戳；时间戳沿用查询的时间粒度 formatter；其他值保持原样。
+   * - 输入契约：处理后端返回的 YYYY-MM-DD 日期字符串或毫秒时间戳；日期列由响应 Temporal 类型或数据集 is_dttm/isDttm 元数据识别；时间戳沿用查询的时间粒度 formatter；其他值保持原样。
    * - 输出契约：展示值为 YYYY-MM-DD（周X），原始日期键、查询和排序不变。
-   * - 处理流程：查询结果转换时为时序列建立展示 formatter，表格渲染阶段调用该 formatter。
-   * - 业务规则：时间戳先由现有时间粒度 formatter 还原业务日期，再按该 YYYY-MM-DD 计算中文星期，避免绕过既有时区规则而偏移日期。
+   * - 处理流程：查询结果转换时先识别日期列，再建立展示 formatter，表格渲染阶段调用该 formatter。
+   * - 业务规则：响应将日期降为 Numeric 时，以保留蛇形键的 datasource 元数据或驼峰元数据回退识别；时间戳先由现有时间粒度 formatter 还原业务日期，再按该 YYYY-MM-DD 计算中文星期，避免绕过既有时区规则而偏移日期。
    * - 状态与副作用：仅生成前端 props，不写入数据库、缓存或筛选状态。
    * - 外部依赖：依赖数据集标记的 Temporal 列和现有 date_format 控制项。
    * - 异常与边界：非日期、无效日期与非该格式选择均回退既有显示。
    * - 不变量与约束：显示文本不得参与透视键、排序、交叉筛选或钻取过滤。
-   * - 验证方式：transformProps 测试覆盖日期字符串、P1D 毫秒时间戳的周日输出；控制项测试覆盖格式可选。
+   * - 验证方式：transformProps 测试覆盖日期字符串、P1D 毫秒时间戳及 Numeric 响应的 is_dttm 回退；控制项测试覆盖格式可选。
    */
   /**
    * This function is called after a successful response has been
@@ -243,6 +243,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       columnFormats = {},
       currencyFormats = {},
       currencyCodeColumn,
+      columns = [],
     },
     emitCrossFilters,
     theme,
@@ -311,11 +312,24 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   const dimensionLabelOverrides =
     getDimensionLabelOverrides(dimensionLabelConfig);
   const granularity = extractTimegrain(rawFormData);
+  const dateColumns = new Set(
+    (
+      columns as Array<{
+        columnName?: string;
+        column_name?: string;
+        isDttm?: boolean;
+        is_dttm?: boolean;
+      }>
+    )
+      .filter(column => column.isDttm || column.is_dttm)
+      .map(column => column.columnName || column.column_name),
+  );
 
   const dateFormatters = colnames
     .filter(
       (colname: string, index: number) =>
-        coltypes[index] === GenericDataType.Temporal,
+        coltypes[index] === GenericDataType.Temporal ||
+        dateColumns.has(colname),
     )
     .reduce(
       (

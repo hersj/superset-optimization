@@ -17,6 +17,7 @@
  * under the License.
  */
 import { GenericDataType } from '@apache-superset/core/common';
+import { ChartProps, QueryFormData } from '@superset-ui/core';
 import controlPanel from './controlPanel';
 import transformProps from './transformProps';
 
@@ -73,6 +74,72 @@ test('formats millisecond date timestamps with a Chinese weekday', () => {
 
   expect(transformed.dateFormatters.配送日期(1785600000000)).toBe(
     '2026-08-02（周日）',
+  );
+});
+
+test('formats the selected D3 weekday value after form-data key conversion', () => {
+  const transformed = transformProps(
+    new ChartProps<QueryFormData>({
+      width: 400,
+      height: 300,
+      formData: {
+        date_format: '%Y-%m-%d（%a）',
+        time_grain_sqla: 'P1D',
+        groupbyRows: ['配送日期'],
+        groupbyColumns: [],
+        metrics: [],
+      } as any,
+      queriesData: [
+        {
+          data: [{ 配送日期: 1766505600000 }],
+          colnames: ['配送日期'],
+          coltypes: [GenericDataType.Temporal],
+        },
+      ],
+      hooks: {},
+      filterState: {},
+      datasource: {},
+    }),
+  ) as any;
+
+  expect(transformed.dateFormatters.配送日期(1766505600000)).toBe(
+    '2025-12-24（周三）',
+  );
+});
+
+test('formats date dimensions when the query reports epoch values as numeric', () => {
+  const chartProps = new ChartProps<QueryFormData>({
+    width: 400,
+    height: 300,
+    formData: {
+      date_format: '%Y-%m-%d（%a）',
+      time_grain_sqla: 'P1D',
+      groupbyRows: ['配送日期'],
+      groupbyColumns: [],
+      metrics: [],
+    } as any,
+    queriesData: [
+      {
+        data: [{ 配送日期: 1766505600000 }],
+        colnames: ['配送日期'],
+        coltypes: [GenericDataType.Numeric],
+      },
+    ],
+    hooks: {},
+    filterState: {},
+    datasource: {
+      columns: [{ column_name: '配送日期', is_dttm: true }],
+    },
+  });
+
+  expect(chartProps.datasource.columns).toEqual([
+    { column_name: '配送日期', is_dttm: true },
+  ]);
+
+  const transformed = transformProps(chartProps) as any;
+
+  expect(transformed.dateFormatters.配送日期(1766505600000)).toBe(
+    '2025-12-24（周三）',
   );
 });
 
