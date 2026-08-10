@@ -48,6 +48,34 @@ test('formats date-only row dimensions with a Chinese weekday', () => {
   );
 });
 
+test('formats millisecond date timestamps with a Chinese weekday', () => {
+  const transformed = transformProps({
+    width: 400,
+    height: 300,
+    formData: {
+      dateFormat: '%Y-%m-%d（%a）',
+      groupbyRows: ['配送日期'],
+      groupbyColumns: [],
+      metrics: [],
+    },
+    rawFormData: { time_grain_sqla: 'P1D' },
+    queriesData: [
+      {
+        data: [{ 配送日期: 1785600000000 }],
+        colnames: ['配送日期'],
+        coltypes: [GenericDataType.Temporal],
+      },
+    ],
+    hooks: {},
+    filterState: {},
+    datasource: {},
+  } as any) as any;
+
+  expect(transformed.dateFormatters.配送日期(1785600000000)).toBe(
+    '2026-08-02（周日）',
+  );
+});
+
 test('offers the Chinese weekday date format', () => {
   const config = controlPanel as any;
   const dateFormatControl =

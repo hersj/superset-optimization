@@ -101,15 +101,30 @@ function createSafeDateFormatter(formatter: TimeFormatter): DateFormatter {
   };
 }
 
-function createChineseWeekdayDateFormatter(): DateFormatter {
+function createChineseWeekdayDateFormatter(
+  formatter: TimeFormatter,
+): DateFormatter {
   return (value: unknown) => {
+    const normalizedValue = normalizeTemporalValue(value);
     const raw = String(value).trim();
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-    if (!match) return raw;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
+    let dateText = raw;
+    if (typeof normalizedValue === 'string') {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+      if (!match) return raw;
+    } else {
+      const formattedValue = formatter(normalizedValue);
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(formattedValue));
+      if (!match) return raw;
+      dateText = match[0];
+    }
+
+    const [, yearText, monthText, dayText] =
+      /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText) || [];
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
     const date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime())) return raw;
     if (
       date.getUTCFullYear() !== year ||
       date.getUTCMonth() !== month - 1 ||
@@ -117,7 +132,7 @@ function createChineseWeekdayDateFormatter(): DateFormatter {
     ) {
       return raw;
     }
-    return `${raw}（${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getUTCDay()]}）`;
+    return `${dateText}（${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getUTCDay()]}）`;
   };
 }
 
@@ -176,15 +191,15 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   /**
    * 功能审计（可重写规格）：透视表中文星期日期显示
    * - 功能目的与触发方式：用户在透视表选择“YYYY-MM-DD（周几）”时，为日期维度附加中文星期。
-   * - 输入契约：仅处理后端返回的 YYYY-MM-DD 日期字符串；其他值保持原样。
+   * - 输入契约：处理后端返回的 YYYY-MM-DD 日期字符串或毫秒时间戳；时间戳沿用查询的时间粒度 formatter；其他值保持原样。
    * - 输出契约：展示值为 YYYY-MM-DD（周X），原始日期键、查询和排序不变。
    * - 处理流程：查询结果转换时为时序列建立展示 formatter，表格渲染阶段调用该 formatter。
-   * - 业务规则：星期按 UTC 日期计算，避免浏览器时区造成日期或星期偏移。
+   * - 业务规则：时间戳先由现有时间粒度 formatter 还原业务日期，再按该 YYYY-MM-DD 计算中文星期，避免绕过既有时区规则而偏移日期。
    * - 状态与副作用：仅生成前端 props，不写入数据库、缓存或筛选状态。
    * - 外部依赖：依赖数据集标记的 Temporal 列和现有 date_format 控制项。
    * - 异常与边界：非日期、无效日期与非该格式选择均回退既有显示。
    * - 不变量与约束：显示文本不得参与透视键、排序、交叉筛选或钻取过滤。
-   * - 验证方式：transformProps 测试覆盖周日输出；控制项测试覆盖格式可选。
+   * - 验证方式：transformProps 测试覆盖日期字符串、P1D 毫秒时间戳的周日输出；控制项测试覆盖格式可选。
    */
   /**
    * This function is called after a successful response has been
@@ -308,7 +323,12 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
         temporalColname: string,
       ) => {
         if (dateFormat === PIVOT_CHINESE_WEEKDAY_DATE_FORMAT) {
-          acc[temporalColname] = createChineseWeekdayDateFormatter();
+          const formatter = granularity
+            ? getTimeFormatterForGranularity(granularity)
+            : isNumeric(temporalColname, data)
+              ? getTimeFormatter(DATABASE_DATETIME)
+              : getTimeFormatter(SMART_DATE_ID);
+          acc[temporalColname] = createChineseWeekdayDateFormatter(formatter);
           return acc;
         }
 
