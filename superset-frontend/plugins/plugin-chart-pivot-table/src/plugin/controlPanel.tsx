@@ -36,7 +36,7 @@ import {
   validateNonEmpty,
   QueryFormColumn,
 } from '@superset-ui/core';
-import { MetricsLayoutEnum } from '../types';
+import { MetricsLayoutEnum, PIVOT_CHINESE_WEEKDAY_DATE_FORMAT } from '../types';
 
 const PIVOT_METRIC_AGGREGATE_OPTIONS = [
   { value: '', label: t('Use chart default') },
@@ -335,7 +335,10 @@ const config: ControlPanelConfig = {
               label: t('Date format'),
               default: SMART_DATE_ID,
               renderTrigger: true,
-              choices: D3_TIME_FORMAT_OPTIONS,
+              choices: [
+                ...D3_TIME_FORMAT_OPTIONS,
+                [PIVOT_CHINESE_WEEKDAY_DATE_FORMAT, 'YYYY-MM-DD（周几）'],
+              ],
               description: t('D3 time format for datetime columns'),
             },
           },

@@ -52,6 +52,8 @@ export enum MetricsLayoutEnum {
   COLUMNS = 'COLUMNS',
 }
 
+export const PIVOT_CHINESE_WEEKDAY_DATE_FORMAT = '%Y-%m-%d（%a）';
+
 interface PivotTableCustomizeProps {
   groupbyRows: QueryFormColumn[];
   groupbyColumns: QueryFormColumn[];
