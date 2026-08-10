@@ -59,6 +59,7 @@ const {
   showValues,
   stack,
   truncateYAxis,
+  truncateYAxisSecondary,
   yAxisBounds,
   yAxisIndex,
 } = DEFAULT_FORM_DATA;
@@ -443,6 +444,21 @@ const config: ControlPanelConfig = {
               renderTrigger: true,
               default: logAxis,
               description: t('Logarithmic scale on primary y-axis'),
+            },
+          },
+        ],
+        [
+          {
+            name: 'truncateYAxisSecondary',
+            config: {
+              type: 'CheckboxControl',
+              label: t('Auto secondary Y-axis bounds'),
+              default: truncateYAxisSecondary,
+              renderTrigger: true,
+              // 开关由 transformProps 消费；开启时保留手填值但不使用，关闭后恢复手填边界。
+              description: t(
+                'Fit the secondary Y-axis to the data range. Manual secondary bounds are ignored while enabled and restored when disabled.',
+              ),
             },
           },
         ],

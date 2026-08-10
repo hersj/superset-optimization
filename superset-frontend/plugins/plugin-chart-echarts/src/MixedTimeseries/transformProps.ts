@@ -131,11 +131,12 @@ export default function transformProps(
    * - 输出契约：有对比时 legend.data 使用真实 series.name 代表值并由 formatter 映射文本；legendGroups 描述当前组、offset 组及父子关系；无对比时保留既有维度图例行为。
    * - 处理流程：分别转换 Query A/B，记录真实系列的当前指标标签和偏移，按指标或 offset 建组，解析新旧状态后生成 ECharts 选项。
    * - 业务规则：同一指标的维度共用一个当前图例；同一 offset 的 Query A/B、指标和维度共用一个对比图例；对比成员只有在 offset 组及父当前组都打开时显示；当前默认打开、对比默认关闭。
+   * - 次要 Y 轴自动边界规则：开启 truncateYAxisSecondary 时忽略已保存的次要轴最小/最大值，并仅令次要轴按数据范围缩放；关闭后恢复手填边界，主轴不受影响；行级贡献图保持 0–100% 语义。
    * - 状态与副作用：只生成客户端选项并回传图例状态，不修改看板数据库、后端接口或 localStorage；无对比路径不改变既有维度图例。
    * - 外部依赖：依赖 chart-controls 的时间偏移解析、ECharts legend 事件和 ChartRenderer 状态合并；支持两组 offset 配置。
    * - 异常与边界：任一 offset 配置为空时只处理另一组；无父当前组的对比线仍属于 offset 组；注释图例不参与业务分组。
    * - 不变量与约束：图例 key 必须是实际 series.name；查询、tooltip、数字显示、颜色、注释、分页和主副轴 formatter 行为保持不变。
-   * - 验证方式：MixedTimeseries transform/component 单测覆盖 Query A/B、维度、offset、父组关闭、全选和无对比回归。
+   * - 验证方式：MixedTimeseries transform/component 单测覆盖 Query A/B、维度、offset、父组关闭、全选、无对比回归和次要轴自动边界。
    */
   const {
     width,
@@ -202,6 +203,7 @@ export default function transformProps(
     stackB,
     truncateXAxis,
     truncateYAxis,
+    truncateYAxisSecondary,
     tooltipTimeFormat,
     yAxisFormat,
     currencyFormat,
@@ -436,6 +438,10 @@ export default function transformProps(
   let [minSecondary, maxSecondary] = (yAxisBoundsSecondary || []).map(
     parseAxisBound,
   );
+  if (truncateYAxisSecondary) {
+    minSecondary = undefined;
+    maxSecondary = undefined;
+  }
 
   const nativeTimeCompare = (chartProps.rawFormData as any)?.extra_form_data
     ?.time_compare;
@@ -810,7 +816,7 @@ export default function transformProps(
             yAxisFormatSecondary,
           ),
         },
-        scale: truncateYAxis,
+        scale: truncateYAxis || truncateYAxisSecondary,
         name: yAxisTitleSecondary,
         alignTicks,
       },

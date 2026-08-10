@@ -9949,6 +9949,12 @@ msgstr "次要货币格式"
 msgid "Secondary y-axis Bounds"
 msgstr "次要 y 轴边界"
 
+msgid "Auto secondary Y-axis bounds"
+msgstr "自动次要 Y 轴边界"
+
+msgid "Fit the secondary Y-axis to the data range. Manual secondary bounds are ignored while enabled and restored when disabled."
+msgstr "按数据范围自动缩放次要 Y 轴。启用时忽略手动次要轴边界，关闭后恢复。"
+
 msgid "Secondary y-axis format"
 msgstr "次级Y轴格式"
 

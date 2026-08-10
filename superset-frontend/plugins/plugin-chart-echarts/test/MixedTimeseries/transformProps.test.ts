@@ -748,3 +748,58 @@ test('should add a formula annotation when X-axis column has dataset-level label
   expect(Array.isArray(formulaSeries?.data)).toBe(true);
   expect((formulaSeries!.data as unknown[]).length).toBeGreaterThan(0);
 });
+
+test('automatically bounds only the secondary y-axis when enabled', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      truncateYAxis: false,
+      truncateYAxisSecondary: true,
+      yAxisBoundsSecondary: [0, 0.3],
+      yAxisIndex: 0,
+      yAxisIndexB: 1,
+      groupby: [],
+      groupbyB: [],
+    },
+    queriesData,
+  });
+
+  const transformed = transformProps(chartProps);
+  const [primaryAxis, secondaryAxis] = transformed.echartOptions.yAxis as any[];
+
+  expect(primaryAxis.scale).toBe(false);
+  expect(secondaryAxis.scale).toBe(true);
+  expect(secondaryAxis.min).toBeUndefined();
+  expect(secondaryAxis.max).toBeUndefined();
+});
+
+test('keeps manual secondary y-axis bounds when automatic mode is disabled', () => {
+  const chartProps = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      truncateYAxis: false,
+      truncateYAxisSecondary: false,
+      yAxisBoundsSecondary: [0, 0.3],
+      yAxisIndex: 0,
+      yAxisIndexB: 1,
+      groupby: [],
+      groupbyB: [],
+    },
+    queriesData,
+  });
+
+  const [, secondaryAxis] = transformProps(chartProps).echartOptions
+    .yAxis as any[];
+
+  expect(secondaryAxis.scale).toBe(false);
+  expect(secondaryAxis.min).toBe(0);
+  expect(secondaryAxis.max).toBe(0.3);
+});
