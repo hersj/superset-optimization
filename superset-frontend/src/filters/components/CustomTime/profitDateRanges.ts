@@ -57,8 +57,25 @@ function range(start: Date, endExclusive: Date): string {
   return `${fmtDate(start)} : ${fmtDate(endExclusive)}`;
 }
 
-export function getProfitDataEndDate(now: Date = new Date()): string {
-  const shanghaiNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+/**
+ * 功能审计（可重写规格）：利润数据可用截止日
+ * - 功能目的与触发方式：为自定义时间筛选器计算数据日历的安全截止日。
+ * - 输入契约：now 可为 Date、ISO 日期字符串或省略；省略时使用运行时日期。
+ * - 输出契约：返回 YYYY-MM-DD 字符串，按数据延迟规则取上海时间 T-2。
+ * - 处理流程：先统一输入日期类型，再转换上海时区并扣除两天。
+ * - 业务规则：无效日期返回空字符串，避免筛选器渲染阶段抛出类型异常。
+ * - 状态与副作用：纯计算，不写入数据库或缓存。
+ * - 外部依赖：依赖 JavaScript Date 和既有日期格式化函数。
+ * - 异常与边界：兼容恢复状态中的 ISO 字符串，非法输入安全降级为空值。
+ * - 不变量与约束：同一有效时刻必须生成相同截止日。
+ * - 验证方式：profitDateRanges.test.ts 覆盖 Date 和 ISO 字符串输入。
+ */
+export function getProfitDataEndDate(now: Date | string = new Date()): string {
+  const date = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const shanghaiNow = new Date(date.getTime() + 8 * 60 * 60 * 1000);
   const businessToday = new Date(
     Date.UTC(
       shanghaiNow.getUTCFullYear(),

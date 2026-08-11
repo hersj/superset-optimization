@@ -218,17 +218,17 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
 }
 
 /**
- * 功能审计（可重写规格）：自定义时间筛选器运行时绑定
- * - 功能目的与触发方式：用户在 dashboard 原生筛选器中选择时间列并点击预设、粒度或日历范围。
- * - 输入契约：formData.groupby 为已配置的单个时间列；timeRange 为半开区间 '开始 : 结束'；grainKey 为 day/week/month/quarter/year。
- * - 输出契约：绑定时间列时 setDataMask.extraFormData.filters 写入 {col, op: TEMPORAL_RANGE, val}，并写入既有 time_grain_sqla；未绑定列时继续输出旧 time_range。
- * - 处理流程：读取目标列→计算时间范围与粒度→写入 DataMask→保留筛选器显示状态和比较区间。
- * - 业务规则：严格使用用户选择的列，不从图表 x_axis 或其他列推断；粒度值沿用既有 P1D/P1W_SUN/P1M/P3M_FISCAL/P1Y。
- * - 状态与副作用：只更新当前 dashboard 会话 DataMask，不直接写数据库；既有 ownState 用于恢复控件状态。
- * - 外部依赖：依赖原生筛选器传入的 formData 和 Superset QueryContext 对 temporal filter 的处理。
- * - 异常与边界：旧配置没有 groupby 时保留全局 time_range，避免历史 dashboard 立即失效；绑定配置缺失列名时不伪造过滤列。
- * - 不变量与约束：一次只绑定一个时间列；所有预设、日历点击和粒度切换都走同一 applyFilter 路径。
- * - 验证方式：组件测试分别断言绑定列输出 TEMPORAL_RANGE 与未绑定配置的兼容输出。
+ * 功能审计（可重写规格）：自定义时间筛选器运行时绑定与不过滤状态
+ * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器选择范围、粒度或“不过滤”时调用。
+ * - 输入契约：groupby 为可选的单个时间列；timeRange 为半开区间或空字符串；grainKey 为 day/week/month/quarter/year。
+ * - 输出契约：有范围时写入 TEMPORAL_RANGE；无范围时写入空 filters 与 time_range='No filter'；两种状态均输出粒度和对应环比偏移。
+ * - 处理流程：识别绑定列和显式空状态→构造 DataMask→保存控件恢复状态。
+ * - 业务规则：null 表示用户明确“不过滤”，不得替换为默认预设；季度沿用 P3M_FISCAL 并按 3 months ago 比较；日/周日历快速跳转按数据截止月向前 60 个月（含截止月）生成，不提供截止月之后的月份。
+ * - 状态与副作用：仅更新当前会话 DataMask 与 ownState，不直接写数据库。
+ * - 外部依赖：Superset 原生筛选器 DataMask 和查询层对 TEMPORAL_RANGE/time_compare 的处理。
+ * - 异常与边界：旧配置没有 groupby 时保留 time_range 兼容路径；空范围不得保留前一次范围。
+ * - 不变量与约束：所有预设、粒度、范围及不过滤状态走同一 applyFilter，避免比较参数丢失。
+ * - 验证方式：组件测试断言“不过滤 + 季度”输出空 filters、P3M_FISCAL 和 3 months ago。
  */
 
 export default function CustomTimeFilterPlugin(props: any) {
@@ -261,6 +261,8 @@ export default function CustomTimeFilterPlugin(props: any) {
   const initialPreset =
     ownState.activePreset !== undefined
       ? (ownState.activePreset as string | null)
+      : filterState?.value === null
+        ? null
       : isPresetKey(filterState?.value)
         ? (filterState.value as string)
         : filterState?.value
@@ -341,7 +343,9 @@ export default function CustomTimeFilterPlugin(props: any) {
   const buildOwnState = useCallback(
     (overrides: Record<string, unknown> = {}) => {
       const currentRange =
-        (overrides.lastRange as string | undefined) || lastRangeRef.current;
+        Object.prototype.hasOwnProperty.call(overrides, 'lastRange')
+          ? (overrides.lastRange as string)
+          : lastRangeRef.current;
       return {
         activePreset,
         activeGrain,
@@ -392,8 +396,18 @@ export default function CustomTimeFilterPlugin(props: any) {
       const grainOption = TIME_GRAIN_OPTIONS.find(g => g.key === grainKey);
       const grainValue = grainOption?.value || 'P1D';
       const grainLabel = grainOption?.label || '日';
+      const timeCompare =
+        {
+          day: '1 day ago',
+          week: '1 week ago',
+          month: '1 month ago',
+          quarter: '3 months ago',
+          year: '1 year ago',
+        }[grainKey] || '1 day ago';
       const nextActivePreset = presetKey ?? null;
-      const rangeLabel = nextActivePreset
+      const rangeLabel = !timeRange
+        ? '不过滤'
+        : nextActivePreset
         ? DEFAULT_PRESETS.find(p => p.key === nextActivePreset)?.label || timeRange
         : '自定义范围';
 
@@ -401,15 +415,17 @@ export default function CustomTimeFilterPlugin(props: any) {
         extraFormData: {
           ...(timeColumn
             ? {
-                filters: [
-                  { col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange },
-                ],
+                filters: timeRange
+                  ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange }]
+                  : [],
+                time_range: timeRange || 'No filter',
               }
             : { time_range: timeRange }),
           time_grain_sqla: grainValue,
+          time_compare: timeCompare,
         },
         filterState: {
-          value: nextActivePreset || timeRange,
+          value: timeRange ? nextActivePreset || timeRange : null,
           grain: grainKey,
           label: rangeLabel + ' | ' + grainLabel,
         },
@@ -425,7 +441,14 @@ export default function CustomTimeFilterPlugin(props: any) {
   );
 
   useEffect(() => {
-    if (filterState?.value) {
+    if (filterState?.value === null) {
+      const grainKey = (filterState.grain as string) || defaultGrain;
+      applyFilter('', grainKey, null, {
+        activePreset: null,
+        activeGrain: grainKey,
+        lastRange: '',
+      });
+    } else if (filterState?.value) {
       const grainKey = (filterState.grain as string) || defaultGrain;
       const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
       if (preset) {
@@ -454,23 +477,32 @@ export default function CustomTimeFilterPlugin(props: any) {
   const prevFSValue = useRef(filterState?.value);
   const prevFSGrain = useRef(filterState?.grain);
   useEffect(() => {
-    if (filterState?.value && filterState.value !== prevFSValue.current) {
+    if (filterState?.value !== prevFSValue.current) {
       prevFSValue.current = filterState.value;
       const grainKey = (filterState.grain as string) || activeGrain;
-      const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
-      if (preset) {
-        setActivePreset(preset.key);
-        applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
-          activePreset: preset.key,
+      if (filterState.value === null) {
+        setActivePreset(null);
+        applyFilter('', grainKey, null, {
+          activePreset: null,
           activeGrain: grainKey,
+          lastRange: '',
         });
       } else {
+        const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
+        if (preset) {
+          setActivePreset(preset.key);
+          applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
+            activePreset: preset.key,
+            activeGrain: grainKey,
+          });
+        } else if (filterState.value) {
         setActivePreset(null);
         applyFilter(filterState.value as string, grainKey, null, {
           activePreset: null,
           activeGrain: grainKey,
           lastRange: filterState.value,
         });
+        }
       }
     }
     if (filterState?.grain && filterState.grain !== prevFSGrain.current) {
@@ -510,6 +542,12 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyFilter(lastRangeRef.current, grain.key, null, {
         activePreset: null,
         activeGrain: grain.key,
+      });
+    } else {
+      applyFilter('', grain.key, null, {
+        activePreset: null,
+        activeGrain: grain.key,
+        lastRange: '',
       });
     }
   };
@@ -676,13 +714,15 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const currentLabel = activePreset
     ? DEFAULT_PRESETS.find(p => p.key === activePreset)?.label || ''
-    : '自定义范围';
+    : lastRangeRef.current
+      ? '自定义范围'
+      : '不过滤';
   const currentGrain = TIME_GRAIN_OPTIONS.find(g => g.key === activeGrain)?.label || '日';
   const currentRange = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
 
   const baseMonth = getMonthStart(getDataEndDate());
   const firstCalendarMonth = addMonths(baseMonth, calendarMonthOffset);
-  const canGoBack = calendarMonthOffset > -12;
+  const canGoBack = calendarMonthOffset > -60;
   const canGoForward = calendarMonthOffset < 0;
 
   const displayYearStart = currentYear + yearDecadeOffset * 12;
@@ -726,8 +766,8 @@ export default function CustomTimeFilterPlugin(props: any) {
         }}
         style={styles.selectInput}
       >
-        {Array.from({ length: 25 }, (_, i) => {
-          const m = addMonths(baseMonth, i - 12);
+        {Array.from({ length: 61 }, (_, i) => {
+          const m = addMonths(baseMonth, i - 60);
           return <option key={m} value={m}>{m.substring(0, 7)}</option>;
         })}
       </select>

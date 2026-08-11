@@ -225,6 +225,27 @@ describe('CustomTimeFilterPlugin', () => {
   });
 
 
+  test('shows 60 months of history and no months after the data cutoff', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+
+    expect(screen.getByRole('option', { name: '2021-06' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '2026-06' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '2026-07' })).not.toBeInTheDocument();
+
+    jest.useRealTimers();
+  });
+
+
   it('selects one day first, then completes a right-open day range', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
