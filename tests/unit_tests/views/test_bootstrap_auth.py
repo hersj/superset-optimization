@@ -18,7 +18,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import g
+from flask import g, session
 from flask_appbuilder.const import (
     AUTH_DB,
     AUTH_LDAP,
@@ -26,7 +26,7 @@ from flask_appbuilder.const import (
     AUTH_SAML,
 )
 
-from superset.views.base import cached_common_bootstrap_data
+from superset.views.base import cached_common_bootstrap_data, menu_data
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +37,21 @@ def mock_user() -> None:
 def _get_bootstrap(user_id: int = 1) -> dict[str, Any]:
     with patch("superset.views.base.menu_data", return_value={}):
         return cached_common_bootstrap_data(user_id=user_id, locale=None)
+
+
+def test_menu_locale_defaults_to_configured_babel_locale(
+    app_context: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SPA menu must follow the configured locale before users choose one."""
+    from flask import current_app
+
+    monkeypatch.setitem(current_app.config, "BABEL_DEFAULT_LOCALE", "zh")
+    with current_app.test_request_context():
+        session.clear()
+        payload = menu_data(g.user)
+
+    assert payload["navbar_right"]["locale"] == "zh"
 
 
 def test_bootstrap_saml_providers(app_context: None) -> None:

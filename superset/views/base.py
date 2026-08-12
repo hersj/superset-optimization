@@ -268,6 +268,25 @@ def get_environment_tag() -> dict[str, Any]:
 
 
 def menu_data(user: User) -> dict[str, Any]:
+    """
+    功能审计（可重写规格）：SPA 菜单与语言 bootstrap
+    - 功能目的与触发方式：每次渲染 Superset SPA 页面时，为顶部菜单、品牌和右侧
+      用户控件提供当前用户可见的初始化数据。
+    - 输入契约：user 为当前认证用户；会话 locale 是用户显式选择的语言；
+      BABEL_DEFAULT_LOCALE 是未选择语言时的系统默认语言。
+    - 输出契约：返回菜单、品牌、环境和 navbar_right 配置；navbar_right.locale
+      必须是前端加载语言包所用的语言代码。
+    - 处理流程：读取 AppBuilder 菜单和语言配置，组装右侧菜单；优先使用 session
+      locale，缺失时使用 BABEL_DEFAULT_LOCALE。
+    - 业务规则：用户显式选择的语言绝不被系统默认值覆盖；默认中文部署中没有会话
+      语言时必须返回 zh，使后端菜单与前端中文语言包一致。
+    - 状态与副作用：只读取请求会话和应用配置，不写数据库、缓存或会话。
+    - 外部依赖：AppBuilder 菜单/语言注册、Flask session、Superset 配置。
+    - 异常与边界：会话无 locale 时回退配置值；配置缺失时最后回退 en，保持上游默认兼容。
+    - 不变量与约束：不得改变菜单权限、菜单内容或用户已选择的语言；该函数可能被按
+      用户和语言缓存。
+    - 验证方式：tests/unit_tests/views/test_bootstrap_auth.py 中的默认中文回退用例。
+    """
     languages = {
         lang: {**appbuilder.languages[lang], "url": appbuilder.get_url_for_locale(lang)}
         for lang in appbuilder.languages
@@ -309,7 +328,9 @@ def menu_data(user: User) -> dict[str, Any]:
             ),
             "user_logout_url": appbuilder.get_url_for_logout,
             "user_login_url": appbuilder.get_url_for_login,
-            "locale": session.get("locale", "en"),
+            "locale": session.get(
+                "locale", app.config.get("BABEL_DEFAULT_LOCALE", "en")
+            ),
         },
     }
 
