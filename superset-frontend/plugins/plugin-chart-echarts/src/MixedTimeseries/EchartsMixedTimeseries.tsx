@@ -138,18 +138,19 @@ export default function EchartsMixedTimeseries({
       getCrossFilterDataMask,
     ],
   );
-  const { handleLegendSelect, handleLegendBulkChange } = useLegendDoubleClick(
-    legendGroups,
-    onLegendStateChanged,
-  );
+  const {
+    handleLegendSelect,
+    handleLegendDoubleClick,
+    handleLegendBulkChange,
+  } = useLegendDoubleClick(legendGroups, onLegendStateChanged);
 
   /*
    * 功能审计（可重写规格）：混合时序图逻辑图例状态同步
    * - 功能目的与触发方式：响应混合时序图的用户图例单击、双击、全选和反选。
    * - 输入契约：selected 是 ECharts 当前图例选择映射；单击时另有 changedName；legendGroups.groups 的 key 是真实系列代表值，value 是同一逻辑组的真实系列名。
    * - 输出契约：真实成员按逻辑状态展开；单击只返回被修改逻辑组的增量，全选/反选返回全部逻辑组；双击聚焦目标组，再双击恢复双击前选择；不修改查询数据或看板配置。
-   * - 处理流程：事件以本次真实代表系列值生成逻辑组增量；连续同名双击保存/恢复当前图实例快照；查询刷新仅通过 transformProps 的 legend.selected 和 ECharts setOption 恢复真实成员。
-   * - 用户事件边界：只有用户单击、双击、全选、反选才产生状态增量；刷新不得 dispatchAction 图例事件或回写默认选择。
+   * - 处理流程：单击以本次真实代表系列值立即生成逻辑组增量；浏览器原生双击保存/恢复当前图实例快照；查询刷新仅通过 transformProps 的 legend.selected 和 ECharts setOption 恢复真实成员。
+   * - 用户事件边界：只有用户单击、浏览器原生双击、全选、反选才产生状态增量；刷新不得 dispatchAction 图例事件或回写默认选择。
    * - 业务规则：当前指标组默认打开、offset 组默认关闭；稳定 key 优先用于刷新，事件组优先使用 ECharts 本次选择；双击后再手动选择图例会清除旧快照；无对比时不改变既有维度图例行为。
    * - 状态与副作用：仅把用户状态交给 ChartRenderer 合并保存，不直接修改 ECharts 实例。
    * - 外部依赖：ECharts legend 事件、getLegendStateChange 和 transformProps 生成的 legendGroups。
@@ -169,6 +170,7 @@ export default function EchartsMixedTimeseries({
       onFocusedSeries(params.seriesName);
     },
     legendselectchanged: handleLegendSelect,
+    dblclick: handleLegendDoubleClick,
     legendselectall: handleLegendBulkChange,
     legendinverseselect: handleLegendBulkChange,
     contextmenu: async eventParams => {

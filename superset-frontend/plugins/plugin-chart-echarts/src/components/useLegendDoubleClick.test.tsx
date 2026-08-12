@@ -46,20 +46,45 @@ const legendGroups = {
 let handleLegendSelect: ReturnType<
   typeof useLegendDoubleClick
 >['handleLegendSelect'];
+let handleLegendDoubleClick: (payload: {
+  componentType?: string;
+  name?: string;
+}) => void;
 
 function LegendHarness({
   onLegendStateChanged,
 }: {
   onLegendStateChanged: jest.Mock;
 }) {
-  ({ handleLegendSelect } = useLegendDoubleClick(
+  const handlers = useLegendDoubleClick(
     legendGroups,
     onLegendStateChanged,
-  ));
+  ) as ReturnType<typeof useLegendDoubleClick> & {
+    handleLegendDoubleClick?: typeof handleLegendDoubleClick;
+  };
+  ({ handleLegendSelect } = handlers);
+  handleLegendDoubleClick = handlers.handleLegendDoubleClick ?? (() => {});
   return null;
 }
 
-test('restores the prior multi-selection when both legend double-clicks take 400ms', () => {
+test('commits a normal legend click immediately', () => {
+  const onLegendStateChanged = jest.fn();
+  render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
+
+  act(() => {
+    handleLegendSelect({
+      name: '配送销售额',
+      selected: { 毛利润: true, 配送销售额: false, 毛利率: false },
+    });
+  });
+
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith({
+    'current:配送销售额': false,
+    配送销售额: false,
+  });
+});
+
+test('uses the browser double-click event to focus and restore the prior multi-selection', () => {
   jest.useFakeTimers();
   const onLegendStateChanged = jest.fn();
   render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
@@ -69,15 +94,14 @@ test('restores the prior multi-selection when both legend double-clicks take 400
       name: '配送销售额',
       selected: { 毛利润: true, 配送销售额: false, 毛利率: false },
     });
-    jest.advanceTimersByTime(400);
-  });
-
-  expect(onLegendStateChanged).not.toHaveBeenCalled();
-
-  act(() => {
+    jest.advanceTimersByTime(700);
     handleLegendSelect({
       name: '配送销售额',
       selected: { 毛利润: true, 配送销售额: true, 毛利率: false },
+    });
+    handleLegendDoubleClick({
+      componentType: 'legend',
+      name: '配送销售额',
     });
   });
 
@@ -95,15 +119,14 @@ test('restores the prior multi-selection when both legend double-clicks take 400
       name: '配送销售额',
       selected: { 毛利润: false, 配送销售额: false, 毛利率: false },
     });
-    jest.advanceTimersByTime(400);
-  });
-
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(1);
-
-  act(() => {
+    jest.advanceTimersByTime(700);
     handleLegendSelect({
       name: '配送销售额',
       selected: { 毛利润: false, 配送销售额: true, 毛利率: false },
+    });
+    handleLegendDoubleClick({
+      componentType: 'legend',
+      name: '配送销售额',
     });
   });
 
@@ -115,4 +138,15 @@ test('restores the prior multi-selection when both legend double-clicks take 400
     'current:毛利率': false,
     毛利率: false,
   });
+});
+
+test('ignores non-legend double-click events', () => {
+  const onLegendStateChanged = jest.fn();
+  render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
+
+  act(() => {
+    handleLegendDoubleClick({ componentType: 'series', name: '配送销售额' });
+  });
+
+  expect(onLegendStateChanged).not.toHaveBeenCalled();
 });

@@ -180,7 +180,6 @@ test('does not treat a legend double-click as a chart-area series focus', () => 
 });
 
 test('forwards a user legend selection to ChartRenderer', () => {
-  jest.useFakeTimers();
   const onLegendStateChanged = jest.fn();
   render(
     <EchartsTimeseries
@@ -213,9 +212,6 @@ test('forwards a user legend selection to ChartRenderer', () => {
     name: '订购数量',
     selected: { 订购数量: false },
   });
-  act(() => {
-    jest.advanceTimersByTime(501);
-  });
 
   expect(onLegendStateChanged).toHaveBeenCalledWith({
     'current:订购数量': false,
@@ -223,7 +219,6 @@ test('forwards a user legend selection to ChartRenderer', () => {
 });
 
 test('double-clicking a legend focuses it and double-clicking again restores the prior selection', () => {
-  jest.useFakeTimers();
   const onLegendStateChanged = jest.fn();
   const restoreState = {
     'current:订购数量': true,
@@ -243,13 +238,15 @@ test('double-clicking a legend focuses it and double-clicking again restores the
   };
   mockGetLegendStateChange.mockImplementation(
     (
-      _selected: unknown,
+      selected: Record<string, boolean>,
       _groups: unknown,
       changedName?: string,
       mode?: string,
     ) => {
       if (mode === 'focus') return focusedState;
-      if (changedName === undefined) return restoreState;
+      if (changedName === undefined) {
+        return selected['配送数量, LED5'] ? restoreState : focusedState;
+      }
       if (changedName === '配送数量, LED5') {
         return {
           'current:配送数量': true,
@@ -310,6 +307,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
 
   const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
   const select = echartProps.eventHandlers?.legendselectchanged;
+  const doubleClick = echartProps.eventHandlers?.dblclick;
 
   act(() => {
     select?.({
@@ -328,9 +326,13 @@ test('double-clicking a legend focuses it and double-clicking again restores the
         '毛利润, LED5': false,
       },
     });
+    doubleClick?.({
+      componentType: 'legend',
+      name: '订购数量, LED5',
+    });
   });
 
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(1);
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(3);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
 
   act(() => {
@@ -342,9 +344,8 @@ test('double-clicking a legend focuses it and double-clicking again restores the
         '毛利润, LED5': false,
       },
     });
-    jest.advanceTimersByTime(501);
   });
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(2);
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(4);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith({
     'current:配送数量': true,
     '配送数量, LED5': true,
@@ -355,7 +356,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
       name: '订购数量, LED5',
       selected: {
         '订购数量, LED5': false,
-        '配送数量, LED5': false,
+        '配送数量, LED5': true,
         '毛利润, LED5': false,
       },
     });
@@ -363,13 +364,17 @@ test('double-clicking a legend focuses it and double-clicking again restores the
       name: '订购数量, LED5',
       selected: {
         '订购数量, LED5': true,
-        '配送数量, LED5': false,
+        '配送数量, LED5': true,
         '毛利润, LED5': false,
       },
     });
+    doubleClick?.({
+      componentType: 'legend',
+      name: '订购数量, LED5',
+    });
   });
 
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(3);
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(7);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
 
   act(() => {
@@ -389,8 +394,12 @@ test('double-clicking a legend focuses it and double-clicking again restores the
         '毛利润, LED5': false,
       },
     });
+    doubleClick?.({
+      componentType: 'legend',
+      name: '订购数量, LED5',
+    });
   });
 
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(4);
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(10);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith(restoreState);
 });

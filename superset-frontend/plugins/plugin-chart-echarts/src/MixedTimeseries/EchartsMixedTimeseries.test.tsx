@@ -122,11 +122,9 @@ test('does not dispatch legend actions while mixed-chart options restore grouped
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });
 
-test('routes a mixed-chart legend double-click through focus and restore', () => {
-  jest.useFakeTimers();
+test('routes a mixed-chart native legend double-click through focus', () => {
   const onLegendStateChanged = jest.fn();
   const focusedState = { 'current:订购销售额': true };
-  const restoreState = { 'current:订购销售额': false };
   mockGetLegendStateChange.mockImplementation(
     (
       _selected: unknown,
@@ -135,7 +133,7 @@ test('routes a mixed-chart legend double-click through focus and restore', () =>
       mode?: string,
     ) => {
       if (mode === 'focus') return focusedState;
-      if (changedName === undefined) return restoreState;
+      if (changedName === undefined) return focusedState;
       return { [`current:${changedName}`]: true };
     },
   );
@@ -175,6 +173,7 @@ test('routes a mixed-chart legend double-click through focus and restore', () =>
 
   const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
   const select = echartProps.eventHandlers?.legendselectchanged;
+  const doubleClick = echartProps.eventHandlers?.dblclick;
   act(() => {
     select?.({
       name: '订购销售额, Query A',
@@ -184,20 +183,11 @@ test('routes a mixed-chart legend double-click through focus and restore', () =>
       name: '订购销售额, Query A',
       selected: { '订购销售额, Query A': true },
     });
+    doubleClick?.({
+      componentType: 'legend',
+      name: '订购销售额, Query A',
+    });
   });
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(1);
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(3);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
-
-  act(() => {
-    select?.({
-      name: '订购销售额, Query A',
-      selected: { '订购销售额, Query A': false },
-    });
-    select?.({
-      name: '订购销售额, Query A',
-      selected: { '订购销售额, Query A': true },
-    });
-  });
-  expect(onLegendStateChanged).toHaveBeenCalledTimes(2);
-  expect(onLegendStateChanged).toHaveBeenLastCalledWith(restoreState);
 });
