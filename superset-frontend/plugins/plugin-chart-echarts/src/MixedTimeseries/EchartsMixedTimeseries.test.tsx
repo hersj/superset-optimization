@@ -122,7 +122,7 @@ test('does not dispatch legend actions while mixed-chart options restore grouped
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });
 
-test('routes a mixed-chart native legend double-click through focus', () => {
+test('routes a mixed-chart ZRender legend double-click through focus', () => {
   const onLegendStateChanged = jest.fn();
   const focusedState = { 'current:订购销售额': true };
   mockGetLegendStateChange.mockImplementation(
@@ -143,7 +143,9 @@ test('routes a mixed-chart native legend double-click through focus', () => {
       {...({
         height: 400,
         width: 800,
-        echartOptions: {} as EChartsCoreOption,
+        echartOptions: {
+          legend: { data: ['订购销售额, Query A'] },
+        } as EChartsCoreOption,
         setDataMask: jest.fn(),
         labelMap: {},
         labelMapB: {},
@@ -173,7 +175,7 @@ test('routes a mixed-chart native legend double-click through focus', () => {
 
   const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
   const select = echartProps.eventHandlers?.legendselectchanged;
-  const doubleClick = echartProps.eventHandlers?.dblclick;
+  const doubleClick = echartProps.zrEventHandlers?.dblclick;
   act(() => {
     select?.({
       name: '订购销售额, Query A',
@@ -184,8 +186,7 @@ test('routes a mixed-chart native legend double-click through focus', () => {
       selected: { '订购销售额, Query A': true },
     });
     doubleClick?.({
-      componentType: 'legend',
-      name: '订购销售额, Query A',
+      target: { parent: { __legendDataIndex: 0 } },
     });
   });
   expect(onLegendStateChanged).toHaveBeenCalledTimes(3);

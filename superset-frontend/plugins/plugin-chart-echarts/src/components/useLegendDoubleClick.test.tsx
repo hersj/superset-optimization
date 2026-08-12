@@ -46,10 +46,16 @@ const legendGroups = {
 let handleLegendSelect: ReturnType<
   typeof useLegendDoubleClick
 >['handleLegendSelect'];
-let handleLegendDoubleClick: (payload: {
-  componentType?: string;
-  name?: string;
-}) => void;
+let handleLegendDoubleClick: (
+  payload: {
+    componentType?: string;
+    name?: string;
+    target?: {
+      parent?: { __legendDataIndex?: number };
+    };
+  },
+  legendData?: string[],
+) => void;
 
 function LegendHarness({
   onLegendStateChanged,
@@ -84,7 +90,7 @@ test('commits a normal legend click immediately', () => {
   });
 });
 
-test('uses the browser double-click event to focus and restore the prior multi-selection', () => {
+test('uses the double-click event to focus and restore the prior multi-selection', () => {
   jest.useFakeTimers();
   const onLegendStateChanged = jest.fn();
   render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
@@ -149,4 +155,30 @@ test('ignores non-legend double-click events', () => {
   });
 
   expect(onLegendStateChanged).not.toHaveBeenCalled();
+});
+
+test('resolves a real ECharts legend double-click from its ZRender data index', () => {
+  const onLegendStateChanged = jest.fn();
+  render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
+
+  act(() => {
+    handleLegendSelect({
+      name: '配送销售额',
+      selected: { 毛利润: true, 配送销售额: true, 毛利率: false },
+    });
+    handleLegendDoubleClick({ target: { parent: { __legendDataIndex: 1 } } }, [
+      '毛利润',
+      '配送销售额',
+      '毛利率',
+    ]);
+  });
+
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith({
+    'current:毛利润': false,
+    'current:配送销售额': true,
+    'current:毛利率': false,
+    毛利润: false,
+    配送销售额: true,
+    毛利率: false,
+  });
 });

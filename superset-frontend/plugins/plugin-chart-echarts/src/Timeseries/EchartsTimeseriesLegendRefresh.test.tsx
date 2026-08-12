@@ -131,8 +131,24 @@ test('restores grouped legend options without programmatic legend actions', () =
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });
 
-test('does not treat a legend double-click as a chart-area series focus', () => {
+test('routes a real ZRender legend double-click without chart-area focus', () => {
   const onLegendStateChanged = jest.fn();
+  const focusedState = {
+    'current:毛利润': false,
+    'current:配送销售额': true,
+    'current:毛利率': false,
+  };
+  mockGetLegendStateChange.mockImplementation(
+    (
+      _selected: unknown,
+      _groups: unknown,
+      changedName?: string,
+      mode?: string,
+    ) => {
+      if (mode === 'focus') return focusedState;
+      return changedName ? { [`current:${changedName}`]: true } : {};
+    },
+  );
   mockContainPixel.mockReturnValue(true);
   mockGetComponent.mockReturnValue({
     mainType: 'legend',
@@ -167,16 +183,27 @@ test('does not treat a legend double-click as a chart-area series focus', () => 
   );
 
   const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
-  echartProps.zrEventHandlers?.dblclick?.({
-    offsetX: 320,
-    offsetY: 90,
-    target: {
-      type: 'rect',
-      __ecComponentInfo: { mainType: 'legend', index: 0 },
-    },
+  act(() => {
+    echartProps.eventHandlers?.legendselectchanged?.({
+      name: '配送销售额',
+      selected: { 毛利润: true, 配送销售额: false, 毛利率: false },
+    });
+    echartProps.eventHandlers?.legendselectchanged?.({
+      name: '配送销售额',
+      selected: { 毛利润: true, 配送销售额: true, 毛利率: false },
+    });
+    echartProps.zrEventHandlers?.dblclick?.({
+      offsetX: 320,
+      offsetY: 90,
+      target: {
+        type: 'rect',
+        parent: { __legendDataIndex: 1 },
+      },
+    });
   });
 
-  expect(onLegendStateChanged).not.toHaveBeenCalled();
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(3);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
 });
 
 test('forwards a user legend selection to ChartRenderer', () => {
@@ -278,6 +305,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
         emitCrossFilters: false,
         coltypeMapping: {},
         onLegendScroll: jest.fn(),
+        legendData: ['订购数量, LED5', '配送数量, LED5', '毛利润, LED5'],
         legendGroups: {
           groups: {
             '订购数量, LED5': ['订购数量, LED5'],
@@ -307,7 +335,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
 
   const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
   const select = echartProps.eventHandlers?.legendselectchanged;
-  const doubleClick = echartProps.eventHandlers?.dblclick;
+  const doubleClick = echartProps.zrEventHandlers?.dblclick;
 
   act(() => {
     select?.({
@@ -327,8 +355,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
       },
     });
     doubleClick?.({
-      componentType: 'legend',
-      name: '订购数量, LED5',
+      target: { parent: { __legendDataIndex: 0 } },
     });
   });
 
@@ -369,8 +396,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
       },
     });
     doubleClick?.({
-      componentType: 'legend',
-      name: '订购数量, LED5',
+      target: { parent: { __legendDataIndex: 0 } },
     });
   });
 
@@ -395,8 +421,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
       },
     });
     doubleClick?.({
-      componentType: 'legend',
-      name: '订购数量, LED5',
+      target: { parent: { __legendDataIndex: 0 } },
     });
   });
 
