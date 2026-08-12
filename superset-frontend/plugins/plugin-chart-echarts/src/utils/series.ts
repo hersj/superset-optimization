@@ -213,12 +213,12 @@ export function resolveLegendState(
  * - 输入契约：selected 是 ECharts 本次事件的真实系列选择映射；metadata 描述逻辑组、真实成员、稳定状态键和当前/对比归属；changedName 是用户操作的图例名；mode 为 focus 时表示双击聚焦。
  * - 输出契约：普通单击仅返回被操作组的增量；全选/反选返回所有组；focus 返回所有当前可见逻辑组的完整状态，使目标组打开、其余组关闭；聚焦对比组时同时打开其所属当前指标。
  * - 处理流程：先把 changedName 定位为真实代表系列；focus 建立目标组及其对比父组的可见集合，再以所有代表系列构造映射并复用普通全量解析；其他事件按单击或全量范围解析并展开为真实成员。
- * - 业务规则：单击继续允许任意多选；双击只临时聚焦一个逻辑组，恢复动作由组件保存的快照处理；未知图例名保持已有单项值；对比指标无法脱离父当前指标单独显示，因此聚焦对比组必须保留所有关联父组。
+ * - 业务规则：单击继续允许任意多选；双击只临时聚焦一个逻辑组，恢复动作由组件保存的快照处理；无时间对比的混合图没有逻辑分组，focus 直接按真实系列名保留目标并关闭其他系列；未知图例名保持已有单项值；对比指标无法脱离父当前指标单独显示，因此聚焦对比组必须保留所有关联父组。
  * - 状态与副作用：纯函数，不写入 ECharts、React、数据库、接口或浏览器存储。
  * - 外部依赖：依赖 buildLegendGroupMetadata/resolveLegendState 的真实代表值、稳定键和父子关系。
- * - 异常与边界：空分组返回输入副本；focus 找不到目标组时返回空增量，避免错误覆盖现有选择；全选/反选保留未知旧键。
+ * - 异常与边界：空分组的普通事件返回输入副本，focus 仅在目标真实系列存在时生成互斥选择，否则返回空增量；有分组时 focus 找不到目标组同样返回空增量；全选/反选保留未知旧键。
  * - 不变量与约束：不能用显示标签或虚拟 offset 替代真实系列代表值；普通单击不能覆盖未点击组；focus 结果必须可直接与 ChartRenderer 旧状态合并。
- * - 验证方式：series.test.ts 覆盖三图例聚焦；标准和混合组件测试覆盖双击聚焦、恢复和单击多选。
+ * - 验证方式：series.test.ts 覆盖逻辑三图例及无对比混合图原始三图例聚焦；标准和混合组件测试覆盖双击聚焦、恢复和单击多选。
  */
 export function getLegendStateChange(
   selected: LegendState | undefined,
@@ -228,6 +228,12 @@ export function getLegendStateChange(
 ): LegendState {
   const input = selected ?? {};
   if (Object.keys(metadata.groups).length === 0) {
+    if (mode === 'focus') {
+      if (!changedName || input[changedName] === undefined) return {};
+      return Object.fromEntries(
+        Object.keys(input).map(name => [name, name === changedName]),
+      );
+    }
     return { ...input };
   }
 

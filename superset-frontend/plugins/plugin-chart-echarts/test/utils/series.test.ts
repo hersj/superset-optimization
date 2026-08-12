@@ -1320,6 +1320,31 @@ test('focuses one logical legend group without changing the saved selection cont
   });
 });
 
+test('focuses one raw mixed-chart legend when time comparison is disabled', () => {
+  expect(
+    getLegendStateChange(
+      {
+        毛利润: true,
+        配送销售额: true,
+        毛利率: false,
+      },
+      {
+        groups: {},
+        labels: {},
+        kinds: {},
+        parents: {},
+        stateKeys: {},
+      },
+      '配送销售额',
+      'focus',
+    ),
+  ).toEqual({
+    毛利润: false,
+    配送销售额: true,
+    毛利率: false,
+  });
+});
+
 test('keeps the matching current group visible when focus targets a comparison', () => {
   const metadata = buildLegendGroupMetadata([
     { name: 'orders, LED5', currentLabel: '订购数量' },
