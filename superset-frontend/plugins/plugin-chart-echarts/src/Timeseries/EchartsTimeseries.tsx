@@ -236,7 +236,7 @@ export default function EchartsTimeseries({
    * - 输入契约：selected 为 ECharts 选择映射，changedName 仅由单击事件提供；legendGroups 由 transformProps 生成。
    * - 输出契约：真实成员由当前逻辑组和父当前指标展开；单击返回一个逻辑组的增量，全选/反选返回全部逻辑组。
    * - 处理流程：用户事件直接压缩为逻辑组增量并交由 ChartRenderer 合并；查询刷新仅通过 transformProps 的 legend.selected 和 ECharts setOption 恢复真实成员状态。
-   * - 用户事件边界：只有用户单击、全选、反选和双击才产生状态增量；图例单击允许任意多选，双击先聚焦目标组、再双击同组恢复双击前选择；不得在刷新时 dispatchAction 图例事件或写回默认选择。
+   * - 用户事件边界：只有用户单击、全选、反选和双击才产生状态增量；图例单击允许任意多选，双击先聚焦目标组、再双击同组恢复双击前选择。图表区域双击只处理 series，legend 双击只能由共享图例处理器写状态；不得在刷新时 dispatchAction 图例事件或写回默认选择。
    * - 业务规则：当前指标默认打开、offset 默认关闭；offset 必须同时受自身开关和父当前指标开关约束；双击聚焦后手动单击会清除旧恢复快照；不修改查询或看板配置。
    * - 状态与副作用：只更新 ChartRenderer 内存状态，保留数字显示、tooltip、颜色、分页和注释图例。
    * - 外部依赖：ECharts legend 事件、共享 series 状态工具、ChartRenderer 和 transformProps。
@@ -380,7 +380,8 @@ export default function EchartsTimeseries({
         // @ts-expect-error
         const globalModel = echartInstance.getModel();
         const model = getModelInfo(params.target, globalModel);
-        if (model) {
+        // 图例双击已经由 legendselectchanged 的聚焦/恢复逻辑处理，不能再被这里的图表区域聚焦覆盖。
+        if (model?.mainType === 'series') {
           const { name } = model;
           if (richTooltip && shouldFocusTooltipSeries && name) {
             onTooltipSeriesClick(name);

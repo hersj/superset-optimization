@@ -43,6 +43,8 @@ jest.mock('react-js-cron', () => ({ __esModule: true, default: () => null }), {
 const mockDispatchAction = jest.fn();
 const mockEchart = jest.fn();
 const mockGetLegendStateChange = jest.fn(() => ({ 'current:订购数量': false }));
+const mockContainPixel = jest.fn();
+const mockGetComponent = jest.fn();
 
 jest.mock('../utils/series', () => ({
   formatSeriesName: jest.fn(),
@@ -57,7 +59,12 @@ jest.mock('../components/Echart', () => {
   const MockEchart = forwardRef<EchartsHandler | null, EchartsProps>(
     (props, ref) => {
       useImperativeHandle(ref, () => ({
-        getEchartInstance: () => ({ dispatchAction: mockDispatchAction }),
+        getEchartInstance: () =>
+          ({
+            dispatchAction: mockDispatchAction,
+            containPixel: mockContainPixel,
+            getModel: () => ({ getComponent: mockGetComponent }),
+          }) as any,
       }));
       mockEchart(props);
       return null;
@@ -72,6 +79,8 @@ afterEach(() => {
   mockEchart.mockReset();
   mockGetLegendStateChange.mockReset();
   mockGetLegendStateChange.mockReturnValue({ 'current:订购数量': false });
+  mockContainPixel.mockReset();
+  mockGetComponent.mockReset();
   jest.useRealTimers();
 });
 
@@ -119,6 +128,54 @@ test('restores grouped legend options without programmatic legend actions', () =
   render(<EchartsTimeseries {...props} />);
 
   expect(mockDispatchAction).not.toHaveBeenCalled();
+  expect(onLegendStateChanged).not.toHaveBeenCalled();
+});
+
+test('does not treat a legend double-click as a chart-area series focus', () => {
+  const onLegendStateChanged = jest.fn();
+  mockContainPixel.mockReturnValue(true);
+  mockGetComponent.mockReturnValue({
+    mainType: 'legend',
+    name: '配送销售额',
+  });
+
+  render(
+    <EchartsTimeseries
+      {...({
+        height: 400,
+        width: 800,
+        echartOptions: {} as EChartsCoreOption,
+        formData: {},
+        groupby: [],
+        labelMap: {},
+        selectedValues: {},
+        setDataMask: jest.fn(),
+        setControlValue: jest.fn(),
+        legendData: ['毛利润', '配送销售额', '毛利率'],
+        onContextMenu: jest.fn(),
+        onLegendStateChanged,
+        onFocusedSeries: jest.fn(),
+        onTooltipSeriesClick: jest.fn(),
+        xValueFormatter: String,
+        xAxis: { label: '日期', type: AxisType.Time },
+        refs: {},
+        emitCrossFilters: false,
+        coltypeMapping: {},
+        onLegendScroll: jest.fn(),
+      } as unknown as TimeseriesChartTransformedProps)}
+    />,
+  );
+
+  const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  echartProps.zrEventHandlers?.dblclick?.({
+    offsetX: 320,
+    offsetY: 90,
+    target: {
+      type: 'rect',
+      __ecComponentInfo: { mainType: 'legend', index: 0 },
+    },
+  });
+
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });
 
