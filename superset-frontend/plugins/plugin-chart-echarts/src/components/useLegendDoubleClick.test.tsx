@@ -146,6 +146,46 @@ test('uses the double-click event to focus and restore the prior multi-selection
   });
 });
 
+test('restores the prior selection after the chart plugin remounts', () => {
+  const onLegendStateChanged = jest.fn();
+  const firstRender = render(
+    <LegendHarness onLegendStateChanged={onLegendStateChanged} />,
+  );
+
+  act(() => {
+    handleLegendSelect({
+      name: '配送销售额',
+      selected: { 毛利润: true, 配送销售额: true, 毛利率: false },
+    });
+    handleLegendDoubleClick({
+      componentType: 'legend',
+      name: '配送销售额',
+    });
+  });
+  firstRender.unmount();
+  render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
+
+  act(() => {
+    handleLegendSelect({
+      name: '配送销售额',
+      selected: { 毛利润: false, 配送销售额: true, 毛利率: false },
+    });
+    handleLegendDoubleClick({
+      componentType: 'legend',
+      name: '配送销售额',
+    });
+  });
+
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith({
+    'current:毛利润': true,
+    毛利润: true,
+    'current:配送销售额': true,
+    配送销售额: true,
+    'current:毛利率': false,
+    毛利率: false,
+  });
+});
+
 test('ignores non-legend double-click events', () => {
   const onLegendStateChanged = jest.fn();
   render(<LegendHarness onLegendStateChanged={onLegendStateChanged} />);
