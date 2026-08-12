@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { LegendState } from '@superset-ui/core';
 import { getLegendStateChange, LegendGroupMetadata } from '../utils/series';
 
-const DOUBLE_CLICK_DELAY = 300;
+const DOUBLE_CLICK_DELAY = 500;
 
 type LegendSelectionPayload = {
   name?: string;
@@ -42,8 +42,8 @@ type FocusedLegend = {
  * 功能审计（可重写规格）：时序图例双击聚焦与恢复
  * - 功能目的与触发方式：标准时序图和混合时序图把 ECharts 的 legendselectchanged、全选、反选事件传入；连续双击同一个图例时临时聚焦，再次双击恢复原选择。
  * - 输入契约：legendGroups 是真实系列到逻辑图例组的稳定元数据；onLegendStateChanged 接收可与 ChartRenderer 当前状态合并的增量；payload.name/selected 来自 ECharts 图例事件。
- * - 输出契约：单击在 300ms 窗口后仅提交被点击逻辑组的增量；首次双击提交目标组聚焦状态；聚焦同组的再次双击提交首次双击前保存的完整选择；全选/反选提交全量状态。
- * - 处理流程：先暂存一次单击；同名第二事件到达则取消单击提交，保存或恢复快照；不同名第二事件先提交前一项后再暂存后一项；定时器到期即按普通单击提交。
+ * - 输出契约：单击在 500ms 双击窗口结束后仅提交被点击逻辑组的增量；首次双击提交目标组聚焦状态；聚焦同组的再次双击提交首次双击前保存的完整选择；全选/反选提交全量状态。
+ * - 处理流程：先暂存一次单击；同名第二事件在 500ms 内到达则取消单击提交，保存或恢复快照；不同名第二事件先提交前一项后再暂存后一项；窗口到期即按普通单击提交。
  * - 业务规则：单击始终允许任意多选；聚焦后发生任何普通单击、全选或反选时清除旧快照，新的手工组合成为当前状态；只在同一图表组件实例内保存快照。
  * - 状态与副作用：只通过回调更新当前 ChartRenderer 的内存图例状态；不写查询、Redux、数据库、看板配置或 localStorage；卸载时取消未提交定时器。
  * - 外部依赖：依赖 ECharts 连续两次 legendselectchanged 代表双击，及 getLegendStateChange 对真实成员、维度和对比父子关系的展开。

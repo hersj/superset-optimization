@@ -157,7 +157,7 @@ test('forwards a user legend selection to ChartRenderer', () => {
     selected: { 订购数量: false },
   });
   act(() => {
-    jest.advanceTimersByTime(301);
+    jest.advanceTimersByTime(501);
   });
 
   expect(onLegendStateChanged).toHaveBeenCalledWith({
@@ -285,7 +285,7 @@ test('double-clicking a legend focuses it and double-clicking again restores the
         '毛利润, LED5': false,
       },
     });
-    jest.advanceTimersByTime(301);
+    jest.advanceTimersByTime(501);
   });
   expect(onLegendStateChanged).toHaveBeenCalledTimes(2);
   expect(onLegendStateChanged).toHaveBeenLastCalledWith({
