@@ -44,6 +44,7 @@ import {
   getTimeCompareStackId,
   buildLegendGroupMetadata,
   resolveLegendState,
+  getLegendStateChange,
 } from '../../src/utils/series';
 import {
   EchartsTimeseriesSeriesType,
@@ -1277,12 +1278,76 @@ test('preserves logical legend state over stale dimension members', () => {
 
   expect(
     resolveLegendState(
-      { 'orders, LED5': true, 'orders, LED5-EU': false, 'orders, 1 day ago, LED5': true },
+      {
+        'orders, LED5': true,
+        'orders, LED5-EU': false,
+        'orders, 1 day ago, LED5': true,
+      },
       metadata,
     ),
   ).toMatchObject({
     'orders, LED5': true,
     'orders, LED5-EU': true,
+    'orders, 1 day ago, LED5': true,
+  });
+});
+
+test('focuses one logical legend group without changing the saved selection contract', () => {
+  const metadata = buildLegendGroupMetadata([
+    { name: 'orders, LED5', currentLabel: '订购数量' },
+    { name: 'delivery, LED5', currentLabel: '配送数量' },
+    { name: 'profit, LED5', currentLabel: '毛利润' },
+  ]);
+
+  expect(
+    getLegendStateChange(
+      {
+        'orders, LED5': true,
+        'delivery, LED5': true,
+        'profit, LED5': true,
+      },
+      metadata,
+      'orders, LED5',
+      'focus',
+    ),
+  ).toEqual({
+    'current:订购数量': true,
+    'orders, LED5': true,
+    'current:配送数量': false,
+    'delivery, LED5': false,
+    'current:毛利润': false,
+    'profit, LED5': false,
+  });
+});
+
+test('keeps the matching current group visible when focus targets a comparison', () => {
+  const metadata = buildLegendGroupMetadata([
+    { name: 'orders, LED5', currentLabel: '订购数量' },
+    { name: 'delivery, LED5', currentLabel: '配送数量' },
+    {
+      name: 'orders, 1 day ago, LED5',
+      currentLabel: '订购数量',
+      timeOffset: '1 day ago',
+    },
+  ]);
+
+  expect(
+    getLegendStateChange(
+      {
+        'orders, LED5': true,
+        'delivery, LED5': true,
+        'orders, 1 day ago, LED5': true,
+      },
+      metadata,
+      'orders, 1 day ago, LED5',
+      'focus',
+    ),
+  ).toEqual({
+    'current:订购数量': true,
+    'orders, LED5': true,
+    'current:配送数量': false,
+    'delivery, LED5': false,
+    'comparison:1 day ago': true,
     'orders, 1 day ago, LED5': true,
   });
 });

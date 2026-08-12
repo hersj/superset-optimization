@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ComponentType, ReactNode } from 'react';
@@ -70,7 +70,9 @@ jest.mock('../components/Echart', () => {
 afterEach(() => {
   mockDispatchAction.mockReset();
   mockEchart.mockReset();
-  mockGetLegendStateChange.mockClear();
+  mockGetLegendStateChange.mockReset();
+  mockGetLegendStateChange.mockReturnValue({ 'current:订购数量': false });
+  jest.useRealTimers();
 });
 
 test('restores grouped legend options without programmatic legend actions', () => {
@@ -121,6 +123,7 @@ test('restores grouped legend options without programmatic legend actions', () =
 });
 
 test('forwards a user legend selection to ChartRenderer', () => {
+  jest.useFakeTimers();
   const onLegendStateChanged = jest.fn();
   render(
     <EchartsTimeseries
@@ -153,8 +156,184 @@ test('forwards a user legend selection to ChartRenderer', () => {
     name: '订购数量',
     selected: { 订购数量: false },
   });
+  act(() => {
+    jest.advanceTimersByTime(301);
+  });
 
   expect(onLegendStateChanged).toHaveBeenCalledWith({
     'current:订购数量': false,
   });
+});
+
+test('double-clicking a legend focuses it and double-clicking again restores the prior selection', () => {
+  jest.useFakeTimers();
+  const onLegendStateChanged = jest.fn();
+  const restoreState = {
+    'current:订购数量': true,
+    '订购数量, LED5': true,
+    'current:配送数量': true,
+    '配送数量, LED5': true,
+    'current:毛利润': false,
+    '毛利润, LED5': false,
+  };
+  const focusedState = {
+    'current:订购数量': true,
+    '订购数量, LED5': true,
+    'current:配送数量': false,
+    '配送数量, LED5': false,
+    'current:毛利润': false,
+    '毛利润, LED5': false,
+  };
+  mockGetLegendStateChange.mockImplementation(
+    (
+      _selected: unknown,
+      _groups: unknown,
+      changedName?: string,
+      mode?: string,
+    ) => {
+      if (mode === 'focus') return focusedState;
+      if (changedName === undefined) return restoreState;
+      if (changedName === '配送数量, LED5') {
+        return {
+          'current:配送数量': true,
+          '配送数量, LED5': true,
+        };
+      }
+      return { [`current:${changedName}`]: true };
+    },
+  );
+
+  render(
+    <EchartsTimeseries
+      {...({
+        height: 400,
+        width: 800,
+        echartOptions: {} as EChartsCoreOption,
+        formData: {},
+        groupby: [],
+        labelMap: {},
+        selectedValues: {},
+        setDataMask: jest.fn(),
+        setControlValue: jest.fn(),
+        onLegendStateChanged,
+        onFocusedSeries: jest.fn(),
+        onTooltipSeriesClick: jest.fn(),
+        xValueFormatter: String,
+        xAxis: { label: '日期', type: AxisType.Time },
+        refs: {},
+        emitCrossFilters: false,
+        coltypeMapping: {},
+        onLegendScroll: jest.fn(),
+        legendGroups: {
+          groups: {
+            '订购数量, LED5': ['订购数量, LED5'],
+            '配送数量, LED5': ['配送数量, LED5'],
+            '毛利润, LED5': ['毛利润, LED5'],
+          },
+          labels: {
+            '订购数量, LED5': '订购数量',
+            '配送数量, LED5': '配送数量',
+            '毛利润, LED5': '毛利润',
+          },
+          kinds: {
+            '订购数量, LED5': 'current',
+            '配送数量, LED5': 'current',
+            '毛利润, LED5': 'current',
+          },
+          parents: {},
+          stateKeys: {
+            '订购数量, LED5': 'current:订购数量',
+            '配送数量, LED5': 'current:配送数量',
+            '毛利润, LED5': 'current:毛利润',
+          },
+        },
+      } as unknown as TimeseriesChartTransformedProps)}
+    />,
+  );
+
+  const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  const select = echartProps.eventHandlers?.legendselectchanged;
+
+  act(() => {
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': false,
+        '配送数量, LED5': true,
+        '毛利润, LED5': false,
+      },
+    });
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': true,
+        '配送数量, LED5': true,
+        '毛利润, LED5': false,
+      },
+    });
+  });
+
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(1);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
+
+  act(() => {
+    select?.({
+      name: '配送数量, LED5',
+      selected: {
+        '订购数量, LED5': true,
+        '配送数量, LED5': true,
+        '毛利润, LED5': false,
+      },
+    });
+    jest.advanceTimersByTime(301);
+  });
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(2);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith({
+    'current:配送数量': true,
+    '配送数量, LED5': true,
+  });
+
+  act(() => {
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': false,
+        '配送数量, LED5': false,
+        '毛利润, LED5': false,
+      },
+    });
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': true,
+        '配送数量, LED5': false,
+        '毛利润, LED5': false,
+      },
+    });
+  });
+
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(3);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
+
+  act(() => {
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': false,
+        '配送数量, LED5': false,
+        '毛利润, LED5': false,
+      },
+    });
+    select?.({
+      name: '订购数量, LED5',
+      selected: {
+        '订购数量, LED5': true,
+        '配送数量, LED5': false,
+        '毛利润, LED5': false,
+      },
+    });
+  });
+
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(4);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(restoreState);
 });

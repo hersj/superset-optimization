@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ComponentType, ReactNode } from 'react';
@@ -39,22 +39,27 @@ jest.mock(
 jest.mock('react-js-cron', () => ({ __esModule: true, default: () => null }), {
   virtual: true,
 });
+const mockGetLegendStateChange = jest.fn(() => ({}));
+
 jest.mock('../utils/series', () => ({
   formatSeriesName: jest.fn(),
-  getLegendStateChange: jest.fn(() => ({})),
+  getLegendStateChange: (...args: unknown[]) =>
+    mockGetLegendStateChange(...args),
   resolveLegendState: jest.fn(selected => selected),
 }));
 
 const mockDispatchAction = jest.fn();
+const mockEchart = jest.fn();
 
 jest.mock('../components/Echart', () => {
   const { forwardRef, useImperativeHandle } =
     jest.requireActual<typeof import('react')>('react');
   const MockEchart = forwardRef<EchartsHandler | null, EchartsProps>(
-    (_props, ref) => {
+    (props, ref) => {
       useImperativeHandle(ref, () => ({
         getEchartInstance: () => ({ dispatchAction: mockDispatchAction }),
       }));
+      mockEchart(props);
       return null;
     },
   );
@@ -64,6 +69,10 @@ jest.mock('../components/Echart', () => {
 
 afterEach(() => {
   mockDispatchAction.mockReset();
+  mockEchart.mockReset();
+  mockGetLegendStateChange.mockReset();
+  mockGetLegendStateChange.mockReturnValue({});
+  jest.useRealTimers();
 });
 
 test('does not dispatch legend actions while mixed-chart options restore grouped state', () => {
@@ -111,4 +120,84 @@ test('does not dispatch legend actions while mixed-chart options restore grouped
 
   expect(mockDispatchAction).not.toHaveBeenCalled();
   expect(onLegendStateChanged).not.toHaveBeenCalled();
+});
+
+test('routes a mixed-chart legend double-click through focus and restore', () => {
+  jest.useFakeTimers();
+  const onLegendStateChanged = jest.fn();
+  const focusedState = { 'current:订购销售额': true };
+  const restoreState = { 'current:订购销售额': false };
+  mockGetLegendStateChange.mockImplementation(
+    (
+      _selected: unknown,
+      _groups: unknown,
+      changedName?: string,
+      mode?: string,
+    ) => {
+      if (mode === 'focus') return focusedState;
+      if (changedName === undefined) return restoreState;
+      return { [`current:${changedName}`]: true };
+    },
+  );
+
+  render(
+    <EchartsMixedTimeseries
+      {...({
+        height: 400,
+        width: 800,
+        echartOptions: {} as EChartsCoreOption,
+        setDataMask: jest.fn(),
+        labelMap: {},
+        labelMapB: {},
+        groupby: [],
+        groupbyB: [],
+        selectedValues: {},
+        formData: {},
+        emitCrossFilters: false,
+        seriesBreakdown: 0,
+        onContextMenu: jest.fn(),
+        onFocusedSeries: jest.fn(),
+        onLegendStateChanged,
+        legendGroups: {
+          groups: { '订购销售额, Query A': ['订购销售额, Query A'] },
+          labels: { '订购销售额, Query A': '订购销售额' },
+          kinds: { '订购销售额, Query A': 'current' },
+          parents: {},
+          stateKeys: { '订购销售额, Query A': 'current:订购销售额' },
+        },
+        xValueFormatter: String,
+        xAxis: { label: '日期', type: AxisType.Time },
+        refs: {},
+        coltypeMapping: {},
+      } as unknown as EchartsMixedTimeseriesChartTransformedProps)}
+    />,
+  );
+
+  const [echartProps] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  const select = echartProps.eventHandlers?.legendselectchanged;
+  act(() => {
+    select?.({
+      name: '订购销售额, Query A',
+      selected: { '订购销售额, Query A': false },
+    });
+    select?.({
+      name: '订购销售额, Query A',
+      selected: { '订购销售额, Query A': true },
+    });
+  });
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(1);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(focusedState);
+
+  act(() => {
+    select?.({
+      name: '订购销售额, Query A',
+      selected: { '订购销售额, Query A': false },
+    });
+    select?.({
+      name: '订购销售额, Query A',
+      selected: { '订购销售额, Query A': true },
+    });
+  });
+  expect(onLegendStateChanged).toHaveBeenCalledTimes(2);
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(restoreState);
 });
