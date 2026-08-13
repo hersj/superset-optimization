@@ -49,6 +49,20 @@ const extraQueryFormData: TableChartFormData = {
 };
 describe('plugin-chart-table', () => {
   describe('buildQuery', () => {
+    test('does not emit a nested time offset when dashboard comparison is disabled', () => {
+      const query = buildQuery({
+        ...basicFormData,
+        query_mode: QueryMode.Aggregate,
+        metrics: ['count'],
+        groupby: ['category'],
+        time_compare: '1 month ago',
+        comparison_type: 'values',
+        extra_form_data: { time_compare: [] },
+      }).queries[0];
+
+      expect(query.time_offsets).toEqual([]);
+    });
+
     test('should add post-processing and ignore duplicate metrics', () => {
       const query = buildQuery({
         ...basicFormData,

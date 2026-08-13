@@ -54,6 +54,19 @@ export function getQueryMode(formData: TableChartFormData) {
   return hasRawColumns ? QueryMode.Raw : QueryMode.Aggregate;
 }
 
+/**
+ * 功能审计（可重写规格）：Table 看板时间比较覆盖
+ * - 功能目的与触发方式：Table 图表构建查询时应用看板或自定义时间筛选器提供的比较偏移。
+ * - 输入契约：图表 time_compare 可为字符串或数组；extra_form_data.time_compare 可缺失、为字符串、字符串数组或显式空数组。
+ * - 输出契约：query.time_offsets 只包含非空字符串；显式空数组输出空数组并关闭比较。
+ * - 处理流程：先解析图表保存值，再以显式 extra_form_data 值最终覆盖并归一化。
+ * - 业务规则：筛选器覆盖优先于图表保存值；非字符串和空字符串不得进入请求。
+ * - 状态与副作用：纯查询转换，不写数据库、看板配置或浏览器存储。
+ * - 外部依赖：复用 ensureIsArray、既有时间比较后处理和 QueryObject 校验约定。
+ * - 异常与边界：字段缺失保留图表值；空数组必须清空；非法成员安全丢弃。
+ * - 不变量与约束：不得生成嵌套数组；自定义和 inherit 比较规则保持不变。
+ * - 验证方式：buildQuery 测试覆盖保存 1 month ago 且看板显式关闭时输出空 time_offsets。
+ */
 const buildQuery: BuildQuery<TableChartFormData> = (
   formData: TableChartFormData,
   options,
@@ -117,10 +130,15 @@ const buildQuery: BuildQuery<TableChartFormData> = (
     }
 
     if (
-      extra_form_data?.time_compare &&
-      !timeOffsets.includes(extra_form_data.time_compare)
+      Object.prototype.hasOwnProperty.call(
+        extra_form_data ?? {},
+        'time_compare',
+      )
     ) {
-      timeOffsets = [extra_form_data.time_compare];
+      timeOffsets = ensureIsArray(extra_form_data?.time_compare).filter(
+        (shift): shift is string =>
+          typeof shift === 'string' && shift.length > 0,
+      );
     }
 
     let temporalColumnAdded = false;

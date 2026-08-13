@@ -38,6 +38,17 @@ const createAdhocColumn = (
 });
 
 describe('plugin-chart-ag-grid-table', () => {
+  test('does not emit a nested time offset when dashboard comparison is disabled', () => {
+    const query = buildQuery({
+      ...basicFormData,
+      time_compare: '1 month ago',
+      comparison_type: 'values',
+      extra_form_data: { time_compare: [] },
+    }).queries[0];
+
+    expect(query.time_offsets).toEqual([]);
+  });
+
   describe('buildQuery - sort mapping for server pagination', () => {
     test('should map string column colId to backend identifier', () => {
       const query = buildQuery(
