@@ -101,14 +101,27 @@ export const StyledModal = styled(Modal)`
 `;
 
 class SaveModal extends Component<SaveModalProps, SaveModalState> {
+  isDuplicateChart(): boolean {
+    return (
+      new URLSearchParams(this.props.location?.search || '').get(
+        'duplicate_chart',
+      ) === '1'
+    );
+  }
+
   constructor(props: SaveModalProps) {
     super(props);
+    const isDuplicateChart = this.isDuplicateChart();
     this.state = {
-      newSliceName: props.sliceName,
+      newSliceName: isDuplicateChart
+        ? t('%s (copy)', props.sliceName || '')
+        : props.sliceName,
       datasetName: props.datasource?.name,
-      action: this.canOverwriteSlice()
-        ? ChartStatusType.overwrite
-        : ChartStatusType.saveas,
+      action: isDuplicateChart
+        ? ChartStatusType.saveas
+        : this.canOverwriteSlice()
+          ? ChartStatusType.overwrite
+          : ChartStatusType.saveas,
       isLoading: false,
       dashboard: undefined,
       tabsData: [],
@@ -191,6 +204,14 @@ class SaveModal extends Component<SaveModalProps, SaveModalState> {
   }
 
   onHide() {
+    if (this.isDuplicateChart()) {
+      const searchParams = new URLSearchParams(this.props.location.search);
+      searchParams.delete('duplicate_chart');
+      this.props.history.replace({
+        ...this.props.location,
+        search: searchParams.toString() ? `?${searchParams}` : '',
+      });
+    }
     this.props.dispatch(setSaveChartModalVisibility(false));
   }
 
@@ -201,6 +222,7 @@ class SaveModal extends Component<SaveModalProps, SaveModalState> {
     searchParams.delete('form_data_key');
 
     searchParams.set('slice_id', chart.id.toString());
+    searchParams.delete('duplicate_chart');
     return searchParams;
   };
 

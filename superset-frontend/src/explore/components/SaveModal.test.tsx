@@ -836,3 +836,18 @@ test('addChartToDashboardTab handles empty position_json', async () => {
     mockNanoid.mockRestore();
   }
 });
+
+test('opens duplicate charts in save-as mode with a copy name', () => {
+  const modal = new TestSaveModal({
+    ...defaultProps,
+    sliceName: 'Original chart',
+    slice: { owners: [1] },
+    user: { userId: 1 },
+    location: { search: '?duplicate_chart=1' },
+    history: { replace: jest.fn() },
+  });
+
+  expect(modal.state.action).toBe('saveas');
+  expect(modal.state.newSliceName).toContain('Original chart');
+  expect(modal.state.newSliceName).toContain('copy');
+});

@@ -162,6 +162,7 @@ test('Should render default props', () => {
   openMenu();
   expect(screen.getByText('Enter fullscreen')).toBeInTheDocument();
   expect(screen.getByText('Force refresh')).toBeInTheDocument();
+  expect(screen.getByText('复制图表')).toBeInTheDocument();
   expect(screen.getByText('Show chart description')).toBeInTheDocument();
   expect(screen.getByText('Edit chart')).toBeInTheDocument();
   expect(screen.getByText('Download')).toBeInTheDocument();

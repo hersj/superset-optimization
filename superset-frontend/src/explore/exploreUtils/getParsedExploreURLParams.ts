@@ -84,6 +84,10 @@ const getParsedExploreURLSearchParams = (
   return Array.from(urlSearchParams.keys()).reduce<Record<string, any>>(
     (acc, currentParam) => {
       const paramValue = urlSearchParams.get(currentParam);
+      // 复制入口标记只用于打开另存为弹窗，不能成为查询参数。
+      if (currentParam === 'duplicate_chart') {
+        return acc;
+      }
       if (paramValue === null) {
         return acc;
       }

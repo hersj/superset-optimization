@@ -29,6 +29,7 @@ import {
   getClientErrorObject,
 } from '@superset-ui/core';
 import { Loading } from '@superset-ui/core/components';
+import { setSaveChartModalVisibility } from 'src/explore/actions/saveModalActions';
 import { addDangerToast } from 'src/components/MessageToasts/actions';
 import { getUrlParam } from 'src/utils/urlUtils';
 import { URL_PARAMS } from 'src/constants';
@@ -137,6 +138,8 @@ export default function ExplorePage() {
     const saveAction = getUrlParam(
       URL_PARAMS.saveAction,
     ) as SaveActionType | null;
+    const duplicateChart =
+      new URLSearchParams(location.search).get('duplicate_chart') === '1';
     const dashboardContextFormData = getDashboardContextFormData();
 
     if (!isExploreInitialized.current || !!saveAction) {
@@ -173,6 +176,9 @@ export default function ExplorePage() {
               chartStates,
             }),
           );
+          if (duplicateChart) {
+            dispatch(setSaveChartModalVisibility(true));
+          }
         })
         .catch(err => Promise.all([getClientErrorObject(err), err]))
         .then(resolved => {

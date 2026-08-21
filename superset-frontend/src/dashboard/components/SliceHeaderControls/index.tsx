@@ -242,6 +242,31 @@ const SliceHeaderControls = (
           history.push(props.exploreUrl);
         }
         break;
+      case 'duplicate_chart': {
+        /*
+         * 功能审计（可重写规格）：从看板复制图表
+         * - 功能目的与触发方式：有图表编辑权限的用户在图表“更多”菜单点击“复制图表”。
+         * - 输入契约：使用当前图表的 exploreUrl；该 URL 必须保留原图表、看板上下文和筛选参数。
+         * - 输出契约：打开原图表的探索页并显示另存为弹窗，原图表不被修改。
+         * - 处理流程：追加 duplicate_chart=1 标记；普通打开使用当前窗口，Ctrl/Cmd 点击使用新窗口。
+         * - 业务规则：复制始终走既有 Save as 创建流程，不能走覆盖保存；用户确认保存前不创建新图表。
+         * - 状态与副作用：仅改变浏览器导航状态；最终保存复用既有创建图表接口和权限校验。
+         * - 外部依赖：依赖探索页、SaveModal 和现有 chart create API。
+         * - 异常与边界：URL 无查询参数时仍可追加标记；取消弹窗或保存失败不影响原图表。
+         * - 不变量与约束：不新增数据库字段、接口或持久化状态，不绕过现有权限。
+         * - 验证方式：菜单测试断言追加标记；SaveModal 测试断言强制 saveas 和副本名称。
+         */
+        const duplicateUrl = new URL(props.exploreUrl, window.location.origin);
+        duplicateUrl.searchParams.set('duplicate_chart', '1');
+        const targetUrl = `${duplicateUrl.pathname}${duplicateUrl.search}${duplicateUrl.hash}`;
+        if (domEvent.metaKey || domEvent.ctrlKey) {
+          domEvent.preventDefault();
+          window.open(targetUrl, '_blank');
+        } else {
+          history.push(targetUrl);
+        }
+        break;
+      }
       case MenuKeys.ExportCsv:
         // eslint-disable-next-line no-unused-expressions
         props.exportCSV?.(props.slice.slice_id);
@@ -466,6 +491,10 @@ const SliceHeaderControls = (
       ),
       'data-test-edit-chart-name': slice.slice_name,
     } as any);
+    newMenuItems.push({
+      key: 'duplicate_chart',
+      label: t('复制图表'),
+    });
   }
 
   if (canEditCrossFilters) {
