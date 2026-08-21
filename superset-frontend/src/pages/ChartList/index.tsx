@@ -508,6 +508,16 @@ function ChartList(props: ChartListProps) {
             );
           const openEditModal = () => openChartEditModal(original);
           const handleExport = () => handleBulkChartExport([original]);
+          const handleDuplicate = () => {
+            /*
+             * 图表列表复制入口：复用原图表编辑地址和已有另存为流程；只改变导航，不在列表点击时创建数据库记录。
+             */
+            const duplicateUrl = new URL(original.url, window.location.origin);
+            duplicateUrl.searchParams.set('duplicate_chart', '1');
+            history.push(
+              `${duplicateUrl.pathname}${duplicateUrl.search}${duplicateUrl.hash}`,
+            );
+          };
           if (!canEdit && !canDelete && !canExport) {
             return null;
           }
@@ -543,6 +553,23 @@ function ChartList(props: ChartListProps) {
                     onClick={handleExport}
                   >
                     <Icons.UploadOutlined iconSize="l" />
+                  </span>
+                </Tooltip>
+              )}
+              {canEdit && (
+                <Tooltip
+                  id="duplicate-action-tooltip"
+                  title={t('复制图表')}
+                  placement="bottom"
+                >
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="action-button"
+                    data-test="duplicate-chart"
+                    onClick={handleDuplicate}
+                  >
+                    <Icons.CopyOutlined iconSize="l" />
                   </span>
                 </Tooltip>
               )}
@@ -602,6 +629,7 @@ function ChartList(props: ChartListProps) {
       addDangerToast,
       handleBulkChartExport,
       openChartEditModal,
+      history,
     ],
   );
 

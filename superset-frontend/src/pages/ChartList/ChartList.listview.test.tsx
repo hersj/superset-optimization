@@ -89,6 +89,23 @@ test('renders table in list view', async () => {
   expect(screen.queryByTestId('styled-card')).not.toBeInTheDocument();
 });
 
+test('opens the chart copy flow from the actions column', async () => {
+  renderChartList(mockUser);
+
+  await waitFor(() => {
+    expect(screen.getByTestId('listview-table')).toBeInTheDocument();
+  });
+
+  const row = screen.getByText('Test Chart 0').closest('tr');
+  expect(row).toBeInTheDocument();
+
+  await userEvent.click(within(row!).getByTestId('duplicate-chart'));
+
+  expect(window.location.pathname).toBe('/superset/slice/0/');
+  expect(window.location.search).toBe('?duplicate_chart=1');
+  window.history.replaceState({}, '', '/');
+});
+
 test('displays dataset names with and without schema prefix', async () => {
   // Create custom mock data with different datasource_name_text formats
   const customMockCharts = [
