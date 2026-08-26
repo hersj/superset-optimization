@@ -18,6 +18,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+from flask import g
 import pytest
 from sqlalchemy import bindparam, or_, text
 from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
@@ -38,6 +39,120 @@ class FakeRows(list):
 
 def setup_function():
     clear_cascade_filter_options_cache()
+
+
+def test_activate_request_identity_keeps_session_user_without_jwt(app, mocker):
+    session_user = object()
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.verify_jwt_in_request",
+        return_value=None,
+    )
+
+    with app.test_request_context("/"):
+        g.user = session_user
+        GetCascadeFilterOptionsCommand(44, 98, ["country"])._activate_request_identity()
+
+        assert g.user is session_user
+
+
+def test_activate_request_identity_uses_verified_jwt_user(app, mocker):
+    verified_user = object()
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.verify_jwt_in_request",
+        return_value=("header", "claims"),
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.jwt_current_user",
+        new=verified_user,
+    )
+
+    with app.test_request_context("/"):
+        g.user = object()
+        GetCascadeFilterOptionsCommand(44, 98, ["country"])._activate_request_identity()
+
+        assert g.user is verified_user
+
+
+def test_valid_jwt_identity_reaches_rls_and_bypasses_shared_cache(app, mocker):
+    fake_engine = MagicMock()
+    fake_engine.dialect = postgresql_dialect()
+    fake_engine.execute.return_value = FakeRows(
+        [{"__column": "country", "__value": "US"}]
+    )
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_engine
+    fake_dataset = MagicMock()
+    fake_dataset.database.get_sqla_engine.return_value = fake_context
+    fake_dataset.catalog = None
+    fake_dataset.schema = "public"
+    fake_dataset.table_name = "profit_dws_daily_v2"
+    fake_dataset.main_dttm_col = "earliest_ship_date"
+    verified_user = object()
+    observed_users = []
+
+    def get_rls_filters():
+        observed_users.append(g.user)
+        return [text('"shop_id" = 42')]
+
+    fake_dataset.get_sqla_row_level_filters.side_effect = get_rls_filters
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dataset",
+        return_value=fake_dataset,
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={"columns": ["country"], "parent_columns_by_column": {"country": []}},
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.verify_jwt_in_request",
+        return_value=("header", "claims"),
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.jwt_current_user",
+        new=verified_user,
+    )
+    cached_get = mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options._get_cached_options"
+    )
+    cached_set = mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options._set_cached_options"
+    )
+
+    with app.test_request_context("/"):
+        GetCascadeFilterOptionsCommand(44, 98, ["country"]).run()
+
+    assert observed_users == [verified_user]
+    assert 'AND ("shop_id" = 42)' in str(fake_engine.execute.call_args.args[0])
+    cached_get.assert_not_called()
+    cached_set.assert_not_called()
+
+
+def test_invalid_jwt_fails_before_cascade_query(app, mocker):
+    fake_engine = MagicMock()
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_engine
+    fake_dataset = MagicMock()
+    fake_dataset.database.get_sqla_engine.return_value = fake_context
+
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dataset",
+        return_value=fake_dataset,
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={"columns": ["country"], "parent_columns_by_column": {"country": []}},
+    )
+    jwt_error = RuntimeError("invalid JWT")
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.verify_jwt_in_request",
+        side_effect=jwt_error,
+    )
+
+    with app.test_request_context("/"):
+        with pytest.raises(RuntimeError, match="invalid JWT"):
+            GetCascadeFilterOptionsCommand(44, 98, ["country"]).run()
+
+    fake_engine.execute.assert_not_called()
 
 
 def test_cascade_filter_options_queries_each_column_with_parent_filters(mocker):

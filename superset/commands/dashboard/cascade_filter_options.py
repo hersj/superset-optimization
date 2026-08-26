@@ -120,22 +120,28 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
 
     def _activate_request_identity(self) -> None:
         # 功能审计（可重写规格）：级联筛选选项的请求身份激活
-        # - 目的：RLS 解析依赖 g.user 指向真实用户。@protect(JWT) 校验通过后，
-        #   中间件遗留的 g.user 可能是未解析代理（解析为 Public 匿名），
-        #   导致规则被误判为空、全量返回。
-        # - 契约：请求上下文中显式验证 JWT 并解析用户，回填 g.user；
-        #   非 JWT 认证（如 session cookie）时 verify 抛错即静默跳过，
-        #   保持既有行为不变，不改变上游鉴权语义。
-        # - 失败语义：本方法自身不抛出异常；匿名请求由上游 @protect 拦截。
+        # - 功能目的与触发方式：级联筛选命令在解析数据集 RLS 前调用，确保
+        #   JWT 请求的当前用户已经完成验证和加载，避免 RLS 误用 Public 匿名身份。
+        # - 输入契约：必须在 Flask request context 中执行；JWT 由现有
+        #   Flask-JWT-Extended 配置解析，session cookie 请求可能没有 JWT。
+        # - 输出契约：无 JWT 时保留既有 g.user；有效 JWT 时将已验证的用户写入
+        #   g.user；无 request context 时不改变任何状态。
+        # - 处理流程与业务规则：调用 verify_jwt_in_request(optional=True)；返回
+        #   None 只表示没有 JWT，继续使用 session 身份；有 JWT 时读取
+        #   jwt_current_user 并覆盖 g.user。不能用异常来判断“没有 JWT”。
+        # - 状态与副作用：只更新当前 Flask 请求上下文，不写数据库、缓存或用户会话。
+        # - 外部依赖：复用 Flask-JWT-Extended 的既有 JWT 验证、用户加载和异常语义。
+        # - 异常与边界：无效、过期、撤销 JWT 或用户加载失败的异常必须向上抛出，
+        #   在数据集 RLS 和 engine.execute 前终止请求，禁止回退旧身份而扩大可见范围。
+        # - 不变量与约束：session-only 请求行为不变；JWT 请求必须使用已验证用户；
+        #   安全失败采用 fail-closed。
+        # - 验证方式：请求 context 下分别验证无 JWT、有效 JWT、无效 JWT，且无效
+        #   JWT 时不发生数据库 engine.execute。
         if not has_request_context():
             return
-        try:
-            verify_jwt_in_request()
-        except Exception:
-            return
-        jwt_user = jwt_current_user  # 触发 load_user_jwt，其内部会写 g.user
-        if jwt_user is not None:
-            g.user = jwt_user
+        jwt_result = verify_jwt_in_request(optional=True)
+        if jwt_result is not None:
+            g.user = jwt_current_user  # 触发 load_user_jwt，使用已验证用户
 
     # 功能审计（可重写规格）：级联筛选选项的行级权限执行
     # - 功能目的与触发方式：看板级联筛选请求由 run 触发。
