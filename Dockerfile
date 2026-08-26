@@ -23,7 +23,21 @@ ARG PY_VER=3.11.14-slim-trixie
 # If BUILDPLATFORM is null, set it to 'amd64' (or leave as is otherwise).
 ARG BUILDPLATFORM=${BUILDPLATFORM:-amd64}
 
-# Include translations in the final build
+# 功能审计（可重写规格）：生产中文翻译构建门禁
+# - 功能目的与触发方式：正式 Superset 镜像构建时生成并携带前端中文语言包，避免
+#   新镜像因忽略的生成文件缺失而让中文界面消失。
+# - 输入契约：构建参数 BUILD_TRANSLATIONS；正式 compose 必须传 true；输入为受版本
+#   控制的 superset/translations/**/*.po 文件和现有 po2json/build-translation 命令。
+# - 输出契约：最终镜像包含非空 superset/translations/zh/LC_MESSAGES/messages.json，
+#   /superset/language_pack/zh/ 返回 HTTP 200；生成失败或文件为空时构建失败。
+# - 处理流程：先执行现有前端翻译生成，再检查中文 JSON，再清理 PO/MO；Python MO
+#   编译同样不能吞掉失败。正式发布前另行核对文件 hash、临时容器和 HTTP 入口。
+# - 业务规则：BUILD_TRANSLATIONS=false 的开发构建保留原可选行为；正式构建固定为 true。
+# - 状态与副作用：只影响镜像产物，不写数据库、不改看板、不改变运行中容器。
+# - 外部依赖：Node po2json、Python Babel、Docker build args 和 Superset language_pack 路由。
+# - 异常与边界：生成命令、校验或编译失败立即终止构建，禁止由后续清理命令掩盖失败。
+# - 不变量与约束：部署候选必须从已验收稳定代码继承，中文资源必须可重复生成并可观测。
+# - 验证方式：构建日志、文件 size/hash、临时容器文件检查和 /superset/language_pack/zh/。
 ARG BUILD_TRANSLATIONS="false"
 
 ######################################################################
@@ -90,9 +104,11 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy translation files
 COPY superset/translations /app/superset/translations
 
-# Build translations if enabled, then cleanup localization files
-RUN if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
+# Build translations if enabled, validate the production artifact, then cleanup localization files
+RUN set -eu; \
+    if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
         npm run build-translation; \
+        test -s /app/superset/translations/zh/LC_MESSAGES/messages.json; \
     fi; \
     rm -rf /app/superset/translations/*/*/*.[po,mo];
 
@@ -134,8 +150,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     . /app/.venv/bin/activate && /app/docker/pip-install.sh --requires-build-essential -r requirements/translations.txt
 
 COPY superset/translations/ /app/translations_mo/
-RUN if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
-        pybabel compile -d /app/translations_mo | true; \
+RUN set -eu; \
+    if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
+        pybabel compile -d /app/translations_mo; \
     fi; \
     rm -f /app/translations_mo/*/*/*.[po,json]
 

@@ -32,6 +32,8 @@ x-superset-volumes:
 x-common-build: &common-build
   context: .
   target: dev
+  args:
+    BUILD_TRANSLATIONS: "true"
   cache_from:
     - apache/superset-cache:3.10-slim-trixie
 
