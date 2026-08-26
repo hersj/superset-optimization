@@ -23,6 +23,11 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any
 
+from flask import g, has_request_context
+from flask_jwt_extended import (
+    current_user as jwt_current_user,
+    verify_jwt_in_request,
+)
 from sqlalchemy import bindparam, text
 
 from superset import db
@@ -113,13 +118,33 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         if unknown_columns:
             raise ValueError(f"Unsupported columns: {sorted(unknown_columns)}")
 
+    def _activate_request_identity(self) -> None:
+        # 功能审计（可重写规格）：级联筛选选项的请求身份激活
+        # - 目的：RLS 解析依赖 g.user 指向真实用户。@protect(JWT) 校验通过后，
+        #   中间件遗留的 g.user 可能是未解析代理（解析为 Public 匿名），
+        #   导致规则被误判为空、全量返回。
+        # - 契约：请求上下文中显式验证 JWT 并解析用户，回填 g.user；
+        #   非 JWT 认证（如 session cookie）时 verify 抛错即静默跳过，
+        #   保持既有行为不变，不改变上游鉴权语义。
+        # - 失败语义：本方法自身不抛出异常；匿名请求由上游 @protect 拦截。
+        if not has_request_context():
+            return
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return
+        jwt_user = jwt_current_user  # 触发 load_user_jwt，其内部会写 g.user
+        if jwt_user is not None:
+            g.user = jwt_user
+
     # 功能审计（可重写规格）：级联筛选选项的行级权限执行
     # - 功能目的与触发方式：看板级联筛选请求由 run 触发。
     #   返回当前用户可见的数据集维度值。
     # - 输入契约：已校验的看板、数据集、目标列、父级筛选值和时间范围。
     #   数据集 RLS 使用 Superset 当前用户上下文解析。
     # - 输出契约：每列返回去重、排序、限量后的选项，不能包含规则外值。
-    # - 处理流程：先解析时间和 RLS，并按目标数据库方言编译完整谓词；
+    # - 处理流程：先激活请求身份(JWT→g.user)，再解析时间和 RLS，
+    #   并按目标数据库方言编译完整谓词；
     #   仅无 RLS 请求可读写既有缓存，之后将同一谓词写入每个列子查询。
     # - 业务规则：复用 dataset.get_sqla_row_level_filters 的角色与模板语义。
     #   RLS 为空时保留原查询和缓存行为。
@@ -134,6 +159,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
     #   部署后以受限角色实际请求复核。
     def run(self) -> dict[str, dict[str, Any]]:
         self.validate()
+        self._activate_request_identity()
         since, until = self._resolve_time_range()
         dataset = self._get_dataset()
         rls_filters = list(dataset.get_sqla_row_level_filters())
