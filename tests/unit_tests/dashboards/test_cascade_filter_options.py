@@ -19,7 +19,8 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import bindparam, or_, text
+from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 
 from superset.commands.dashboard.cascade_filter_options import (
     clear_cascade_filter_options_cache,
@@ -558,6 +559,7 @@ def test_cascade_filter_options_reuses_identical_request_cache(mocker):
 
 def test_cascade_filter_options_applies_rls_and_does_not_share_cached_options(mocker):
     fake_engine = MagicMock()
+    fake_engine.dialect = postgresql_dialect()
     fake_engine.execute.return_value = FakeRows(
         [
             {"__column": "country", "__value": "US"},
@@ -573,7 +575,16 @@ def test_cascade_filter_options_applies_rls_and_does_not_share_cached_options(mo
     fake_dataset.schema = "public"
     fake_dataset.table_name = "profit_dws_daily_v2"
     fake_dataset.main_dttm_col = "earliest_ship_date"
-    fake_dataset.get_sqla_row_level_filters.return_value = [text('"shop_id" = 42')]
+    fake_dataset.get_sqla_row_level_filters.return_value = [
+        or_(
+            text('"shop_id" = :shop_a').bindparams(
+                bindparam("shop_a", value=42)
+            ),
+            text('"shop_id" = :shop_b').bindparams(
+                bindparam("shop_b", value=43)
+            ),
+        )
+    ]
 
     mocker.patch(
         "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dataset",
@@ -583,21 +594,73 @@ def test_cascade_filter_options_applies_rls_and_does_not_share_cached_options(mo
         "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
         return_value={
             "columns": ["country", "shop_name"],
-            "parent_columns_by_column": {"country": [], "shop_name": []},
+            "parent_columns_by_column": {
+                "country": ["department_label"],
+                "shop_name": ["department_label"],
+            },
         },
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.get_since_until_from_time_range",
+        return_value=(datetime(2026, 1, 1), datetime(2027, 1, 1)),
     )
 
     command_kwargs = {
         "dashboard_id": 44,
         "dataset_id": 98,
         "columns": ["country", "shop_name"],
+        "applied_filters": {"department_label": ["D1"]},
+        "time_range": "Current year",
     }
 
     GetCascadeFilterOptionsCommand(**command_kwargs).run()
     GetCascadeFilterOptionsCommand(**command_kwargs).run()
 
     assert fake_engine.execute.call_count == 2
-    assert str(fake_engine.execute.call_args.args[0]).count('"shop_id" = 42') == 2
+    sql = str(fake_engine.execute.call_args.args[0])
+    assert sql.count('AND ("shop_id" = 42 OR "shop_id" = 43) AND') == 2
+    assert sql.count('"department_label" IN') == 2
+    assert sql.count('"earliest_ship_date" >= :since') == 2
+    assert sql.count('"earliest_ship_date" < :until') == 2
+    assert ":shop_a" not in sql
+    assert ":shop_b" not in sql
+
+
+def test_cascade_filter_options_rejects_uncompilable_rls_before_query(mocker):
+    fake_engine = MagicMock()
+    fake_engine.dialect = postgresql_dialect()
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_engine
+
+    rls_filter = MagicMock()
+    rls_filter.compile.side_effect = ValueError("bad RLS")
+    fake_dataset = MagicMock()
+    fake_dataset.database.get_sqla_engine.return_value = fake_context
+    fake_dataset.catalog = None
+    fake_dataset.schema = "public"
+    fake_dataset.table_name = "profit_dws_daily_v2"
+    fake_dataset.get_sqla_row_level_filters.return_value = [rls_filter]
+
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dataset",
+        return_value=fake_dataset,
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={
+            "columns": ["country"],
+            "parent_columns_by_column": {"country": []},
+        },
+    )
+
+    with pytest.raises(ValueError, match="Unable to compile row level security"):
+        GetCascadeFilterOptionsCommand(
+            dashboard_id=44,
+            dataset_id=98,
+            columns=["country"],
+        ).run()
+
+    fake_engine.execute.assert_not_called()
 
 
 @pytest.mark.parametrize("invalid_time_range", [[], {}, "", "No filter"])

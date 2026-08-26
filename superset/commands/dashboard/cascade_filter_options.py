@@ -119,16 +119,17 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
     # - 输入契约：已校验的看板、数据集、目标列、父级筛选值和时间范围。
     #   数据集 RLS 使用 Superset 当前用户上下文解析。
     # - 输出契约：每列返回去重、排序、限量后的选项，不能包含规则外值。
-    # - 处理流程：先解析时间和 RLS；仅无 RLS 请求可读写既有缓存。
-    #   之后将同一 RLS 谓词写入每个列子查询。
+    # - 处理流程：先解析时间和 RLS，并按目标数据库方言编译完整谓词；
+    #   仅无 RLS 请求可读写既有缓存，之后将同一谓词写入每个列子查询。
     # - 业务规则：复用 dataset.get_sqla_row_level_filters 的角色与模板语义。
     #   RLS 为空时保留原查询和缓存行为。
     # - 状态与副作用：只读数据库；有 RLS 的响应不得进入共享进程缓存。
     # - 外部依赖：SqlaTable、当前 Flask 用户、security_manager 和原生筛选元数据。
-    # - 异常与边界：RLS 模板解析失败时请求失败，不能退回无 RLS 查询。
+    # - 异常与边界：RLS 模板解析或方言编译失败时请求失败，不能退回无 RLS 查询。
     #   无 RLS 数据集继续使用既有缓存。
-    # - 不变量与约束：每个 UNION 子查询均带已解析 RLS 条件。
-    #   缓存、默认值或空规则均不得扩大可见范围。
+    # - 不变量与约束：每个 UNION 子查询均带完整括号包裹的已解析 RLS 条件，
+    #   不改变组内 OR、组间 AND、父筛选和时间条件的优先级；缓存、默认值或空
+    #   规则均不得扩大可见范围。
     # - 验证方式：级联筛选单测覆盖 RLS 与缓存隔离。
     #   部署后以受限角色实际请求复核。
     def run(self) -> dict[str, dict[str, Any]]:
@@ -147,11 +148,12 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             catalog=dataset.catalog,
             schema=dataset.schema,
         ) as engine:
+            rls_clauses = self._compile_rls_clauses(rls_filters, engine.dialect)
             statement, params = self._build_statement(
                 dataset,
                 since,
                 until,
-                rls_filters,
+                rls_clauses,
             )
             rows = engine.execute(statement, params).mappings().all()
 
@@ -192,6 +194,25 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
 
     def _get_dataset(self) -> SqlaTable:
         return db.session.query(SqlaTable).filter(SqlaTable.id == self._dataset_id).one()
+
+    @staticmethod
+    def _compile_rls_clauses(
+        rls_filters: list[Any],
+        dialect: Any,
+    ) -> list[str]:
+        # RLS 可能是包含 OR 的 BooleanClauseList；必须以实际方言编译并整体加括号，
+        # 才能安全地与原始 SQL 的父筛选和时间条件使用 AND 连接。
+        try:
+            compiled_filters = [
+                rls_filter.compile(
+                    dialect=dialect,
+                    compile_kwargs={"literal_binds": True},
+                )
+                for rls_filter in rls_filters
+            ]
+        except Exception as ex:
+            raise ValueError("Unable to compile row level security filters") from ex
+        return [f"({predicate})" for predicate in compiled_filters]
 
     def _get_filter_metadata(self) -> dict[str, Any]:
         if self._filter_metadata is None:
@@ -278,7 +299,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         dataset: SqlaTable,
         since: datetime | None,
         until: datetime | None,
-        rls_filters: list[Any],
+        rls_clauses: list[str],
     ) -> tuple[Any, dict[str, Any]]:
         table_name = get_dataset_table_name(dataset)
         params: dict[str, Any] = {}
@@ -287,8 +308,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         time_column = getattr(dataset, "main_dttm_col", None)
         subqueries = []
         # 每个维度值都有独立的 UNION 子查询，RLS 不能只加在外层，否则
-        # 子查询的分组结果可能已经包含规则外数据。
-        rls_clauses = [str(rls_filter) for rls_filter in rls_filters]
+        # 子查询的分组结果可能已经包含规则外数据。rls_clauses 保留完整布尔分组。
 
         for column_index, column in enumerate(self._columns):
             quoted_column = quote_identifier(column)
