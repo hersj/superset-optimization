@@ -19,10 +19,11 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import text
 
 from superset.commands.dashboard.cascade_filter_options import (
-    GetCascadeFilterOptionsCommand,
     clear_cascade_filter_options_cache,
+    GetCascadeFilterOptionsCommand,
 )
 
 
@@ -553,6 +554,50 @@ def test_cascade_filter_options_reuses_identical_request_cache(mocker):
 
     assert first == second
     assert fake_engine.execute.call_count == 1
+
+
+def test_cascade_filter_options_applies_rls_and_does_not_share_cached_options(mocker):
+    fake_engine = MagicMock()
+    fake_engine.execute.return_value = FakeRows(
+        [
+            {"__column": "country", "__value": "US"},
+            {"__column": "shop_name", "__value": "Shop A"},
+        ]
+    )
+    fake_context = MagicMock()
+    fake_context.__enter__.return_value = fake_engine
+
+    fake_dataset = MagicMock()
+    fake_dataset.database.get_sqla_engine.return_value = fake_context
+    fake_dataset.catalog = None
+    fake_dataset.schema = "public"
+    fake_dataset.table_name = "profit_dws_daily_v2"
+    fake_dataset.main_dttm_col = "earliest_ship_date"
+    fake_dataset.get_sqla_row_level_filters.return_value = [text('"shop_id" = 42')]
+
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dataset",
+        return_value=fake_dataset,
+    )
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={
+            "columns": ["country", "shop_name"],
+            "parent_columns_by_column": {"country": [], "shop_name": []},
+        },
+    )
+
+    command_kwargs = {
+        "dashboard_id": 44,
+        "dataset_id": 98,
+        "columns": ["country", "shop_name"],
+    }
+
+    GetCascadeFilterOptionsCommand(**command_kwargs).run()
+    GetCascadeFilterOptionsCommand(**command_kwargs).run()
+
+    assert fake_engine.execute.call_count == 2
+    assert str(fake_engine.execute.call_args.args[0]).count('"shop_id" = 42') == 2
 
 
 @pytest.mark.parametrize("invalid_time_range", [[], {}, "", "No filter"])
