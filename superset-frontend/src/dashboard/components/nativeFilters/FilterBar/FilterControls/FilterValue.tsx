@@ -191,6 +191,24 @@ const FilterValue: FC<FilterValueProps> = ({
   const nativeFilters = useSelector<RootState, Record<string, any>>(
     state => state.nativeFilters.filters,
   );
+  // 功能审计（可重写规格）：级联时间筛选的图表数据集范围
+  // 级联请求只使用当前看板 Redux 中已加载的 slice datasource_id；映射未就绪时由请求层拒绝不明确的 scope。
+  const sliceEntities = useSelector(
+    (state: RootState) => state.sliceEntities.slices,
+  );
+  const chartDatasetIds = useMemo(
+    () =>
+      Object.entries(sliceEntities).reduce<Record<number, number>>(
+        (result, [chartId, slice]) => {
+          if (slice?.datasource_id !== undefined) {
+            result[Number(chartId)] = slice.datasource_id;
+          }
+          return result;
+        },
+        {},
+      ),
+    [sliceEntities],
+  );
 
   const [error, setError] = useState<ClientErrorObject>();
   const [formData, setFormData] = useState<Partial<QueryFormData>>({
@@ -429,6 +447,7 @@ const FilterValue: FC<FilterValueProps> = ({
           datasetId as number,
           nativeFilters,
           dataMaskSelected,
+          chartDatasetIds,
         )
           .then(result => {
             if (!isCurrentRequest()) {
@@ -468,6 +487,7 @@ const FilterValue: FC<FilterValueProps> = ({
     shouldRefresh,
     dataMaskSelected,
     nativeFilters,
+    chartDatasetIds,
   ]);
 
   useEffect(() => {

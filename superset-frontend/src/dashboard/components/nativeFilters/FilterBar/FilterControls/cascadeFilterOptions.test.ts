@@ -21,6 +21,7 @@ import { SupersetClient } from '@superset-ui/core';
 import {
   getCascadeFilterOptions,
   getCascadeFilterColumns,
+  clearSellerfoxCascadeFilterOptionsCache,
   isCascadeFilter,
   getSellerfoxCascadeFilterOptions,
   getSellerfoxCascadeColumns,
@@ -31,6 +32,7 @@ import {
 describe('sellerfox cascade filter options', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    clearSellerfoxCascadeFilterOptionsCache();
   });
 
   it('builds a generic dashboard batch payload from filter metadata', async () => {
@@ -61,7 +63,10 @@ describe('sellerfox cascade filter options', () => {
       customTime: {
         id: 'customTime',
         filterType: 'filter_custom_time',
-        targets: [],
+        targets: [{ datasetId: 95, column: { name: '日期' } }],
+        defaultDataMask: {
+          extraFormData: { time_range: '2026-06-01 : 2026-06-30' },
+        },
       },
     } as any;
 
@@ -82,6 +87,7 @@ describe('sellerfox cascade filter options', () => {
         applied_filters: {
           年月: ['2026-06'],
         },
+        time_range: '2026-06-01 : 2026-06-30',
       },
     });
     expect(getCascadeFilterColumns(43, 95, nativeFilters)).toEqual([
@@ -222,5 +228,252 @@ describe('sellerfox cascade filter options', () => {
     expect(isSellerfoxCascadeFilter(44, 98, 'filter_select', 'currency')).toBe(
       false,
     );
+  });
+});
+
+describe('cascade filter time range contract', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    clearSellerfoxCascadeFilterOptionsCache();
+  });
+
+  it('does not request when an applicable time filter is not ready', async () => {
+    const post = jest.spyOn(SupersetClient, 'post');
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 95, column: { name: 'event_date' } }],
+        defaultDataMask: {},
+      },
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 95, column: { name: 'shop_name' } }],
+      },
+    } as any;
+
+    await expect(
+      getCascadeFilterOptions(43, 95, nativeFilters, {}),
+    ).rejects.toThrow(/time range/i);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('uses the applicable filter id instead of the last data mask time range', async () => {
+    const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+      json: { result: {} },
+    } as any);
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 95, column: { name: 'event_date' } }],
+        defaultDataMask: {},
+      },
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 95, column: { name: 'shop_name' } }],
+      },
+    } as any;
+
+    await getCascadeFilterOptions(44, 95, nativeFilters, {
+      time: {
+        id: 'time',
+        extraFormData: { time_range: '2026-01-01 : 2026-01-31' },
+      },
+      unrelated: {
+        id: 'unrelated',
+        extraFormData: { time_range: '2020-01-01 : 2020-01-31' },
+      },
+    } as any);
+
+    expect(post).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/44/cascade_filter_options',
+      jsonPayload: expect.objectContaining({
+        time_range: '2026-01-01 : 2026-01-31',
+      }),
+    });
+  });
+
+  it('rejects conflicting applicable time filter ranges without requesting', async () => {
+    const post = jest.spyOn(SupersetClient, 'post');
+    const nativeFilters = {
+      timeA: {
+        id: 'timeA',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 95, column: { name: 'event_date' } }],
+      },
+      timeB: {
+        id: 'timeB',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 95, column: { name: 'event_date' } }],
+      },
+    } as any;
+
+    await expect(
+      getCascadeFilterOptions(44, 95, nativeFilters, {
+        timeA: {
+          id: 'timeA',
+          extraFormData: { time_range: '2026-01-01 : 2026-01-31' },
+        },
+        timeB: {
+          id: 'timeB',
+          extraFormData: { time_range: '2026-02-01 : 2026-02-28' },
+        },
+      } as any),
+    ).rejects.toThrow(/time range/i);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a time range from an unrelated dashboard filter', async () => {
+    const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+      json: { result: {} },
+    } as any);
+    const nativeFilters = {
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 95, column: { name: 'shop_name' } }],
+      },
+    } as any;
+
+    await getCascadeFilterOptions(44, 95, nativeFilters, {
+      unrelated: {
+        id: 'unrelated',
+        extraFormData: { time_range: '2020-01-01 : 2020-01-31' },
+      },
+    } as any);
+
+    expect(post).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/44/cascade_filter_options',
+      jsonPayload: expect.not.objectContaining({
+        time_range: expect.anything(),
+      }),
+    });
+  });
+
+  it('keeps the old unbounded behavior for an empty time filter scope', async () => {
+    const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+      json: { result: {} },
+    } as any);
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        chartsInScope: [],
+      },
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 95, column: { name: 'shop_name' } }],
+      },
+    } as any;
+
+    await getCascadeFilterOptions(44, 95, nativeFilters, {
+      time: {
+        id: 'time',
+        extraFormData: { time_range: '2026-01-01 : 2026-01-31' },
+      },
+    } as any);
+
+    expect(post).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/44/cascade_filter_options',
+      jsonPayload: expect.not.objectContaining({
+        time_range: expect.anything(),
+      }),
+    });
+  });
+
+  it('uses the selected range for a time filter scoped through the chart dataset', async () => {
+    const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+      json: { result: {} },
+    } as any);
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        chartsInScope: [101],
+      },
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 95, column: { name: 'shop_name' } }],
+      },
+    } as any;
+
+    await getCascadeFilterOptions(
+      44,
+      95,
+      nativeFilters,
+      {
+        time: {
+          id: 'time',
+          extraFormData: { time_range: '2026-03-01 : 2026-03-31' },
+        },
+      } as any,
+      { 101: 95 },
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/44/cascade_filter_options',
+      jsonPayload: expect.objectContaining({
+        time_range: '2026-03-01 : 2026-03-31',
+      }),
+    });
+  });
+
+  it('uses a range when the scope includes this and another dataset', async () => {
+    const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
+      json: { result: {} },
+    } as any);
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        chartsInScope: [101, 102],
+      },
+    } as any;
+
+    await getCascadeFilterOptions(
+      44,
+      95,
+      nativeFilters,
+      {
+        time: {
+          id: 'time',
+          extraFormData: { time_range: '2026-03-01 : 2026-03-31' },
+        },
+      } as any,
+      { 101: 95, 102: 96 },
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/44/cascade_filter_options',
+      jsonPayload: expect.objectContaining({
+        time_range: '2026-03-01 : 2026-03-31',
+      }),
+    });
+  });
+
+  it('rejects a scoped time filter until chart datasets are ready', async () => {
+    const post = jest.spyOn(SupersetClient, 'post');
+    const nativeFilters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        chartsInScope: [101],
+      },
+    } as any;
+
+    await expect(
+      getCascadeFilterOptions(44, 95, nativeFilters, {
+        time: {
+          id: 'time',
+          extraFormData: { time_range: '2026-03-01 : 2026-03-31' },
+        },
+      } as any),
+    ).rejects.toThrow(/scope/i);
+    expect(post).not.toHaveBeenCalled();
   });
 });

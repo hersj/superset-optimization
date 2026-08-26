@@ -546,7 +546,6 @@ def test_cascade_filter_options_reuses_identical_request_cache(mocker):
         "dataset_id": 98,
         "columns": ["country"],
         "applied_filters": {"department_label": ["D1"]},
-        "time_range": "No filter",
     }
 
     first = GetCascadeFilterOptionsCommand(**command_kwargs).run()
@@ -554,3 +553,49 @@ def test_cascade_filter_options_reuses_identical_request_cache(mocker):
 
     assert first == second
     assert fake_engine.execute.call_count == 1
+
+
+@pytest.mark.parametrize("invalid_time_range", [[], {}, "", "No filter"])
+def test_cascade_filter_options_rejects_invalid_time_range_at_api_boundary(
+    mocker, invalid_time_range
+):
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={
+            "columns": ["country"],
+            "parent_columns_by_column": {"country": []},
+            "applicable_time_filter_count": 0,
+        },
+    )
+    command = GetCascadeFilterOptionsCommand(
+        dashboard_id=44,
+        dataset_id=98,
+        columns=["country"],
+        applied_filters={},
+        time_range=invalid_time_range,
+    )
+
+    with pytest.raises(ValueError, match="time_range"):
+        command.run()
+
+
+def test_cascade_filter_options_rejects_missing_range_when_filter_is_configured(
+    mocker,
+):
+    mocker.patch(
+        "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
+        return_value={
+            "columns": ["country"],
+            "parent_columns_by_column": {"country": []},
+            "applicable_time_filter_count": 1,
+        },
+    )
+    command = GetCascadeFilterOptionsCommand(
+        dashboard_id=44,
+        dataset_id=98,
+        columns=["country"],
+        applied_filters={},
+    )
+
+    with pytest.raises(ValueError, match="time_range"):
+        command.run()

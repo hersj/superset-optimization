@@ -115,16 +115,13 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
 
     def run(self) -> dict[str, dict[str, Any]]:
         self.validate()
+        since, until = self._resolve_time_range()
         cache_key = self._get_cache_key()
         cached_result = _get_cached_options(cache_key)
         if cached_result is not None:
             return cached_result
 
         dataset = self._get_dataset()
-        if self._time_range:
-            since, until = get_since_until_from_time_range(self._time_range)
-        else:
-            since, until = None, None
 
         result: dict[str, dict[str, Any]] = {}
         with dataset.database.get_sqla_engine(
@@ -187,8 +184,42 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         }
         columns: list[str] = []
         parent_columns_by_column: dict[str, list[str]] = {}
+        chart_datasources = {
+            chart.id: chart.datasource_id for chart in (dashboard.slices or [])
+        }
+        applicable_time_filter_count = 0
+        time_filter_scope_ambiguous = False
 
         for filter_config in filter_configs:
+            if filter_config.get("filterType") == "filter_custom_time":
+                targets = [
+                    target
+                    for target in filter_config.get("targets") or []
+                    if target.get("datasetId") is not None
+                ]
+                if targets:
+                    if any(
+                        target.get("datasetId") == self._dataset_id
+                        for target in targets
+                    ):
+                        applicable_time_filter_count += 1
+                else:
+                    chart_ids = filter_config.get("chartsInScope")
+                    if chart_ids is None:
+                        time_filter_scope_ambiguous = True
+                        continue
+                    if not chart_ids:
+                        continue
+                    scoped_datasources = [
+                        chart_datasources.get(chart_id) for chart_id in chart_ids
+                    ]
+                    if any(
+                        datasource_id is None for datasource_id in scoped_datasources
+                    ):
+                        time_filter_scope_ambiguous = True
+                    elif self._dataset_id in scoped_datasources:
+                        applicable_time_filter_count += 1
+                continue
             if filter_config.get("filterType") != "filter_select":
                 continue
             target = (filter_config.get("targets") or [{}])[0]
@@ -213,6 +244,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         return {
             "columns": columns,
             "parent_columns_by_column": parent_columns_by_column,
+            "applicable_time_filter_count": applicable_time_filter_count,
+            "time_filter_scope_ambiguous": time_filter_scope_ambiguous,
         }
 
     def _build_statement(
@@ -281,3 +314,38 @@ ORDER BY __column ASC, __sort ASC
         if bindparams:
             statement = statement.bindparams(*bindparams)
         return statement, params
+    # 功能审计（可重写规格）：级联筛选选项的时间范围边界
+    # - 功能目的与触发方式：级联选项请求按看板实际适用的时间筛选器收敛数据范围，由 run 触发。
+    # - 输入契约：time_range 只能是非空字符串；看板元数据提供适用时间筛选器数量及 scope 歧义状态。
+    # - 输出契约：返回各列选项；合法时间范围生成 since/until，非法或缺失时返回 ValueError（API 转 400）。
+    # - 处理流程：先校验列和 scope，再解析时间范围，再生成带主时间列谓词的 SQL；无适用筛选器才允许无范围查询。
+    # - 业务规则：多个适用筛选器必须提供同一有效范围；解析后 since、until 均为空视为无效，不能扩大到全历史。
+    # - 状态与副作用：仅使用既有进程内请求缓存和数据库只读查询，不写数据库、不新增缓存或任务。
+    # - 外部依赖：Dashboard JSON、dashboard.slices datasource_id、SqlaTable.main_dttm_col 和既有时间解析器。
+    # - 异常与边界：数组、对象、空字符串、No filter、scope 未完成或冲突均拒绝；仅一侧边界的有效范围可保留开放区间。
+    # - 不变量与约束：无适用筛选器的旧无范围行为不变；有适用筛选器绝不发无范围 cascade SQL。
+    # - 验证方式：tests/unit_tests/dashboards/test_cascade_filter_options.py 及真实 dashboard 44/51 cascade 请求。
+    def _resolve_time_range(self) -> tuple[datetime | None, datetime | None]:
+        metadata = self._get_filter_metadata()
+        if metadata.get("time_filter_scope_ambiguous"):
+            raise ValueError(
+                "Cannot resolve applicable dashboard time filter scope"
+            )
+
+        if self._time_range is None:
+            if metadata.get("applicable_time_filter_count", 0):
+                raise ValueError(
+                    "time_range is required when a dashboard time filter applies"
+                )
+            return None, None
+
+        if not isinstance(self._time_range, str) or not self._time_range.strip():
+            raise ValueError("time_range must be a non-empty string")
+
+        try:
+            since, until = get_since_until_from_time_range(self._time_range)
+        except (AttributeError, TypeError, ValueError, OverflowError) as ex:
+            raise ValueError("time_range is invalid") from ex
+        if since is None and until is None:
+            raise ValueError("time_range has no valid since or until boundary")
+        return since, until
