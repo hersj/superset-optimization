@@ -663,6 +663,23 @@ def test_cascade_filter_options_rejects_uncompilable_rls_before_query(mocker):
     fake_engine.execute.assert_not_called()
 
 
+def test_cascade_filter_options_keeps_one_postgresql_percent_escape():
+    dialect = postgresql_dialect()
+    rls_filter = text('"shop_name" ILIKE :pattern').bindparams(
+        bindparam("pattern", value="%foo%")
+    )
+
+    rls_clauses = GetCascadeFilterOptionsCommand._compile_rls_clauses(
+        [rls_filter],
+        dialect,
+    )
+    statement = text(f"SELECT 1 WHERE {' AND '.join(rls_clauses)}")
+    sql = str(statement.compile(dialect=dialect))
+
+    assert "ILIKE '%%foo%%'" in sql
+    assert "%%%%foo%%%%" not in sql
+
+
 @pytest.mark.parametrize("invalid_time_range", [[], {}, "", "No filter"])
 def test_cascade_filter_options_rejects_invalid_time_range_at_api_boundary(
     mocker, invalid_time_range

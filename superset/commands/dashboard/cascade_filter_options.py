@@ -201,17 +201,24 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         dialect: Any,
     ) -> list[str]:
         # RLS 可能是包含 OR 的 BooleanClauseList；必须以实际方言编译并整体加括号，
-        # 才能安全地与原始 SQL 的父筛选和时间条件使用 AND 连接。
+        # 才能安全地与原始 SQL 的父筛选和时间条件使用 AND 连接。嵌入新的
+        # TextClause 前还原方言为 DBAPI 预转义的百分号，避免二次编译时重复转义。
         try:
             compiled_filters = [
-                rls_filter.compile(
-                    dialect=dialect,
-                    compile_kwargs={"literal_binds": True},
+                str(
+                    rls_filter.compile(
+                        dialect=dialect,
+                        compile_kwargs={"literal_binds": True},
+                    )
                 )
                 for rls_filter in rls_filters
             ]
         except Exception as ex:
             raise ValueError("Unable to compile row level security filters") from ex
+        if dialect.identifier_preparer._double_percents:
+            compiled_filters = [
+                predicate.replace("%%", "%") for predicate in compiled_filters
+            ]
         return [f"({predicate})" for predicate in compiled_filters]
 
     def _get_filter_metadata(self) -> dict[str, Any]:
