@@ -28,10 +28,12 @@ ARG BUILDPLATFORM=${BUILDPLATFORM:-amd64}
 #   新镜像因忽略的生成文件缺失而让中文界面消失。
 # - 输入契约：构建参数 BUILD_TRANSLATIONS；正式 compose 必须传 true；输入为受版本
 #   控制的 superset/translations/**/*.po 文件和现有 po2json/build-translation 命令。
-# - 输出契约：最终镜像包含非空 superset/translations/zh/LC_MESSAGES/messages.json，
-#   /superset/language_pack/zh/ 返回 HTTP 200；生成失败或文件为空时构建失败。
-# - 处理流程：先执行现有前端翻译生成，再检查中文 JSON，再清理 PO/MO；Python MO
-#   编译同样不能吞掉失败。正式发布前另行核对文件 hash、临时容器和 HTTP 入口。
+# - 输出契约：最终镜像包含非空 superset/translations/zh/LC_MESSAGES/messages.json
+#   和 messages.mo；/superset/language_pack/zh/ 返回 HTTP 200，后端 Babel 也能加载中文。
+#   任一生成失败或文件为空时构建失败。
+# - 处理流程：先执行现有前端翻译生成并检查中文 JSON，再由 Python Babel 编译并检查
+#   中文 MO；清理源文件不能掩盖任一失败。正式发布前另行核对两个文件 hash、临时容器
+#   和 HTTP 入口。
 # - 业务规则：BUILD_TRANSLATIONS=false 的开发构建保留原可选行为；正式构建固定为 true。
 # - 状态与副作用：只影响镜像产物，不写数据库、不改看板、不改变运行中容器。
 # - 外部依赖：Node po2json、Python Babel、Docker build args 和 Superset language_pack 路由。
@@ -153,6 +155,7 @@ COPY superset/translations/ /app/translations_mo/
 RUN set -eu; \
     if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
         pybabel compile -d /app/translations_mo; \
+        test -s /app/translations_mo/zh/LC_MESSAGES/messages.mo; \
     fi; \
     rm -f /app/translations_mo/*/*/*.[po,json]
 
