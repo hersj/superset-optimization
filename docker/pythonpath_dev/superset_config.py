@@ -116,8 +116,12 @@ CELERY_CONFIG = CeleryConfig
 # - 异常与边界：可见性判断或图表请求失败仍走既有错误处理；屏外图表不得被永久跳过。
 # - 不变量与约束：配置必须在受控 bind mount 中生效，不能替代真实浏览器对首屏和筛选交互的性能验证。
 # - 验证方式：配置契约测试、既有 Chart 虚拟化测试，以及部署后 dashboard 54/44/51/74 的真实首屏与筛选对比。
-FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATASET_FOLDERS": True, "ENABLE_TEMPLATE_PROCESSING": True,}
-DASHBOARD_VIRTUALIZATION_DEFER_DATA = True
+FEATURE_FLAGS = {
+    "ALERT_REPORTS": True,
+    "DATASET_FOLDERS": True,
+    "ENABLE_TEMPLATE_PROCESSING": True,
+    "DASHBOARD_VIRTUALIZATION_DEFER_DATA": True,
+}
 ALERT_REPORTS_NOTIFICATION_DRY_RUN = True
 WEBDRIVER_BASEURL = f"http://superset_app{os.environ.get('SUPERSET_APP_ROOT', '/')}/"  # When using docker compose baseurl should be http://superset_nginx{ENV{BASEPATH}}/  # noqa: E501
 # The base URL for the email report hyperlinks.
