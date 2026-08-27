@@ -105,7 +105,19 @@ class CeleryConfig:
 
 CELERY_CONFIG = CeleryConfig
 
+# 功能审计（可重写规格）：看板屏外图表延迟加载
+# - 功能目的与触发方式：看板加载或筛选刷新时，屏外图表暂不查询；图表进入可见预加载范围后由既有可见性机制触发查询。
+# - 输入契约：使用 Superset 的 DASHBOARD_VIRTUALIZATION 与图表可见状态；本配置仅启用延迟数据请求，不改变查询参数。
+# - 输出契约：首屏只请求可见范围内图表；屏外图表进入范围后正常请求并最终展示，已可见图表不延迟。
+# - 处理流程：Web 启动加载本配置，前端既有 Chart.runQuery 读取该功能开关，再按可见状态决定是否提交 chart/data 请求。
+# - 业务规则：仅减少屏外数据请求；不改变筛选、RLS/JWT、中文资源、时间级联、图例或看板配置。
+# - 状态与副作用：无数据库、缓存、Worker、队列或持久化状态变更；只影响当前 Web 进程的功能配置。
+# - 外部依赖：依赖 Superset Web bootstrap 下发功能开关及既有 Dashboard Virtualization；依赖缺失时保持默认行为。
+# - 异常与边界：可见性判断或图表请求失败仍走既有错误处理；屏外图表不得被永久跳过。
+# - 不变量与约束：配置必须在受控 bind mount 中生效，不能替代真实浏览器对首屏和筛选交互的性能验证。
+# - 验证方式：配置契约测试、既有 Chart 虚拟化测试，以及部署后 dashboard 54/44/51/74 的真实首屏与筛选对比。
 FEATURE_FLAGS = {"ALERT_REPORTS": True, "DATASET_FOLDERS": True, "ENABLE_TEMPLATE_PROCESSING": True,}
+DASHBOARD_VIRTUALIZATION_DEFER_DATA = True
 ALERT_REPORTS_NOTIFICATION_DRY_RUN = True
 WEBDRIVER_BASEURL = f"http://superset_app{os.environ.get('SUPERSET_APP_ROOT', '/')}/"  # When using docker compose baseurl should be http://superset_nginx{ENV{BASEPATH}}/  # noqa: E501
 # The base URL for the email report hyperlinks.

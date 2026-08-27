@@ -18,10 +18,20 @@
  */
 import { render, screen } from 'spec/helpers/testing-library';
 import '@testing-library/jest-dom';
+import { isFeatureEnabled } from '@superset-ui/core';
 import { PLACEHOLDER_DATASOURCE } from 'src/dashboard/constants';
 import { ResourceStatus } from 'src/hooks/apiResources/apiResources';
 import Chart from './Chart';
 import type { Actions } from './Chart';
+
+jest.mock('@superset-ui/core', () => ({
+  ...jest.requireActual('@superset-ui/core'),
+  isFeatureEnabled: jest.fn(),
+}));
+
+jest.mock('src/utils/isBot', () => ({
+  isCurrentUserBot: jest.fn(() => false),
+}));
 
 const mockActions: Actions = {
   logEvent: jest.fn() as unknown as Actions['logEvent'],
@@ -40,6 +50,40 @@ const baseProps = {
   vizType: 'table',
   setControlValue: jest.fn(),
 };
+
+const mockedIsFeatureEnabled = isFeatureEnabled as jest.Mock;
+const mockedPostChartFormData = mockActions.postChartFormData as jest.Mock;
+
+beforeEach(() => {
+  mockedIsFeatureEnabled.mockReturnValue(true);
+  mockedPostChartFormData.mockClear();
+});
+
+test('defers an offscreen dashboard chart when defer-data is enabled', () => {
+  const chart = new Chart({
+    ...baseProps,
+    queriesResponse: [],
+    triggerQuery: true,
+    isInView: false,
+  });
+
+  chart.runQuery();
+
+  expect(mockedPostChartFormData).not.toHaveBeenCalled();
+});
+
+test('keeps querying a visible dashboard chart when defer-data is enabled', () => {
+  const chart = new Chart({
+    ...baseProps,
+    queriesResponse: [],
+    triggerQuery: true,
+    isInView: true,
+  });
+
+  chart.runQuery();
+
+  expect(mockedPostChartFormData).toHaveBeenCalledTimes(1);
+});
 
 test('shows backend error instead of loading spinner when datasource is still a placeholder', () => {
   render(
