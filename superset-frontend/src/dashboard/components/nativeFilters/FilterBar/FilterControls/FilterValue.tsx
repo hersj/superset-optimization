@@ -177,6 +177,20 @@ const useShouldFilterRefresh = () => {
 
 export type FilterValueProps = FilterControlProps;
 
+/*
+ * 功能审计（可重写规格）：filter_select 的自定义时间隐式级联
+ * - 功能目的与触发方式：filter_select 首次加载、父筛选器变化、看板刷新或自定义时间筛选器变化时，自动把适用的 filter_custom_time 作为时间父级。
+ * - 输入契约：读取当前 FilterBar 的 filter、按 filterId 的 dataMaskSelected、initializedFilters、nativeFilters、当前看板 chart scope 与 chart→dataset 映射；时间范围必须来自有效字符串或 TEMPORAL_RANGE.val。
+ * - 输出契约：ready 时向级联接口和图表数据请求传递同一个顶层 time_range；unconfigured 时保持旧请求；pending、invalid、conflict 时显示可观察错误并且不发起任一数据请求。
+ * - 处理流程：先由共享 resolver 按目标数据集及既有 scope 判断适用父级，再按每个父级自身 ID 判断 hydrate，生成 effectiveDependencies，最后才决定 cascade 或普通 chart data 请求。
+ * - 业务规则：已 hydrate 的父级只读当前值，清空/非法不得恢复默认；未 hydrate 才允许使用自身 defaultDataMask；多个有效范围必须一致；TEMPORAL_RANGE 不进入 applied_filters；无适用父级才省略时间范围。
+ * - 状态与副作用：只更新当前 FilterValue 的加载、选项和错误状态；正常网络错误保留既有 chart fallback，但必须继续携带已解析时间范围；依赖错误不得 fallback 为全历史。
+ * - 外部依赖：现有 Redux FilterBar 状态、scope helper、slice datasource、getCascadeFilterOptions、getChartDataRequest 和 SuperChart；不写数据库、看板配置、localStorage 或新增状态层。
+ * - 异常与边界：scope、chart 映射或 hydrate 未就绪，以及用户清空、非法或多父级冲突，均停止请求；依赖恢复为合法值后重新计算并请求，过期请求结果仍按现有 dashboard/request guard 丢弃。
+ * - 不变量与约束：每个图表和 child 独立；右上角时间/展示开关只触发重新计算，不改变既有图例或父级状态；无时间对比混合图继续使用原有依赖行为。
+ * - 验证方式：FilterValue.test.ts 的组件回归覆盖阻断、恢复和 time_range；nativeFilterDependencies.test.ts 覆盖 scope/hydrate；cascadeFilterOptions.test.ts 覆盖最终 payload。
+ */
+
 const FilterValue: FC<FilterValueProps> = ({
   dataMaskSelected,
   filter,
@@ -215,8 +229,7 @@ const FilterValue: FC<FilterValueProps> = ({
   const nativeFilters = useSelector<RootState, Record<string, any>>(
     state => state.nativeFilters.filters,
   );
-  // 功能审计（可重写规格）：级联时间筛选的图表数据集范围
-  // 级联请求只使用当前看板 Redux 中已加载的 slice datasource_id；映射未就绪时由请求层拒绝不明确的 scope。
+  // 级联请求只使用当前看板 Redux 中已加载的 slice datasource_id；映射未就绪时由共享依赖 resolver 拒绝不明确的 scope。
   const sliceEntities = useSelector(
     (state: RootState) => state.sliceEntities.slices,
   );
