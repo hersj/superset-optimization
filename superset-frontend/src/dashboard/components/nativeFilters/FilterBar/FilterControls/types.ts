@@ -44,6 +44,7 @@ export interface FilterDividerProps extends BaseFilterProps {
 
 export interface FilterControlProps extends BaseFilterProps {
   dataMaskSelected?: DataMaskStateWithId;
+  initializedFilters?: ReadonlySet<string>;
   filter: FilterElementWithDataMask;
   icon?: ReactElement;
   focusedFilterId?: string;

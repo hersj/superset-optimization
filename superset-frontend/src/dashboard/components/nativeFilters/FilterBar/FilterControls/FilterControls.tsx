@@ -88,6 +88,7 @@ function addDataMaskToCustomization(
 
 type FilterControlsProps = {
   dataMaskSelected: DataMaskStateWithId;
+  initializedFilters?: ReadonlySet<string>;
   onFilterSelectionChange: (filter: Filter, dataMask: DataMask) => void;
   onPendingCustomizationDataMaskChange: (
     customizationId: string,
@@ -145,6 +146,7 @@ const ChartCustomizationContent = styled.div`
 
 const FilterControls: FC<FilterControlsProps> = ({
   dataMaskSelected,
+  initializedFilters,
   onFilterSelectionChange,
   onPendingCustomizationDataMaskChange,
   chartCustomizationValues,
@@ -185,6 +187,7 @@ const FilterControls: FC<FilterControlsProps> = ({
     onFilterSelectionChange,
     clearAllTriggers,
     onClearAllComplete,
+    initializedFilters,
   );
   const portalNodes = useMemo(
     () =>

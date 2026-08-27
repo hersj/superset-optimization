@@ -35,6 +35,7 @@ export const useFilterControlFactory = (
   onFilterSelectionChange: (filter: Filter, dataMask: DataMask) => void,
   clearAllTriggers?: Record<string, boolean>,
   onClearAllComplete?: (filterId: string) => void,
+  initializedFilters?: ReadonlySet<string>,
 ) => {
   const filters = useFilters();
   const filterValues = useMemo(
@@ -77,6 +78,7 @@ export const useFilterControlFactory = (
           overflow={overflow}
           clearAllTrigger={clearAllTriggers?.[filter.id]}
           onClearAllComplete={() => onClearAllComplete?.(filter.id)}
+          initializedFilters={initializedFilters}
         />
       );
     },
@@ -86,6 +88,7 @@ export const useFilterControlFactory = (
       onFilterSelectionChange,
       clearAllTriggers,
       onClearAllComplete,
+      initializedFilters,
     ],
   );
 

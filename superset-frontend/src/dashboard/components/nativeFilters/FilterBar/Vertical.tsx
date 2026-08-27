@@ -129,6 +129,7 @@ const VerticalFilterBar: FC<VerticalBarProps> = ({
   actions,
   canEdit,
   dataMaskSelected,
+  initializedFilters,
   filtersOpen,
   filterValues,
   chartCustomizationValues,
@@ -221,6 +222,7 @@ const VerticalFilterBar: FC<VerticalBarProps> = ({
       <FilterControlsWrapper>
         <FilterControls
           dataMaskSelected={dataMaskSelected}
+          initializedFilters={initializedFilters}
           onFilterSelectionChange={onSelectionChange}
           onPendingCustomizationDataMaskChange={
             onPendingCustomizationDataMaskChange
@@ -247,6 +249,7 @@ const VerticalFilterBar: FC<VerticalBarProps> = ({
   }, [
     canEdit,
     dataMaskSelected,
+    initializedFilters,
     filterValues.length,
     onSelectionChange,
     onPendingCustomizationDataMaskChange,

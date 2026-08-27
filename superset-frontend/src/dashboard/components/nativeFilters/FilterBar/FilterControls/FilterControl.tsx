@@ -51,6 +51,7 @@ const FilterControl = ({
   overflow = false,
   clearAllTrigger,
   onClearAllComplete,
+  initializedFilters,
 }: FilterControlProps) => {
   const portalNode = useMemo(() => createHtmlPortalNode(), []);
   const [isFilterActive, setIsFilterActive] = useState(false);
@@ -144,6 +145,7 @@ const FilterControl = ({
           validateStatus={validateStatus}
           clearAllTrigger={clearAllTrigger}
           onClearAllComplete={onClearAllComplete}
+          initializedFilters={initializedFilters}
         />
       </InPortal>
       <FilterControlContainer

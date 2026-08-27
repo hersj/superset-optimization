@@ -68,6 +68,7 @@ const FilterBarEmptyStateContainer = styled.div`
 const HorizontalFilterBar: FC<HorizontalBarProps> = ({
   actions,
   dataMaskSelected,
+  initializedFilters,
   filterValues,
   chartCustomizationValues,
   isInitialized,
@@ -115,6 +116,7 @@ const HorizontalFilterBar: FC<HorizontalBarProps> = ({
             {hasFilters && (
               <FilterControls
                 dataMaskSelected={dataMaskSelected}
+                initializedFilters={initializedFilters}
                 onFilterSelectionChange={onSelectionChange}
                 onPendingCustomizationDataMaskChange={
                   onPendingCustomizationDataMaskChange

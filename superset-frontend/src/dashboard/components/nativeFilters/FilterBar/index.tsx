@@ -44,10 +44,7 @@ import {
 import { styled } from '@apache-superset/core/theme';
 import { Constants } from '@superset-ui/core/components';
 import { useHistory } from 'react-router-dom';
-import {
-  updateDataMasks,
-  removeDataMask,
-} from 'src/dataMask/actions';
+import { updateDataMasks, removeDataMask } from 'src/dataMask/actions';
 import {
   saveChartCustomization,
   clearAllPendingChartCustomizations,
@@ -208,8 +205,9 @@ const getComparableDataMask = (dataMask: Partial<DataMask> | undefined) => {
     return undefined;
   }
 
-  const { id, ...dataMaskForComparison } = getDataMaskForRedux(dataMask) as
-    Partial<DataMask> & { id?: string | number };
+  const { id, ...dataMaskForComparison } = getDataMaskForRedux(
+    dataMask,
+  ) as Partial<DataMask> & { id?: string | number };
 
   return dataMaskForComparison;
 };
@@ -382,8 +380,8 @@ const FilterBar: FC<FiltersBarProps> = ({
   };
 
   if (!autoApplyApplierRef.current) {
-    autoApplyApplierRef.current = createDebouncedDataMaskApplier(
-      entries => autoApplyHandlerRef.current(entries),
+    autoApplyApplierRef.current = createDebouncedDataMaskApplier(entries =>
+      autoApplyHandlerRef.current(entries),
     );
   }
 
@@ -823,6 +821,7 @@ const FilterBar: FC<FiltersBarProps> = ({
         canEdit={canEdit}
         dashboardId={dashboardId}
         dataMaskSelected={dataMaskSelected}
+        initializedFilters={initializedFilters}
         filterValues={filterValues}
         chartCustomizationValues={chartCustomizationValues}
         isInitialized={isInitialized}
@@ -838,6 +837,7 @@ const FilterBar: FC<FiltersBarProps> = ({
         actions={actions}
         canEdit={canEdit}
         dataMaskSelected={dataMaskSelected}
+        initializedFilters={initializedFilters}
         filtersOpen={verticalConfig.filtersOpen}
         filterValues={filterValues}
         chartCustomizationValues={chartCustomizationValues}

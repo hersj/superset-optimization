@@ -21,6 +21,16 @@ import {
   DataMaskStateWithId,
   SupersetClient,
 } from '@superset-ui/core';
+import {
+  NativeFilterDependencyError,
+  resolveNativeFilterDependencies,
+} from './nativeFilterDependencies';
+import type {
+  ChartDatasetIdsByChart,
+  NativeFilterConfig,
+  NativeFiltersById,
+} from './nativeFilterDependencies';
+import type { LayoutItem } from 'src/dashboard/types';
 
 const SELLERFOX_CASCADE_COLUMNS_BASE = [
   'department_label',
@@ -52,24 +62,18 @@ type SellerfoxCascadeOptionsPayload = {
   time_range?: string;
 };
 
-const requestCache = new Map<string, Promise<SellerfoxCascadeOptionsResponse>>();
+const requestCache = new Map<
+  string,
+  Promise<SellerfoxCascadeOptionsResponse>
+>();
 
-type NativeFilterConfig = {
-  id?: string;
-  filterType?: string;
-  targets?: {
-    datasetId?: number;
-    column?: {
-      name?: string;
-    };
-  }[];
-  chartsInScope?: number[];
-  defaultDataMask?: {
-    extraFormData?: { time_range?: unknown };
-  };
+type CascadeFilterOptions = {
+  childFilter?: NativeFilterConfig;
+  childFilterId?: string;
+  initializedFilters?: ReadonlySet<string>;
+  chartIds?: number[];
+  chartLayoutItems?: LayoutItem[];
 };
-
-type NativeFiltersById = Record<string, NativeFilterConfig>;
 
 export const clearSellerfoxCascadeFilterOptionsCache = () => {
   requestCache.clear();
@@ -81,7 +85,8 @@ export const getSellerfoxCascadeColumns = (
 ) =>
   datasetId === undefined
     ? []
-    : SELLERFOX_CASCADE_COLUMNS_BY_CONTEXT[`${dashboardId}:${datasetId}`] ?? [];
+    : (SELLERFOX_CASCADE_COLUMNS_BY_CONTEXT[`${dashboardId}:${datasetId}`] ??
+      []);
 
 export const isSellerfoxCascadeFilter = (
   dashboardId: number,
@@ -144,7 +149,11 @@ export const isCascadeFilter = (
   groupby: string | undefined,
   nativeFilters: NativeFiltersById = {},
 ) => {
-  const columns = getCascadeFilterColumns(dashboardId, datasetId, nativeFilters);
+  const columns = getCascadeFilterColumns(
+    dashboardId,
+    datasetId,
+    nativeFilters,
+  );
 
   return (
     filterType === 'filter_select' &&
@@ -163,121 +172,18 @@ const toArray = (value: unknown): unknown[] => {
   return [value];
 };
 
-type ChartDatasetIdsByChart = Record<number, number>;
-
-const isMeaningfulDataMask = (dataMask: DataMaskStateWithId[string]) =>
-  Object.keys(dataMask.extraFormData ?? {}).length > 0 ||
-  Object.keys(dataMask.filterState ?? {}).length > 0 ||
-  Object.keys(dataMask.ownState ?? {}).length > 0;
-
-const readTimeRange = (value: unknown, source: string): string | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`${source} time range is invalid`);
-  }
-  return value.trim();
-};
-
-const getApplicableTimeFilters = (
-  datasetId: number,
-  nativeFilters: NativeFiltersById,
-  chartDatasetIds: ChartDatasetIdsByChart | undefined,
-) => {
-  const applicable: Array<[string, NativeFilterConfig]> = [];
-  let scopeAmbiguous = false;
-
-  Object.entries(nativeFilters).forEach(([filterId, filterConfig]) => {
-    if (filterConfig.filterType !== 'filter_custom_time') {
-      return;
-    }
-    const configuredTargets = (filterConfig.targets ?? []).filter(
-      target => target.datasetId !== undefined,
-    );
-    if (configuredTargets.length) {
-      if (configuredTargets.some(target => target.datasetId === datasetId)) {
-        applicable.push([filterConfig.id ?? filterId, filterConfig]);
-      }
-      return;
-    }
-
-    const chartIds = filterConfig.chartsInScope;
-    if (chartIds === undefined) {
-      scopeAmbiguous = true;
-      return;
-    }
-    if (chartIds.length === 0) {
-      return;
-    }
-    const scopedDatasets = chartIds.map(chartId => chartDatasetIds?.[chartId]);
-    if (
-      scopedDatasets.some(scopedDataset => scopedDataset === undefined)
-    ) {
-      scopeAmbiguous = true;
-      return;
-    }
-    if (scopedDatasets.includes(datasetId)) {
-      applicable.push([filterConfig.id ?? filterId, filterConfig]);
-    }
-  });
-
-  return { applicable, scopeAmbiguous };
-};
-
-const getApplicableTimeRange = (
-  datasetId: number,
-  nativeFilters: NativeFiltersById,
-  dataMaskSelected: DataMaskStateWithId | undefined,
-  chartDatasetIds: ChartDatasetIdsByChart | undefined,
-) => {
-  const { applicable, scopeAmbiguous } = getApplicableTimeFilters(
-    datasetId,
-    nativeFilters,
-    chartDatasetIds,
-  );
-  if (scopeAmbiguous) {
-    throw new Error('Applicable dashboard time filter scope is not ready');
-  }
-  const ranges = applicable.map(([filterId, filterConfig]) => {
-    const selected = dataMaskSelected?.[filterId];
-    const selectedRange = readTimeRange(
-      selected?.extraFormData?.time_range,
-      `Selected filter ${filterId}`,
-    );
-    if (selectedRange) {
-      return selectedRange;
-    }
-    if (selected && isMeaningfulDataMask(selected)) {
-      throw new Error(`Selected filter ${filterId} time range is not ready`);
-    }
-    return readTimeRange(
-      filterConfig.defaultDataMask?.extraFormData?.time_range,
-      `Default filter ${filterId}`,
-    );
-  });
-  if (ranges.some(range => range === undefined)) {
-    throw new Error('Applicable dashboard time range is not ready');
-  }
-  const uniqueRanges = [...new Set(ranges)];
-  if (uniqueRanges.length > 1) {
-    throw new Error('Applicable dashboard time ranges conflict');
-  }
-  return uniqueRanges[0];
-};
-
 /*
- * 功能审计（可重写规格）：级联筛选选项首次时间范围解析
- * - 功能目的与触发方式：FilterValue 批量加载筛选选项时构造 dashboard cascade 请求。
- * - 输入契约：dashboard/dataset、nativeFilters、按 filter id 的 selected dataMask、chartsInScope→datasource 映射；time_range 为字符串。
- * - 输出契约：应用列过滤和唯一有效 time_range 的请求 payload；未就绪/冲突抛出错误且不发请求。
- * - 处理流程：收集选择列值；generic 模式先解析适用时间筛选器，selected dataMask 优先，空初始化时取 defaultDataMask；legacy sellerfox 模式保留旧 payload。
- * - 业务规则：只取适用 dataset/scope 的 custom time filter；0 个可省略，1 个必须有效，多个必须相同；无关 dataMask 不得覆盖。
- * - 状态与副作用：只读读取 Redux 输入并生成请求对象，不写看板、数据库、localStorage 或缓存。
- * - 外部依赖：Native Filter 配置、sliceEntities datasource scope 和现有 SupersetClient。
- * - 异常与边界：scope 缺失/未解析、值非法、初始化未完成或范围冲突均抛错；调用方可走既有普通选项回退。
- * - 不变量与约束：不能把已配置但未就绪筛选器扩大成全历史查询；无适用筛选器的旧行为保持。
- * - 验证方式：cascadeFilterOptions.test.ts 和 dashboard 44/51 浏览器 Network。
+ * 功能审计（可重写规格）：自定义时间筛选器的级联依赖请求
+ * - 功能目的与触发方式：下游 filter_select 加载选项时，为同一看板中适用的 filter_custom_time 自动增加时间父级约束。
+ * - 输入契约：dashboard/dataset、nativeFilters、childFilterId、按 filterId 的 selected dataMask、initializedFilters、chart→dataset 映射和既有 scope 上下文；时间范围只能是非空字符串或 TEMPORAL_RANGE.val 非空字符串。
+ * - 输出契约：返回当前级联列的 applied_filters；有且只有 ready 时附带唯一 time_range，否则在请求前抛出可观察错误。
+ * - 处理流程：按 targets 与既有 chartsInScope/scope 解析源父级和 child scope；对每个父级按自身 initializedFilters 选择 selected 或 defaultDataMask；校验同一范围后生成 payload。
+ * - 业务规则：targets=[] 不代表全局；scope 需要按既有 helper 解析并与 child scope 求交；未 hydrate 才能使用默认值，hydrate 后空/非法值不得恢复默认；多个有效范围必须一致；无适用父级才省略 time_range。
+ * - 状态与副作用：只读 Redux 配置和 dataMask，写入本地请求缓存并发起现有 cascade API 请求；不写看板、数据库或用户偏好。
+ * - 外部依赖：Native Filter 配置、initializedFilters、slice datasource、dashboard scope helper、SupersetClient 和既有 API。
+ * - 异常与边界：scope/初始化未就绪、值非法或范围冲突均在请求前失败；调用方不得回退为无范围的全历史请求；无适用父级保持旧无范围行为。
+ * - 不变量与约束：同一 child 的每个时间父级独立判断；缓存键包含最终 payload；不改变 Sellerfox legacy 无 nativeFilters 的路径。
+ * - 验证方式：nativeFilterDependencies.test.ts、cascadeFilterOptions.test.ts，以及 dashboard 44/51 Network 观察。
  */
 const getPayload = (
   dashboardId: number,
@@ -285,15 +191,36 @@ const getPayload = (
   nativeFilters: NativeFiltersById | undefined,
   dataMaskSelected?: DataMaskStateWithId,
   chartDatasetIds?: ChartDatasetIdsByChart,
+  options: CascadeFilterOptions = {},
 ): SellerfoxCascadeOptionsPayload => {
   const appliedFilters: Record<string, unknown[]> = {};
   const columns = nativeFilters
     ? getCascadeFilterColumns(dashboardId, datasetId, nativeFilters)
     : getSellerfoxCascadeColumns(dashboardId, datasetId);
   const columnSet = new Set(columns);
+  const dependencyResult = nativeFilters
+    ? resolveNativeFilterDependencies({
+        datasetId,
+        nativeFilters,
+        dataMaskSelected,
+        chartDatasetIds,
+        ...options,
+      })
+    : undefined;
+
+  if (
+    dependencyResult &&
+    dependencyResult.status !== 'ready' &&
+    dependencyResult.status !== 'unconfigured'
+  ) {
+    throw new NativeFilterDependencyError(dependencyResult);
+  }
 
   Object.values(dataMaskSelected ?? {}).forEach(dataMask => {
     dataMask.extraFormData?.filters?.forEach(filter => {
+      if (filter.op === 'TEMPORAL_RANGE') {
+        return;
+      }
       const column = filter.col;
       if (column && columnSet.has(column)) {
         const values = toArray(filter.val);
@@ -304,22 +231,19 @@ const getPayload = (
     });
   });
 
-  const timeRange = nativeFilters
-    ? getApplicableTimeRange(
-        datasetId,
-        nativeFilters,
-        dataMaskSelected,
-        chartDatasetIds,
-      )
-    : Object.values(dataMaskSelected ?? {}).reduce<string | undefined>(
-        (current, dataMask) => {
-          const value = dataMask.extraFormData?.time_range;
-          return typeof value === 'string' && value.trim()
-            ? value.trim()
-            : current;
-        },
-        undefined,
-      );
+  const timeRange =
+    dependencyResult?.timeRange ??
+    (nativeFilters
+      ? undefined
+      : Object.values(dataMaskSelected ?? {}).reduce<string | undefined>(
+          (current, dataMask) => {
+            const value = dataMask.extraFormData?.time_range;
+            return typeof value === 'string' && value.trim()
+              ? value.trim()
+              : current;
+          },
+          undefined,
+        ));
 
   return {
     dataset_id: datasetId,
@@ -334,7 +258,12 @@ export const getSellerfoxCascadeFilterOptions = async (
   datasetId: number,
   dataMaskSelected?: DataMaskStateWithId,
 ) => {
-  const payload = getPayload(dashboardId, datasetId, undefined, dataMaskSelected);
+  const payload = getPayload(
+    dashboardId,
+    datasetId,
+    undefined,
+    dataMaskSelected,
+  );
   const cacheKey = JSON.stringify({ dashboardId, ...payload });
   const cachedRequest = requestCache.get(cacheKey);
 
@@ -361,6 +290,7 @@ export const getCascadeFilterOptions = async (
   nativeFilters: NativeFiltersById,
   dataMaskSelected?: DataMaskStateWithId,
   chartDatasetIds?: ChartDatasetIdsByChart,
+  options?: CascadeFilterOptions,
 ) => {
   const payload = getPayload(
     dashboardId,
@@ -368,6 +298,7 @@ export const getCascadeFilterOptions = async (
     nativeFilters,
     dataMaskSelected,
     chartDatasetIds,
+    options,
   );
   const cacheKey = JSON.stringify({ dashboardId, ...payload });
   const cachedRequest = requestCache.get(cacheKey);

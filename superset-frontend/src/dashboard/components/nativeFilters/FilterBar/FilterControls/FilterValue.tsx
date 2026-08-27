@@ -38,6 +38,7 @@ import {
   QueryFormData,
   SuperChart,
   ClientErrorObject,
+  ErrorTypeEnum,
   getClientErrorObject,
   isChartCustomization,
 } from '@superset-ui/core';
@@ -49,6 +50,8 @@ import { ErrorAlert, ErrorMessageWithStackTrace } from 'src/components';
 import { Loading, Constants } from '@superset-ui/core/components';
 import { waitForAsyncData } from 'src/middleware/asyncEvent';
 import { FilterBarOrientation, RootState } from 'src/dashboard/types';
+import { useChartLayoutItems } from 'src/dashboard/util/useChartLayoutItems';
+import { useChartIds } from 'src/dashboard/util/charts/useChartIds';
 import {
   onFiltersRefreshSuccess,
   setDirectPathToChild,
@@ -60,13 +63,18 @@ import {
 import { RESPONSIVE_WIDTH } from 'src/filters/components/common';
 import { dispatchHoverAction, dispatchFocusAction } from './utils';
 import { FilterControlProps } from './types';
-import { getFormData } from '../../utils';
+import { getFormData, mergeExtraFormData } from '../../utils';
 import { useFilterDependencies } from './state';
 import { useFilterOutlined } from '../useFilterOutlined';
 import {
   getCascadeFilterOptions,
   isCascadeFilter,
 } from './cascadeFilterOptions';
+import {
+  NativeFilterDependencyError,
+  resolveNativeFilterDependencies,
+} from './nativeFilterDependencies';
+import type { NativeFilterDependencyResult } from './nativeFilterDependencies';
 
 const HEIGHT = 32;
 
@@ -87,6 +95,20 @@ const StyledDiv = styled.div<{
 `;
 
 const queriesDataPlaceholder = [{ data: [{}] }];
+
+const getNativeFilterDependencyError = (
+  message: string,
+): ClientErrorObject => ({
+  error: message,
+  errors: [
+    {
+      error_type: ErrorTypeEnum.GENERIC_BACKEND_ERROR,
+      extra: null,
+      level: 'error',
+      message,
+    },
+  ],
+});
 
 export const shouldStartFilterOptionsRequest = ({
   isRefreshing,
@@ -138,7 +160,8 @@ export const shouldApplyFilterOptionsRequestResult = ({
   currentRequestId: number;
   requestDashboardId: number;
   currentDashboardId: number;
-}) => requestId === currentRequestId && requestDashboardId === currentDashboardId;
+}) =>
+  requestId === currentRequestId && requestDashboardId === currentDashboardId;
 
 const useShouldFilterRefresh = () => {
   const isDashboardRefreshing = useSelector<RootState, boolean>(
@@ -168,6 +191,7 @@ const FilterValue: FC<FilterValueProps> = ({
   validateStatus,
   clearAllTrigger,
   onClearAllComplete,
+  initializedFilters,
 }) => {
   const { id, targets, filterType } = filter;
   const isCustomization = isChartCustomization(filter);
@@ -209,7 +233,6 @@ const FilterValue: FC<FilterValueProps> = ({
       ),
     [sliceEntities],
   );
-
   const [error, setError] = useState<ClientErrorObject>();
   const [formData, setFormData] = useState<Partial<QueryFormData>>({
     inView: false,
@@ -224,6 +247,44 @@ const FilterValue: FC<FilterValueProps> = ({
   }: Partial<{ datasetId: number; column: { name?: string } }> = target || {};
   const groupby = column?.name;
   const hasDataSource = !!datasetId;
+
+  const chartIds = useChartIds();
+  const chartLayoutItems = useChartLayoutItems();
+  const implicitTimeDependency = useMemo<NativeFilterDependencyResult>(() => {
+    if (filterType !== 'filter_select' || datasetId === undefined) {
+      return { status: 'unconfigured', timeFilterIds: [] };
+    }
+    return resolveNativeFilterDependencies({
+      datasetId,
+      childFilterId: id,
+      nativeFilters,
+      dataMaskSelected,
+      initializedFilters,
+      chartDatasetIds,
+      chartIds,
+      chartLayoutItems,
+    });
+  }, [
+    filterType,
+    datasetId,
+    id,
+    nativeFilters,
+    dataMaskSelected,
+    initializedFilters,
+    chartDatasetIds,
+    chartIds,
+    chartLayoutItems,
+  ]);
+  const effectiveDependencies = useMemo(
+    () =>
+      mergeExtraFormData(dependencies, implicitTimeDependency.extraFormData),
+    [dependencies, implicitTimeDependency.extraFormData],
+  );
+  const isImplicitTimeDependencyBlocked =
+    filterType === 'filter_select' &&
+    implicitTimeDependency.status !== 'ready' &&
+    implicitTimeDependency.status !== 'unconfigured';
+
   const [isLoading, setIsLoading] = useState<boolean>(hasDataSource);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOptions, setHasLoadedOptions] = useState(!hasDataSource);
@@ -269,7 +330,7 @@ const FilterValue: FC<FilterValueProps> = ({
     const newFormData = getFormData({
       ...filter,
       datasetId,
-      dependencies,
+      dependencies: effectiveDependencies,
       groupby,
       adhoc_filters: adhocFilters,
       time_range: timeRange,
@@ -277,6 +338,21 @@ const FilterValue: FC<FilterValueProps> = ({
       dashboardId,
     });
     const filterOwnState = filter.dataMask?.ownState || {};
+
+    if (isImplicitTimeDependencyBlocked) {
+      setFormData(newFormData);
+      setOwnState(filterOwnState);
+      setState([]);
+      setError(
+        getNativeFilterDependencyError(
+          implicitTimeDependency.message ??
+            'Applicable dashboard time filter is not ready',
+        ),
+      );
+      handleFilterLoadFinish();
+      return;
+    }
+
     if ((filter.cascadeParentIds ?? []).length) {
       // Prevent unnecessary backend requests by validating parent filter selections first
 
@@ -325,8 +401,8 @@ const FilterValue: FC<FilterValueProps> = ({
       );
     const defaultToFirstItem = Boolean(
       newFormData.defaultToFirstItem &&
-        filter.dataMask?.filterState?.value === undefined &&
-        !clearAllTrigger,
+      filter.dataMask?.filterState?.value === undefined &&
+      !clearAllTrigger,
     );
     const shouldLoadOptions = shouldLoadFilterOptions({
       defaultToFirstItem,
@@ -448,6 +524,12 @@ const FilterValue: FC<FilterValueProps> = ({
           nativeFilters,
           dataMaskSelected,
           chartDatasetIds,
+          {
+            childFilterId: id,
+            initializedFilters,
+            chartIds,
+            chartLayoutItems,
+          },
         )
           .then(result => {
             if (!isCurrentRequest()) {
@@ -462,8 +544,14 @@ const FilterValue: FC<FilterValueProps> = ({
             finishCurrentRequest();
             return undefined;
           })
-          .catch(() => {
+          .catch(error => {
             if (!isCurrentRequest()) {
+              return undefined;
+            }
+            if (error instanceof NativeFilterDependencyError) {
+              setState([]);
+              setError(getNativeFilterDependencyError(error.message));
+              finishCurrentRequest();
               return undefined;
             }
             return loadChartData();
@@ -476,6 +564,9 @@ const FilterValue: FC<FilterValueProps> = ({
     inViewFirstTime,
     dashboardId,
     dependencies,
+    effectiveDependencies,
+    implicitTimeDependency,
+    isImplicitTimeDependencyBlocked,
     datasetId,
     groupby,
     handleFilterLoadFinish,
@@ -488,6 +579,9 @@ const FilterValue: FC<FilterValueProps> = ({
     dataMaskSelected,
     nativeFilters,
     chartDatasetIds,
+    initializedFilters,
+    chartIds,
+    chartLayoutItems,
   ]);
 
   useEffect(() => {

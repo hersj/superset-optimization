@@ -32,6 +32,7 @@ interface CommonFiltersBarProps {
   actions: ReactNode;
   canEdit: boolean;
   dataMaskSelected: DataMaskStateWithId;
+  initializedFilters?: ReadonlySet<string>;
   filterValues: (Filter | Divider)[];
   chartCustomizationValues: (ChartCustomization | ChartCustomizationDivider)[];
   isInitialized: boolean;
