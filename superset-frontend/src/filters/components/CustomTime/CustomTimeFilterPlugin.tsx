@@ -173,12 +173,26 @@ function getRestoredFiscalYear(
   timeRange: unknown,
   fiscalYear: unknown,
 ): number | null {
-  if (typeof fiscalYear !== 'number' || !Number.isInteger(fiscalYear)) {
+  if (typeof timeRange !== 'string') {
     return null;
   }
-  return getProfitFiscalYearRange(fiscalYear).timeRange === timeRange
-    ? fiscalYear
-    : null;
+  const { start, endExclusive } = parseRange(timeRange);
+  const match = /^(\d{4})-04-01$/.exec(start);
+  if (!match || !endExclusive) {
+    return null;
+  }
+  const rangeFiscalYear = Number(match[1]);
+  if (
+    getProfitFiscalYearRange(rangeFiscalYear).timeRange !==
+    `${start} : ${endExclusive}`
+  ) {
+    return null;
+  }
+  return typeof fiscalYear === 'number' && Number.isInteger(fiscalYear)
+    ? getProfitFiscalYearRange(fiscalYear).timeRange === timeRange
+      ? fiscalYear
+      : rangeFiscalYear
+    : rangeFiscalYear;
 }
 
 function getFQRange(year: number, q: number): { start: string; end: string } {
@@ -236,17 +250,17 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
 }
 
 /**
- * 功能审计（可重写规格）：自定义时间筛选器运行时绑定、不过滤状态与财年选择
- * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器中选择范围、粒度、“不过滤”、本财年或历史财年时触发。
+ * 功能审计（可重写规格）：自定义时间筛选器运行时绑定、不过滤状态与按财年选择
+ * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器中选择范围、粒度、“不过滤”或“按财年”时触发；“按财年”是唯一财年入口，打开当前及历史财年列表。
  * - 输入契约：formData.groupby 为可选的单个绑定时间列；timeRange 为半开区间“开始 : 结束”或空值；grainKey 为 day/week/month/quarter/year；数据截止日由数据源提供。
- * - 输出契约：绑定时间列时在 setDataMask.extraFormData.filters 写入 {col, op: TEMPORAL_RANGE, val}，并保留 time_grain_sqla 与比较偏移；未绑定列时兼容旧 time_range；明确“不过滤”时输出空 filters 与 time_range='No filter'；ownState 保存可恢复的粒度、范围、预设和财年。
- * - 处理流程：读取配置的绑定列和当前状态→按入口计算范围→统一经 applyFilter 构造 DataMask→保存控件状态；财年入口只改变范围，不改变当前展示粒度。
- * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；粒度值沿用 P1D/P1W_SUN/P1M/P3M_FISCAL/P1Y；null 表示用户明确不过滤，不得替换成默认预设；本财年与历史财年均为 4 月 1 日至次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；历史财年只能选择不晚于数据截止财年的年份；日历月份范围最多向前 60 个月且不显示截止月之后的月份。
+ * - 输出契约：绑定时间列时在 setDataMask.extraFormData.filters 写入 {col, op: TEMPORAL_RANGE, val}，并保留 time_grain_sqla 与比较偏移；未绑定列时兼容旧 time_range；明确“不过滤”时输出空 filters 与 time_range='No filter'；选择任一财年后，返回区间摘要和 filterState.label 使用“YYYY财年 | 粒度”，底层 time_range 仍为日期半开区间；ownState 保存可恢复的粒度、范围、预设和财年。
+ * - 处理流程：读取配置的绑定列和当前状态→按入口计算范围→统一经 applyFilter 构造 DataMask→保存控件状态；“按财年”打开财年列表，当前财年和历史财年都走同一个选择处理，不另设“本财年”快捷入口；财年选择只改变范围，不改变当前展示粒度。
+ * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；粒度值沿用 P1D/P1W_SUN/P1M/P3M_FISCAL/P1Y；null 表示用户明确不过滤，不得替换成默认预设；每个财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；财年列表只能选择不晚于数据截止财年的年份；精确匹配财年日期区间时，即使恢复状态缺少 fiscalYear 也必须显示对应“YYYY财年”；日历月份范围最多向前 60 个月且不显示截止月之后的月份。
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
  * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受与当前范围完全匹配的财年状态。
  * - 不变量与约束：一次只绑定一个时间列；预设、财年、日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失。
- * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤与季度、本财年、历史财年导航/选择、外部范围同步、陈旧财年清理以及粒度保持。
+ * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤与季度、按财年入口及当前/历史财年选择、财年摘要恢复、外部范围同步、陈旧财年清理以及粒度保持。
 */
 
 export default function CustomTimeFilterPlugin(props: any) {
@@ -436,9 +450,12 @@ export default function CustomTimeFilterPlugin(props: any) {
       const nextActivePreset = presetKey ?? null;
       const rangeLabel = !timeRange
         ? '不过滤'
-        : nextActivePreset
-        ? DEFAULT_PRESETS.find(p => p.key === nextActivePreset)?.label || timeRange
-        : (stateOverrides.rangeLabel as string | undefined) || '自定义范围';
+        : (stateOverrides.rangeLabel as string | undefined) ||
+          (nextActivePreset === 'this_fiscal_year'
+            ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
+            : nextActivePreset
+              ? DEFAULT_PRESETS.find(p => p.key === nextActivePreset)?.label || timeRange
+              : '自定义范围');
 
       setDataMask({
         extraFormData: {
@@ -811,13 +828,16 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyYearRange(rangeStart, rangeEnd);
   };
 
-  const currentLabel = activePreset
-    ? DEFAULT_PRESETS.find(p => p.key === activePreset)?.label || ''
-    : activeFiscalYear !== null
+  const currentLabel =
+    activeFiscalYear !== null
       ? `${activeFiscalYear}财年`
-      : lastRangeRef.current
-        ? '自定义范围'
-        : '不过滤';
+      : activePreset === 'this_fiscal_year'
+        ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
+        : activePreset
+          ? DEFAULT_PRESETS.find(p => p.key === activePreset)?.label || ''
+          : lastRangeRef.current
+            ? '自定义范围'
+            : '不过滤';
   const currentGrain = TIME_GRAIN_OPTIONS.find(g => g.key === activeGrain)?.label || '日';
   const currentRange = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
 
@@ -1191,17 +1211,17 @@ export default function CustomTimeFilterPlugin(props: any) {
         {enablePresets && (
           <div style={styles.presetColumn}>
             <div style={styles.grid}>
-              {DEFAULT_PRESETS.map(p => (
+              {DEFAULT_PRESETS.filter(p => p.key !== 'this_fiscal_year').map(p => (
                 <button key={p.key} type="button" style={activePreset === p.key ? styles.btnActive : styles.btn} onClick={() => handlePresetClick(p)}>
                   {p.label}
                 </button>
               ))}
               <button
                 type="button"
-                style={showFiscalYearSelector ? styles.btnActive : styles.btn}
+                style={showFiscalYearSelector || activeFiscalYear !== null || activePreset === 'this_fiscal_year' ? styles.btnActive : styles.btn}
                 onClick={handleFiscalYearSelectorClick}
               >
-                {showFiscalYearSelector ? '返回日期范围' : '选择财年'}
+                {showFiscalYearSelector ? '返回日期范围' : '按财年'}
               </button>
             </div>
           </div>

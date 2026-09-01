@@ -207,7 +207,7 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
-  it('selects the current fiscal year from the preset row', () => {
+  it('uses one 按财年 entry for current and historical fiscal years', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
 
@@ -222,7 +222,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     setDataMask.mockClear();
     expandFilter();
-    userEvent.click(screen.getByRole('button', { name: '本财年' }));
+    expect(screen.queryByRole('button', { name: '本财年' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '按财年' })).toHaveLength(1);
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    userEvent.click(screen.getByRole('button', { name: '2026财年' }));
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -231,14 +234,44 @@ describe('CustomTimeFilterPlugin', () => {
           time_grain_sqla: 'P1D',
         }),
         filterState: {
-          value: 'this_fiscal_year',
+          value: '2026-04-01 : 2027-03-31',
           grain: 'day',
-          label: '本财年 | 日',
+          label: '2026财年 | 日',
         },
+        ownState: expect.objectContaining({ fiscalYear: 2026 }),
       }),
     );
-    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('本财年 | 日');
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2026财年 | 日');
     jest.useRealTimers();
+  });
+
+  it('restores the fiscal-year label from an exact range without fiscalYear state', () => {
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{
+          value: '2025-04-01 : 2026-03-31',
+          grain: 'day',
+          label: '自定义范围 | 日',
+        }}
+        ownState={{ activePreset: null, lastRange: '2025-04-01 : 2026-03-31' }}
+      />,
+    );
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filterState: {
+          value: '2025-04-01 : 2026-03-31',
+          grain: 'day',
+          label: '2025财年 | 日',
+        },
+        ownState: expect.objectContaining({ fiscalYear: 2025 }),
+      }),
+    );
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 日');
   });
 
   it('selects a historical fiscal year without changing the display grain', () => {
@@ -256,7 +289,7 @@ describe('CustomTimeFilterPlugin', () => {
 
     setDataMask.mockClear();
     expandFilter();
-    userEvent.click(screen.getByRole('button', { name: '选择财年' }));
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
     expect(screen.getByTestId('custom-time-fiscal-year-grid')).toBeInTheDocument();
 
     userEvent.click(screen.getByRole('button', { name: '前十二年财年' }));
@@ -299,7 +332,7 @@ describe('CustomTimeFilterPlugin', () => {
     );
 
     expandFilter();
-    userEvent.click(screen.getByRole('button', { name: '选择财年' }));
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
     userEvent.click(screen.getByRole('button', { name: '前十二年财年' }));
     userEvent.click(screen.getByRole('button', { name: '2025财年' }));
 

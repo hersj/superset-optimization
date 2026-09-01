@@ -17,6 +17,7 @@ export const DEFAULT_PRESETS: TimePreset[] = [
   { label: '最近90天', key: 'last_90d',   duration: '' },
   { label: '本月',     key: 'this_month', duration: '' },
   { label: '本年',     key: 'this_year',  duration: '' },
+  // 保留旧状态键用于恢复历史看板；界面统一从“按财年”入口选择。
   { label: '本财年',   key: 'this_fiscal_year', duration: '' },
 ];
 
