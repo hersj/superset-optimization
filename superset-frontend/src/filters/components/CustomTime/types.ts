@@ -17,6 +17,7 @@ export const DEFAULT_PRESETS: TimePreset[] = [
   { label: '最近90天', key: 'last_90d',   duration: '' },
   { label: '本月',     key: 'this_month', duration: '' },
   { label: '本年',     key: 'this_year',  duration: '' },
+  { label: '本财年',   key: 'this_fiscal_year', duration: '' },
 ];
 
 export const TIME_GRAIN_OPTIONS: TimeGrainOption[] = [
