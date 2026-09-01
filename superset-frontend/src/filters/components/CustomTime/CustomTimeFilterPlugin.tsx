@@ -272,6 +272,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   const savedEndDate = parsedSavedRange.endExclusive
     ? subtractDays(parsedSavedRange.endExclusive, 1)
     : getDataEndDate();
+  const restoredFiscalYear = getRestoredFiscalYear(
+    savedRange,
+    ownState.fiscalYear,
+  );
   const initialGrain =
     (ownState.activeGrain as string | undefined) ||
     (filterState?.grain as string | undefined) ||
@@ -289,7 +293,7 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const [activePreset, setActivePreset] = useState<string | null>(initialPreset);
   const [activeFiscalYear, setActiveFiscalYear] = useState<number | null>(
-    (ownState.fiscalYear as number | undefined) ?? null,
+    restoredFiscalYear,
   );
   const [activeGrain, setActiveGrain] = useState<string>(initialGrain);
   const [startDate, setStartDate] = useState(
