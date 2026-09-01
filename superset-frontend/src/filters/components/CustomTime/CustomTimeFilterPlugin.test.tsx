@@ -355,6 +355,45 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
+  it('does not restore stale fiscal-year state on first render', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{
+          value: '2025-01-01 : 2025-02-01',
+          grain: 'day',
+          label: '自定义范围 | 日',
+        }}
+        ownState={{ activePreset: null, fiscalYear: 2025 }}
+      />,
+    );
+
+    setDataMask.mockClear();
+    expandFilter();
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('自定义范围 | 日');
+    userEvent.click(screen.getByRole('button', { name: '按月' }));
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          time_range: '2025-01-01 : 2025-02-01',
+          time_grain_sqla: 'P1M',
+        },
+        filterState: {
+          value: '2025-01-01 : 2025-02-01',
+          grain: 'month',
+          label: '自定义范围 | 月',
+        },
+        ownState: expect.objectContaining({ fiscalYear: null }),
+      }),
+    );
+    jest.useRealTimers();
+  });
+
 
   it('renders an adaptive single-calendar panel for day grain', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
