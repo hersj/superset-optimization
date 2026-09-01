@@ -1,6 +1,7 @@
 import {
   getProfitComparisonRanges,
   getProfitDataEndDate,
+  getProfitFiscalYearRange,
   getProfitPresetRange,
 } from './profitDateRanges';
 
@@ -22,6 +23,32 @@ describe('profitDateRanges', () => {
     expect(getProfitPresetRange('this_year', now)).toEqual({
       timeRange: '2026-01-01 : 2026-07-01',
       label: '本年',
+    });
+  });
+
+  it('uses April 1 through March 30 for 本财年', () => {
+    expect(getProfitPresetRange('this_fiscal_year', now)).toEqual({
+      timeRange: '2026-04-01 : 2027-03-31',
+      label: '本财年',
+    });
+  });
+
+  it('keeps January and March in the previous fiscal-year start', () => {
+    expect(
+      getProfitPresetRange(
+        'this_fiscal_year',
+        new Date('2026-02-02T10:00:00+08:00'),
+      ),
+    ).toEqual({
+      timeRange: '2025-04-01 : 2026-03-31',
+      label: '本财年',
+    });
+  });
+
+  it('builds a selectable historical fiscal year range', () => {
+    expect(getProfitFiscalYearRange(2025)).toEqual({
+      timeRange: '2025-04-01 : 2026-03-31',
+      label: '2025财年',
     });
   });
 

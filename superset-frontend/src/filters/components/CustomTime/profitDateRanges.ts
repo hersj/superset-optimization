@@ -14,6 +14,7 @@ const PRESET_LABELS: Record<string, string> = {
   last_90d: '最近90天',
   this_month: '本月',
   this_year: '本年',
+  this_fiscal_year: '本财年',
 };
 
 function pad(value: number): string {
@@ -77,7 +78,7 @@ export function getProfitPresetRange(
   if (!dataEnd) {
     return null;
   }
-  const endExclusive = addDays(dataEnd, 1);
+  let endExclusive = addDays(dataEnd, 1);
   let start: Date;
 
   if (presetKey === 'last_7d') {
@@ -90,12 +91,32 @@ export function getProfitPresetRange(
     start = startOfMonth(dataEnd);
   } else if (presetKey === 'this_year') {
     start = startOfYear(dataEnd);
+  } else if (presetKey === 'this_fiscal_year') {
+    const fiscalYearStart =
+      dataEnd.getUTCMonth() >= 3
+        ? dataEnd.getUTCFullYear()
+        : dataEnd.getUTCFullYear() - 1;
+    start = new Date(Date.UTC(fiscalYearStart, 3, 1));
+    // The requested fiscal year includes March 30; ranges are right-open.
+    endExclusive = new Date(Date.UTC(fiscalYearStart + 1, 2, 31));
   } else {
     return null;
   }
 
   return {
     label: PRESET_LABELS[presetKey],
+    timeRange: range(start, endExclusive),
+  };
+}
+
+export function getProfitFiscalYearRange(
+  fiscalYearStart: number,
+): ProfitPresetRange {
+  const start = new Date(Date.UTC(fiscalYearStart, 3, 1));
+  const endExclusive = new Date(Date.UTC(fiscalYearStart + 1, 2, 31));
+
+  return {
+    label: `${fiscalYearStart}财年`,
     timeRange: range(start, endExclusive),
   };
 }
