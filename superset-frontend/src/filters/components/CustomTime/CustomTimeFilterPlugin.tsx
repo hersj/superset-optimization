@@ -169,6 +169,18 @@ function fiscalYearStartFromDate(dateStr: string): number {
   return month >= 4 ? year : year - 1;
 }
 
+function getRestoredFiscalYear(
+  timeRange: unknown,
+  fiscalYear: unknown,
+): number | null {
+  if (typeof fiscalYear !== 'number' || !Number.isInteger(fiscalYear)) {
+    return null;
+  }
+  return getProfitFiscalYearRange(fiscalYear).timeRange === timeRange
+    ? fiscalYear
+    : null;
+}
+
 function getFQRange(year: number, q: number): { start: string; end: string } {
   const qStart: Record<number, [number, number]> = {
     1: [year, 4], 2: [year, 7], 3: [year, 10], 4: [year + 1, 1],
@@ -235,7 +247,7 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受与当前范围完全匹配的财年状态。
  * - 不变量与约束：一次只绑定一个时间列；预设、财年、日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤与季度、本财年、历史财年导航/选择、外部范围同步、陈旧财年清理以及粒度保持。
- */
+*/
 
 export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
@@ -470,14 +482,18 @@ export default function CustomTimeFilterPlugin(props: any) {
           activeGrain: grainKey,
         });
       } else {
+        const restoredFiscalYear = getRestoredFiscalYear(
+          filterState.value,
+          ownState.fiscalYear,
+        );
         applyFilter(filterState.value as string, grainKey, null, {
           activePreset: null,
           activeGrain: grainKey,
           lastRange: filterState.value,
-          ...(typeof ownState.fiscalYear === 'number'
+          fiscalYear: restoredFiscalYear,
+          ...(restoredFiscalYear !== null
             ? {
-                fiscalYear: ownState.fiscalYear,
-                rangeLabel: `${ownState.fiscalYear}财年`,
+                rangeLabel: `${restoredFiscalYear}财年`,
               }
             : {}),
         });
@@ -485,9 +501,11 @@ export default function CustomTimeFilterPlugin(props: any) {
     } else {
       const preset = DEFAULT_PRESETS.find(p => p.key === defaultPreset);
       if (preset) {
+        setActiveFiscalYear(null);
         applyFilter(getPresetTimeRange(preset.key), defaultGrain, preset.key, {
           activePreset: preset.key,
           activeGrain: defaultGrain,
+          fiscalYear: null,
         });
       }
     }
@@ -501,26 +519,39 @@ export default function CustomTimeFilterPlugin(props: any) {
       const grainKey = (filterState.grain as string) || activeGrain;
       if (filterState.value === null) {
         setActivePreset(null);
+        setActiveFiscalYear(null);
         applyFilter('', grainKey, null, {
           activePreset: null,
           activeGrain: grainKey,
           lastRange: '',
+          fiscalYear: null,
         });
       } else {
         const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
         if (preset) {
           setActivePreset(preset.key);
+          setActiveFiscalYear(null);
           applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
             activePreset: preset.key,
             activeGrain: grainKey,
+            fiscalYear: null,
           });
         } else if (filterState.value) {
-        setActivePreset(null);
-        applyFilter(filterState.value as string, grainKey, null, {
-          activePreset: null,
-          activeGrain: grainKey,
-          lastRange: filterState.value,
-        });
+          const restoredFiscalYear = getRestoredFiscalYear(
+            filterState.value,
+            ownState.fiscalYear,
+          );
+          setActivePreset(null);
+          setActiveFiscalYear(restoredFiscalYear);
+          applyFilter(filterState.value as string, grainKey, null, {
+            activePreset: null,
+            activeGrain: grainKey,
+            lastRange: filterState.value,
+            fiscalYear: restoredFiscalYear,
+            ...(restoredFiscalYear !== null
+              ? { rangeLabel: `${restoredFiscalYear}财年` }
+              : {}),
+          });
         }
       }
     }
@@ -528,7 +559,14 @@ export default function CustomTimeFilterPlugin(props: any) {
       prevFSGrain.current = filterState.grain;
       setActiveGrain(filterState.grain as string);
     }
-  }, [filterState?.value, filterState?.grain, activeGrain, applyFilter, getPresetTimeRange]);
+  }, [
+    filterState?.value,
+    filterState?.grain,
+    ownState.fiscalYear,
+    activeGrain,
+    applyFilter,
+    getPresetTimeRange,
+  ]);
 
   const clearPendingSelections = () => {
     setPendingDayStart('');
