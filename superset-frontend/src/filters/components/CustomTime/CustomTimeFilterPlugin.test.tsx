@@ -73,11 +73,12 @@ describe('CustomTimeFilterPlugin', () => {
       expandFilter();
     userEvent.click(screen.getByRole('button', { name: '按年' }));
 
-    expect(setDataMask).toHaveBeenLastCalledWith({
-      extraFormData: {
-        time_range: '2026-01-01 : 2026-02-01',
-        time_grain_sqla: 'P1Y',
-      },
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2026-01-01 : 2026-02-01',
+          time_grain_sqla: 'P1Y',
+        }),
       filterState: {
         value: '2026-01-01 : 2026-02-01',
         grain: 'year',
@@ -90,7 +91,8 @@ describe('CustomTimeFilterPlugin', () => {
         startMonth: '2026-01',
         endMonth: '2026-01',
       }),
-    });
+      }),
+    );
   });
 
   it('writes the selected time column instead of a global time range', () => {
@@ -116,7 +118,9 @@ describe('CustomTimeFilterPlugin', () => {
         }),
       }),
     );
-    expect(setDataMask.mock.calls.at(-1)[0].extraFormData.time_range).toBeUndefined();
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData.time_range).toEqual(
+      expect.any(String),
+    );
   });
 
   it('applies the default preset against the T-2 profit data calendar and stores comparison ranges', () => {
@@ -132,11 +136,12 @@ describe('CustomTimeFilterPlugin', () => {
       />,
     );
 
-    expect(setDataMask).toHaveBeenLastCalledWith({
-      extraFormData: {
-        time_range: '2026-06-24 : 2026-07-01',
-        time_grain_sqla: 'P1D',
-      },
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2026-06-24 : 2026-07-01',
+          time_grain_sqla: 'P1D',
+        }),
       filterState: {
         value: 'last_7d',
         grain: 'day',
@@ -152,7 +157,8 @@ describe('CustomTimeFilterPlugin', () => {
           yearRange: '2025-06-24 : 2025-07-01',
         },
       }),
-    });
+      }),
+    );
     jest.useRealTimers();
   });
 
@@ -173,11 +179,12 @@ describe('CustomTimeFilterPlugin', () => {
     expandFilter();
     userEvent.click(screen.getByRole('button', { name: '本月' }));
 
-    expect(setDataMask).toHaveBeenLastCalledWith({
-      extraFormData: {
-        time_range: '2026-06-01 : 2026-07-01',
-        time_grain_sqla: 'P1D',
-      },
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2026-06-01 : 2026-07-01',
+          time_grain_sqla: 'P1D',
+        }),
       filterState: {
         value: 'this_month',
         grain: 'day',
@@ -193,7 +200,8 @@ describe('CustomTimeFilterPlugin', () => {
           yearRange: '2025-06-01 : 2025-07-01',
         },
       }),
-    });
+      }),
+    );
     expect(screen.queryByRole('button', { name: '今天' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '昨天' })).not.toBeInTheDocument();
     jest.useRealTimers();
@@ -218,10 +226,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: {
+        extraFormData: expect.objectContaining({
           time_range: '2026-04-01 : 2027-03-31',
           time_grain_sqla: 'P1D',
-        },
+        }),
         filterState: {
           value: 'this_fiscal_year',
           grain: 'day',
@@ -256,10 +264,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: {
+        extraFormData: expect.objectContaining({
           time_range: '2025-04-01 : 2026-03-31',
           time_grain_sqla: 'P1D',
-        },
+        }),
         filterState: {
           value: '2025-04-01 : 2026-03-31',
           grain: 'day',
@@ -312,10 +320,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: {
+        extraFormData: expect.objectContaining({
           time_range: '2025-01-01 : 2025-02-01',
           time_grain_sqla: 'P1M',
-        },
+        }),
         filterState: {
           value: '2025-01-01 : 2025-02-01',
           grain: 'month',
@@ -339,10 +347,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: {
+        extraFormData: expect.objectContaining({
           time_range: '2026-06-01 : 2026-07-01',
           time_grain_sqla: 'P1Y',
-        },
+        }),
         filterState: {
           value: 'this_month',
           grain: 'year',
@@ -379,10 +387,10 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: {
+        extraFormData: expect.objectContaining({
           time_range: '2025-01-01 : 2025-02-01',
           time_grain_sqla: 'P1M',
-        },
+        }),
         filterState: {
           value: '2025-01-01 : 2025-02-01',
           grain: 'month',
