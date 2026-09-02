@@ -670,7 +670,7 @@ describe('CustomTimeFilterPlugin', () => {
   });
 
 
-  test('shows 60 months of history and no months after the data cutoff', () => {
+  test('starts the calendar at January 2022 and stops at the data cutoff', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
 
     render(
@@ -683,9 +683,33 @@ describe('CustomTimeFilterPlugin', () => {
 
     expandFilter();
 
-    expect(screen.getByRole('option', { name: '2021-06' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '2022-01' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '2021-12' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: '2026-06' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '2026-07' })).not.toBeInTheDocument();
+
+    jest.useRealTimers();
+  });
+
+  test('does not allow calendar dates before January 2022', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    const monthSelect = screen.getByLabelText('快速跳转月份');
+    fireEvent.change(monthSelect, { target: { value: '2022-01-01' } });
+
+    expect(screen.getByText('2022 年 1 月')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /上个月/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '2021-12-31' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '2022-01-01' })).toBeEnabled();
 
     jest.useRealTimers();
   });

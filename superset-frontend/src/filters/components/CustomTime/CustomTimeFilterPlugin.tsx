@@ -98,6 +98,9 @@ function monthStartFromMonth(month: string): string {
   return `${month}-01`;
 }
 
+const MIN_CALENDAR_YEAR = 2022;
+const MIN_CALENDAR_DATE = `${MIN_CALENDAR_YEAR}-01-01`;
+
 function nextMonthStart(month: string): string {
   return addMonths(monthStartFromMonth(month), 1);
 }
@@ -278,10 +281,10 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器中选择范围、粒度或“不过滤”时触发；按财年是与按天/周/月/季/年并列的独立时间粒度。
  * - 输入契约：formData.groupby 为可选的单个绑定时间列；timeRange 为半开区间“开始 : 结束”或空值；grainKey 为 day/week/month/quarter/year/fiscal_year；数据截止日由数据源提供。
  * - 处理流程：读取绑定列和当前状态→按快捷范围、日历或粒度按钮计算范围→统一经 applyFilter 构造 DataMask→保存可恢复的范围、粒度、预设和财年状态；按财年进入财年维度后，连续点击两个财年按钮选择包含首尾财年的连续区间。
- * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份；第一次财年点击作为起点，第二次点击按年份排序后生成连续区间，再次点击重新开始选择。
+ * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；日/周日历及月份跳转最早允许 2022-01-01，日历补位日期和包含起始日前日期的周不可选，数据截止日之后不可选；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份；第一次财年点击作为起点，第二次点击按年份排序后生成连续区间，再次点击重新开始选择。
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
- * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
+ * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；日历不能通过补位日期、周或月份跳转绕过 2022-01-01 起点；已保存的旧范围仍可恢复；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
  * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；财年多选只能形成连续区间，不能生成离散日期集合。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
@@ -811,7 +814,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleCalendarDayClick = (val: string) => {
-    if (val > getDataEndDate()) {
+    if (val < MIN_CALENDAR_DATE || val > getDataEndDate()) {
       return;
     }
 
@@ -880,7 +883,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleWeekClick = (weekStart: string) => {
-    if (weekStart > getDataEndDate()) {
+    if (weekStart < MIN_CALENDAR_DATE || weekStart > getDataEndDate()) {
       return;
     }
     setActivePreset(null);
@@ -1009,7 +1012,7 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const baseMonth = getMonthStart(getDataEndDate());
   const firstCalendarMonth = addMonths(baseMonth, calendarMonthOffset);
-  const canGoBack = calendarMonthOffset > -60;
+  const canGoBack = firstCalendarMonth > MIN_CALENDAR_DATE;
   const canGoForward = calendarMonthOffset < 0;
 
   const displayYearStart = currentYear + yearDecadeOffset * 12;
@@ -1053,10 +1056,17 @@ export default function CustomTimeFilterPlugin(props: any) {
         }}
         style={styles.selectInput}
       >
-        {Array.from({ length: 61 }, (_, i) => {
-          const m = addMonths(baseMonth, i - 60);
-          return <option key={m} value={m}>{m.substring(0, 7)}</option>;
-        })}
+        {Array.from(
+          {
+            length:
+              (Number(baseMonth.substring(0, 4)) - MIN_CALENDAR_YEAR) * 12 +
+              Number(baseMonth.substring(5, 7)),
+          },
+          (_, i) => {
+            const m = addMonths(MIN_CALENDAR_DATE, i);
+            return <option key={m} value={m}>{m.substring(0, 7)}</option>;
+          },
+        )}
       </select>
       <button type="button" onClick={() => canGoForward && setCalendarMonthOffset(o => o + 1)} disabled={!canGoForward} style={{ ...styles.btn, color: canGoForward ? styles.colors.primary : styles.colors.disabled }}>
         下个月 →
@@ -1078,7 +1088,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         {getMonthDays(monthStart).map(day => {
           const selected = isDateInRange(day.date, currentRange);
           const endpoint = isDateRangeEndpoint(day.date, currentRange);
-          const capped = day.date > getDataEndDate();
+          const capped = day.date < MIN_CALENDAR_DATE || day.date > getDataEndDate();
           return (
             <button
               key={day.date}
@@ -1121,7 +1131,7 @@ export default function CustomTimeFilterPlugin(props: any) {
           const weekEndExclusive = addDays(weekStart, 7);
           const selected = Boolean(currentRange && weekStart < parseRange(currentRange).endExclusive && weekEndExclusive > parseRange(currentRange).start);
           const endpoint = parseRange(currentRange).start === weekStart || parseRange(currentRange).endExclusive === weekEndExclusive;
-          const capped = day.date > getDataEndDate();
+          const capped = weekStart < MIN_CALENDAR_DATE || day.date > getDataEndDate();
           return (
             <button
               key={day.date}
