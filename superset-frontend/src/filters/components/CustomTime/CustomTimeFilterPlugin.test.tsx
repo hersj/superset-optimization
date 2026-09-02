@@ -245,6 +245,49 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
+  it('keeps the fiscal-year entry with time grains when preset buttons are disabled', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        formData={{ ...baseProps.formData, enablePresets: false, groupby: ['ship_date'] }}
+        setDataMask={setDataMask}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    setDataMask.mockClear();
+    expect(screen.getByRole('button', { name: '按年' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '按财年' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '最近7天' })).not.toBeInTheDocument();
+
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    expect(screen.getByTestId('custom-time-fiscal-year-grid')).toBeInTheDocument();
+    userEvent.click(screen.getByRole('button', { name: '2026财年' }));
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          filters: [
+            { col: 'ship_date', op: 'TEMPORAL_RANGE', val: '2026-04-01 : 2027-03-31' },
+          ],
+          time_range: '2026-04-01 : 2027-03-31',
+        }),
+        filterState: expect.objectContaining({
+          value: '2026-04-01 : 2027-03-31',
+          label: '2026财年 | 日',
+        }),
+      }),
+    );
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    userEvent.click(screen.getByRole('button', { name: '返回日期范围' }));
+    expect(screen.queryByTestId('custom-time-fiscal-year-grid')).not.toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
   it('restores the fiscal-year label from an exact range without fiscalYear state', () => {
     const setDataMask = jest.fn();
 
