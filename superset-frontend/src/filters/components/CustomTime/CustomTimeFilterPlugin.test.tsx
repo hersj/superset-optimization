@@ -691,7 +691,7 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
-  test('does not allow calendar dates before January 2022', () => {
+  test('removes calendar dates before January 2022', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
 
     render(
@@ -708,8 +708,75 @@ describe('CustomTimeFilterPlugin', () => {
 
     expect(screen.getByText('2022 年 1 月')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /上个月/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '2021-12-31' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '2021-12-31' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '2022-01-01' })).toBeEnabled();
+
+    jest.useRealTimers();
+  });
+
+  test('uses the configured calendar start date for each filter instance', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        formData={{ ...baseProps.formData, calendarStartDate: '2024-03-15' }}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    const monthSelect = screen.getByLabelText('快速跳转月份');
+    expect(screen.getByRole('option', { name: '2024-03' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '2024-02' })).not.toBeInTheDocument();
+
+    fireEvent.change(monthSelect, { target: { value: '2024-03-01' } });
+
+    expect(screen.queryByRole('button', { name: '2024-03-14' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2024-03-15' })).toBeEnabled();
+
+    jest.useRealTimers();
+  });
+
+  test('removes whole months before the configured start date', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        formData={{ ...baseProps.formData, calendarStartDate: '2026-03-01' }}
+        filterState={{ grain: 'month' }}
+        ownState={{ activeGrain: 'month' }}
+      />,
+    );
+
+    expandFilter();
+
+    expect(screen.getByRole('button', { name: '2026-03' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '2026-02' })).not.toBeInTheDocument();
+
+    jest.useRealTimers();
+  });
+
+  test('removes fiscal years whose full range starts before the configured date', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        formData={{ ...baseProps.formData, calendarStartDate: '2024-06-01' }}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    userEvent.click(screen.getByRole('button', { name: '前十二年财年' }));
+
+    expect(screen.queryByRole('button', { name: '2024财年' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2025财年' })).toBeInTheDocument();
 
     jest.useRealTimers();
   });

@@ -98,8 +98,24 @@ function monthStartFromMonth(month: string): string {
   return `${month}-01`;
 }
 
-const MIN_CALENDAR_YEAR = 2022;
-const MIN_CALENDAR_DATE = `${MIN_CALENDAR_YEAR}-01-01`;
+const DEFAULT_CALENDAR_START_DATE = '2022-01-01';
+
+function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function getConfiguredCalendarStartDate(value: unknown): string {
+  return isValidIsoDate(value) ? value : DEFAULT_CALENDAR_START_DATE;
+}
 
 function nextMonthStart(month: string): string {
   return addMonths(monthStartFromMonth(month), 1);
@@ -222,6 +238,42 @@ function fiscalYearStartFromDate(dateStr: string): number {
   return month >= 4 ? year : year - 1;
 }
 
+/** 返回第一个完整落在最早日期之后的月份，供整月选择器使用。 */
+function getFirstSelectableMonth(minimumDate: string): string {
+  const monthStart = getMonthStart(minimumDate);
+  return minimumDate === monthStart
+    ? monthStart
+    : nextMonthStart(monthFromDate(minimumDate));
+}
+
+/** 返回第一个完整落在最早日期之后的年份，供整年选择器使用。 */
+function getFirstSelectableYear(minimumDate: string): number {
+  const year = Number(minimumDate.substring(0, 4));
+  return fmtDate(year, 1, 1) >= minimumDate ? year : year + 1;
+}
+
+/** 返回第一个完整落在最早日期之后的财年，避免财年范围覆盖起始日前数据。 */
+function getFirstSelectableFiscalYear(minimumDate: string): number {
+  let year = fiscalYearStartFromDate(minimumDate);
+  while (getProfitFiscalYearRange(year).timeRange.substring(0, 10) < minimumDate) {
+    year += 1;
+  }
+  return year;
+}
+
+/** 返回第一个可选季度所在的展示年份，保留财季 Q4 的自然年归属。 */
+function getFirstSelectableQuarterDisplayYear(minimumDate: string): number {
+  const fiscalYear = fiscalYearStartFromDate(minimumDate);
+  for (let year = fiscalYear; year <= fiscalYear + 2; year += 1) {
+    for (let quarter = 1; quarter <= 4; quarter += 1) {
+      if (getFQRange(year, quarter).start >= minimumDate) {
+        return year;
+      }
+    }
+  }
+  return fiscalYear + 2;
+}
+
 function getFQRange(year: number, q: number): { start: string; end: string } {
   const qStart: Record<number, [number, number]> = {
     1: [year, 4], 2: [year, 7], 3: [year, 10], 4: [year + 1, 1],
@@ -281,12 +333,12 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器中选择范围、粒度或“不过滤”时触发；按财年是与按天/周/月/季/年并列的独立时间粒度。
  * - 输入契约：formData.groupby 为可选的单个绑定时间列；timeRange 为半开区间“开始 : 结束”或空值；grainKey 为 day/week/month/quarter/year/fiscal_year；数据截止日由数据源提供。
  * - 处理流程：读取绑定列和当前状态→按快捷范围、日历或粒度按钮计算范围→统一经 applyFilter 构造 DataMask→保存可恢复的范围、粒度、预设和财年状态；按财年进入财年维度后，连续点击两个财年按钮选择包含首尾财年的连续区间。
- * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；日/周日历及月份跳转最早允许 2022-01-01，日历补位日期和包含起始日前日期的周不可选，数据截止日之后不可选；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份；第一次财年点击作为起点，第二次点击按年份排序后生成连续区间，再次点击重新开始选择。
+ * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；calendarStartDate 为当前筛选器对应表的最早可选日期，缺失或非法时使用 2022-01-01；起始日期之前的日历日期不展示，包含起始日前日期的整周不展示，起始日前的整月/整季/整年/财年不展示，数据截止日之后不可选；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份；第一次财年点击作为起点，第二次点击按年份排序后生成连续区间，再次点击重新开始选择。
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
- * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；日历不能通过补位日期、周或月份跳转绕过 2022-01-01 起点；已保存的旧范围仍可恢复；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
+ * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；非法 calendarStartDate 安全回退默认日期；日历不能通过补位日期、周或其他粒度导航绕过当前起点；已保存的旧范围仍可恢复；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
  * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；财年多选只能形成连续区间，不能生成离散日期集合。
- * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
+ * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、默认 2022-01-01 与每个筛选器自定义起始日期、起始日期前选项隐藏、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
 
 export default function CustomTimeFilterPlugin(props: any) {
@@ -301,6 +353,17 @@ export default function CustomTimeFilterPlugin(props: any) {
     enableCustomRange = true,
     enableTimeGrain = true,
   } = formData || {};
+  const minimumCalendarDate = getConfiguredCalendarStartDate(
+    formData?.calendarStartDate,
+  );
+  const minimumCalendarMonth = getMonthStart(minimumCalendarDate);
+  const minimumSelectableMonth = getFirstSelectableMonth(minimumCalendarDate);
+  const minimumMonthDisplayYear = Number(minimumSelectableMonth.substring(0, 4));
+  const minimumSelectableYear = getFirstSelectableYear(minimumCalendarDate);
+  const minimumQuarterDisplayYear = getFirstSelectableQuarterDisplayYear(
+    minimumCalendarDate,
+  );
+  const minimumFiscalYear = getFirstSelectableFiscalYear(minimumCalendarDate);
   const timeColumn = getConfiguredTimeColumn(formData);
 
   const currentYear = Number(getDataEndDate().substring(0, 4));
@@ -724,11 +787,14 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handlePresetClick = (preset: TimePreset) => {
-    clearPendingSelections();
     const isFiscalPreset = preset.key === 'this_fiscal_year';
     const fiscalYear = isFiscalPreset
       ? fiscalYearStartFromDate(getDataEndDate())
       : null;
+    if (fiscalYear !== null && fiscalYear < minimumFiscalYear) {
+      return;
+    }
+    clearPendingSelections();
     const grainKey = isFiscalPreset ? 'fiscal_year' : activeGrain;
     setActivePreset(preset.key);
     setActiveGrain(grainKey);
@@ -746,6 +812,9 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const applyFiscalYearRange = (rangeStart: number, rangeEnd: number) => {
+    if (rangeStart < minimumFiscalYear) {
+      return;
+    }
     const fiscalRange = getProfitFiscalYearRange(rangeStart, rangeEnd);
     const isSingleFiscalYear = rangeStart === rangeEnd;
     setActivePreset(null);
@@ -762,6 +831,13 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleFiscalYearClick = (fiscalYear: number) => {
+    if (
+      fiscalYear < minimumFiscalYear ||
+      getProfitFiscalYearRange(fiscalYear).timeRange.substring(0, 10) >
+        getDataEndDate()
+    ) {
+      return;
+    }
     clearNonFiscalPendingSelections();
     setActivePreset(null);
     setActiveGrain('fiscal_year');
@@ -814,7 +890,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleCalendarDayClick = (val: string) => {
-    if (val < MIN_CALENDAR_DATE || val > getDataEndDate()) {
+    if (val < minimumCalendarDate || val > getDataEndDate()) {
       return;
     }
 
@@ -883,7 +959,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleWeekClick = (weekStart: string) => {
-    if (weekStart < MIN_CALENDAR_DATE || weekStart > getDataEndDate()) {
+    if (weekStart < minimumCalendarDate || weekStart > getDataEndDate()) {
       return;
     }
     setActivePreset(null);
@@ -912,7 +988,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleMonthClick = (month: string) => {
-    if (monthStartFromMonth(month) > getDataEndDate()) {
+    if (
+      monthStartFromMonth(month) < minimumCalendarDate ||
+      monthStartFromMonth(month) > getDataEndDate()
+    ) {
       return;
     }
     setActivePreset(null);
@@ -950,7 +1029,11 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const handleQuarterClick = (id: string) => {
     const { year, q } = parseQuarterId(id);
-    if (getFQRange(year, q).start > getDataEndDate()) {
+    const quarterRange = getFQRange(year, q);
+    if (
+      quarterRange.start < minimumCalendarDate ||
+      quarterRange.start > getDataEndDate()
+    ) {
       return;
     }
     setActivePreset(null);
@@ -979,7 +1062,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleYearClick = (year: number) => {
-    if (fmtDate(year, 1, 1) > getDataEndDate()) {
+    if (
+      fmtDate(year, 1, 1) < minimumCalendarDate ||
+      fmtDate(year, 1, 1) > getDataEndDate()
+    ) {
       return;
     }
     setActivePreset(null);
@@ -1011,34 +1097,63 @@ export default function CustomTimeFilterPlugin(props: any) {
   const currentRange = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
 
   const baseMonth = getMonthStart(getDataEndDate());
+  const calendarStartMonth =
+    minimumCalendarMonth > baseMonth ? baseMonth : minimumCalendarMonth;
   const firstCalendarMonth = addMonths(baseMonth, calendarMonthOffset);
-  const canGoBack = firstCalendarMonth > MIN_CALENDAR_DATE;
-  const canGoForward = calendarMonthOffset < 0;
+  const calendarMonthCount = Math.max(
+    1,
+    (Number(baseMonth.substring(0, 4)) -
+      Number(calendarStartMonth.substring(0, 4))) *
+      12 +
+      Number(baseMonth.substring(5, 7)) -
+      Number(calendarStartMonth.substring(5, 7)) +
+      1,
+  );
+  const canGoBack = firstCalendarMonth > calendarStartMonth;
+  const canGoForward = firstCalendarMonth < baseMonth;
 
-  const displayYearStart = currentYear + yearDecadeOffset * 12;
+  const displayYearStart = Math.max(
+    minimumSelectableYear,
+    currentYear + yearDecadeOffset * 12,
+  );
+  const canGoBackYear = displayYearStart > minimumSelectableYear;
   const yearOptions = useMemo(() => {
     const years = [];
     for (let y = displayYearStart; y < displayYearStart + 12; y++) years.push(y);
     return years;
   }, [displayYearStart]);
 
-  const displayYear = currentYear + monthYearOffset;
+  const displayYear = Math.max(
+    minimumMonthDisplayYear,
+    currentYear + monthYearOffset,
+  );
+  const canGoBackMonth = displayYear > minimumMonthDisplayYear;
   const monthOptions = useMemo(() => {
     const months: string[] = [];
     for (let m = 1; m <= 12; m += 1) {
-      months.push(`${displayYear}-${String(m).padStart(2, '0')}`);
+      const month = `${displayYear}-${String(m).padStart(2, '0')}`;
+      if (monthStartFromMonth(month) >= minimumSelectableMonth) {
+        months.push(month);
+      }
     }
     return months;
-  }, [displayYear]);
+  }, [displayYear, minimumSelectableMonth]);
 
-  const displayQuarterYear = currentYear + quarterYearOffset;
+  const displayQuarterYear = Math.max(
+    minimumQuarterDisplayYear,
+    currentYear + quarterYearOffset,
+  );
+  const canGoBackQuarter = displayQuarterYear > minimumQuarterDisplayYear;
   const quarterOptions = useMemo(() => {
     const quarters: string[] = [];
     for (let q = 1; q <= 4; q += 1) {
-      quarters.push(quarterId(displayQuarterYear, q));
+      const id = quarterId(displayQuarterYear, q);
+      if (getFQRange(displayQuarterYear, q).start >= minimumCalendarDate) {
+        quarters.push(id);
+      }
     }
     return quarters;
-  }, [displayQuarterYear]);
+  }, [displayQuarterYear, minimumCalendarDate]);
 
   const renderCalendarNavigation = () => (
     <div style={styles.nav}>
@@ -1056,17 +1171,10 @@ export default function CustomTimeFilterPlugin(props: any) {
         }}
         style={styles.selectInput}
       >
-        {Array.from(
-          {
-            length:
-              (Number(baseMonth.substring(0, 4)) - MIN_CALENDAR_YEAR) * 12 +
-              Number(baseMonth.substring(5, 7)),
-          },
-          (_, i) => {
-            const m = addMonths(MIN_CALENDAR_DATE, i);
-            return <option key={m} value={m}>{m.substring(0, 7)}</option>;
-          },
-        )}
+        {Array.from({ length: calendarMonthCount }, (_, i) => {
+          const m = addMonths(calendarStartMonth, i);
+          return <option key={m} value={m}>{m.substring(0, 7)}</option>;
+        })}
       </select>
       <button type="button" onClick={() => canGoForward && setCalendarMonthOffset(o => o + 1)} disabled={!canGoForward} style={{ ...styles.btn, color: canGoForward ? styles.colors.primary : styles.colors.disabled }}>
         下个月 →
@@ -1088,7 +1196,10 @@ export default function CustomTimeFilterPlugin(props: any) {
         {getMonthDays(monthStart).map(day => {
           const selected = isDateInRange(day.date, currentRange);
           const endpoint = isDateRangeEndpoint(day.date, currentRange);
-          const capped = day.date < MIN_CALENDAR_DATE || day.date > getDataEndDate();
+          const capped = day.date > getDataEndDate();
+          if (day.date < minimumCalendarDate) {
+            return <span key={day.date} aria-hidden="true" />;
+          }
           return (
             <button
               key={day.date}
@@ -1131,7 +1242,10 @@ export default function CustomTimeFilterPlugin(props: any) {
           const weekEndExclusive = addDays(weekStart, 7);
           const selected = Boolean(currentRange && weekStart < parseRange(currentRange).endExclusive && weekEndExclusive > parseRange(currentRange).start);
           const endpoint = parseRange(currentRange).start === weekStart || parseRange(currentRange).endExclusive === weekEndExclusive;
-          const capped = weekStart < MIN_CALENDAR_DATE || day.date > getDataEndDate();
+          const capped = day.date > getDataEndDate();
+          if (weekStart < minimumCalendarDate) {
+            return <span key={day.date} aria-hidden="true" />;
+          }
           return (
             <button
               key={day.date}
@@ -1186,7 +1300,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   const renderMonthSelector = () => (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => setMonthYearOffset(o => o - 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{'<'} {displayYear - 1}年</button>
+        <button type="button" onClick={() => canGoBackMonth && setMonthYearOffset(o => o - 1)} disabled={!canGoBackMonth} style={{ fontSize: 12, cursor: canGoBackMonth ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackMonth ? styles.colors.primary : styles.colors.disabled }}>{'<'} {displayYear - 1}年</button>
         <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayYear}年</span>
         <button type="button" onClick={() => setMonthYearOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{displayYear + 1}年 {'>'}</button>
       </div>
@@ -1217,7 +1331,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   const renderQuarterSelector = () => (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => setQuarterYearOffset(o => o - 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{'<'} {displayQuarterYear - 1}年</button>
+        <button type="button" onClick={() => canGoBackQuarter && setQuarterYearOffset(o => o - 1)} disabled={!canGoBackQuarter} style={{ fontSize: 12, cursor: canGoBackQuarter ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackQuarter ? styles.colors.primary : styles.colors.disabled }}>{'<'} {displayQuarterYear - 1}年</button>
         <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayQuarterYear}年</span>
         <button type="button" onClick={() => setQuarterYearOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{displayQuarterYear + 1}年 {'>'}</button>
       </div>
@@ -1226,7 +1340,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         const { year, q } = parseQuarterId(id);
         const range = getFQRange(year, q);
         const selected = isDateInRange(range.start, currentRange);
-        const capped = range.start > getDataEndDate();
+        const capped = range.start < minimumCalendarDate || range.start > getDataEndDate();
         return (
           <button
             key={id}
@@ -1250,14 +1364,16 @@ export default function CustomTimeFilterPlugin(props: any) {
   const renderYearSelector = () => (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => setYearDecadeOffset(o => o - 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{'<'} 前十年</button>
+        <button type="button" onClick={() => canGoBackYear && setYearDecadeOffset(o => o - 1)} disabled={!canGoBackYear} style={{ fontSize: 12, cursor: canGoBackYear ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackYear ? styles.colors.primary : styles.colors.disabled }}>{'<'} 前十年</button>
         <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayYearStart} - {displayYearStart + 11}</span>
         <button type="button" onClick={() => setYearDecadeOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>后十年 {'>'}</button>
       </div>
     <div data-test="custom-time-year-grid" style={styles.yearGrid}>
       {yearOptions.map(year => {
         const selected = isDateInRange(fmtDate(year, 1, 1), currentRange);
-        const capped = fmtDate(year, 1, 1) > getDataEndDate();
+        const capped =
+          fmtDate(year, 1, 1) < minimumCalendarDate ||
+          fmtDate(year, 1, 1) > getDataEndDate();
         return (
           <button
             key={year}
@@ -1279,7 +1395,11 @@ export default function CustomTimeFilterPlugin(props: any) {
   );
 
   const fiscalYearStart = fiscalYearStartFromDate(getDataEndDate());
-  const displayFiscalYearStart = fiscalYearStart + fiscalYearOffset * 12;
+  const displayFiscalYearStart = Math.max(
+    minimumFiscalYear,
+    fiscalYearStart + fiscalYearOffset * 12,
+  );
+  const canGoBackFiscalYear = displayFiscalYearStart > minimumFiscalYear;
   const canGoForwardFiscalYear = fiscalYearOffset < 0;
   const fiscalYearOptions = useMemo(() => {
     const years: number[] = [];
@@ -1299,8 +1419,9 @@ export default function CustomTimeFilterPlugin(props: any) {
         <button
           type="button"
           aria-label="前十二年财年"
-          onClick={() => setFiscalYearOffset(offset => offset - 1)}
-          style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}
+          onClick={() => canGoBackFiscalYear && setFiscalYearOffset(offset => offset - 1)}
+          disabled={!canGoBackFiscalYear}
+          style={{ fontSize: 12, cursor: canGoBackFiscalYear ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackFiscalYear ? styles.colors.primary : styles.colors.disabled }}
         >
           {'<'} 前十二年
         </button>
@@ -1322,7 +1443,9 @@ export default function CustomTimeFilterPlugin(props: any) {
       </div>
       <div data-test="custom-time-fiscal-year-grid" style={styles.yearGrid}>
         {fiscalYearOptions.map(year => {
-          const capped = year > fiscalYearStart;
+          const capped =
+            year < minimumFiscalYear ||
+            year > fiscalYearStart;
           const selected =
             activeFiscalYear !== null &&
             year >= activeFiscalYear &&
