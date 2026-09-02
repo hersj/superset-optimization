@@ -126,14 +126,22 @@ export function getProfitPresetRange(
   };
 }
 
+/**
+ * 将一个财年或首尾财年转换为连续的半开区间，供筛选器 DataMask 使用。
+ * 财年从 4 月 1 日开始，结束边界为最后一个财年次年 3 月 31 日。
+ */
 export function getProfitFiscalYearRange(
   fiscalYearStart: number,
+  fiscalYearEnd: number = fiscalYearStart,
 ): ProfitPresetRange {
   const start = new Date(Date.UTC(fiscalYearStart, 3, 1));
-  const endExclusive = new Date(Date.UTC(fiscalYearStart + 1, 2, 31));
+  const endExclusive = new Date(Date.UTC(fiscalYearEnd + 1, 2, 31));
 
   return {
-    label: `${fiscalYearStart}财年`,
+    label:
+      fiscalYearStart === fiscalYearEnd
+        ? `${fiscalYearStart}财年`
+        : `${fiscalYearStart}-${fiscalYearEnd}财年`,
     timeRange: range(start, endExclusive),
   };
 }

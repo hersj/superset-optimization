@@ -257,6 +257,50 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
+  it('selects a continuous range when two fiscal-year buttons are clicked', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    userEvent.click(screen.getByRole('button', { name: '前十二年财年' }));
+    setDataMask.mockClear();
+    userEvent.click(screen.getByRole('button', { name: '2024财年' }));
+    userEvent.click(screen.getByRole('button', { name: '2025财年' }));
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2024-04-01 : 2026-03-31',
+          time_grain_sqla: 'P1Y_FISCAL',
+        }),
+        filterState: {
+          value: '2024-04-01 : 2026-03-31',
+          grain: 'fiscal_year',
+          label: '2024-2025财年 | 财年',
+        },
+        ownState: expect.objectContaining({
+          fiscalYear: 2024,
+          fiscalYearEnd: 2025,
+          activeGrain: 'fiscal_year',
+        }),
+      }),
+    );
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent(
+      '2024-2025财年 | 财年',
+    );
+    jest.useRealTimers();
+  });
+
   it('restores the legacy 本财年 state as the fiscal-year grain', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();

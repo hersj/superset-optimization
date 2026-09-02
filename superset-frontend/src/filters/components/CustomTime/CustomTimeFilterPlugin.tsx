@@ -120,6 +120,38 @@ function isPresetKey(value: unknown): value is string {
   return typeof value === 'string' && DEFAULT_PRESETS.some(p => p.key === value);
 }
 
+type FiscalYearSelection = {
+  start: number;
+  end: number;
+};
+
+/**
+ * 从已保存的半开时间区间恢复单个或连续财年，供组件初始化和外部状态同步使用。
+ */
+function getRestoredFiscalYearRange(
+  timeRange: unknown,
+): FiscalYearSelection | null {
+  if (typeof timeRange !== 'string') {
+    return null;
+  }
+  const { start, endExclusive } = parseRange(timeRange);
+  const startMatch = /^(\d{4})-04-01$/.exec(start);
+  const endMatch = /^(\d{4})-03-31$/.exec(endExclusive);
+  if (!startMatch || !endMatch) {
+    return null;
+  }
+  const rangeStart = Number(startMatch[1]);
+  const rangeEnd = Number(endMatch[1]) - 1;
+  if (
+    rangeEnd < rangeStart ||
+    getProfitFiscalYearRange(rangeStart, rangeEnd).timeRange !==
+      `${start} : ${endExclusive}`
+  ) {
+    return null;
+  }
+  return { start: rangeStart, end: rangeEnd };
+}
+
 /**
  * 仅把明确保存了 fiscalYear 的旧财年状态恢复为财年粒度；没有该状态的普通日期区间仍保持原粒度。
  */
@@ -132,7 +164,7 @@ function getEffectiveGrain(
   const hasLegacyFiscalSelection =
     typeof fiscalYear === 'number' &&
     Number.isInteger(fiscalYear) &&
-    getRestoredFiscalYear(timeRange, fiscalYear) !== null;
+    getRestoredFiscalYearRange(timeRange) !== null;
   return value === 'this_fiscal_year' || hasLegacyFiscalSelection
     ? 'fiscal_year'
     : fallback;
@@ -185,32 +217,6 @@ function getDataEndDate(): string {
 function fiscalYearStartFromDate(dateStr: string): number {
   const [year, month] = dateStr.split('-').map(Number);
   return month >= 4 ? year : year - 1;
-}
-
-function getRestoredFiscalYear(
-  timeRange: unknown,
-  fiscalYear: unknown,
-): number | null {
-  if (typeof timeRange !== 'string') {
-    return null;
-  }
-  const { start, endExclusive } = parseRange(timeRange);
-  const match = /^(\d{4})-04-01$/.exec(start);
-  if (!match || !endExclusive) {
-    return null;
-  }
-  const rangeFiscalYear = Number(match[1]);
-  if (
-    getProfitFiscalYearRange(rangeFiscalYear).timeRange !==
-    `${start} : ${endExclusive}`
-  ) {
-    return null;
-  }
-  return typeof fiscalYear === 'number' && Number.isInteger(fiscalYear)
-    ? getProfitFiscalYearRange(fiscalYear).timeRange === timeRange
-      ? fiscalYear
-      : rangeFiscalYear
-    : rangeFiscalYear;
 }
 
 function getFQRange(year: number, q: number): { start: string; end: string } {
@@ -271,13 +277,13 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * 功能审计（可重写规格）：自定义时间筛选器的时间范围与财年粒度
  * - 功能目的与触发方式：用户在 Dashboard 原生时间筛选器中选择范围、粒度或“不过滤”时触发；按财年是与按天/周/月/季/年并列的独立时间粒度。
  * - 输入契约：formData.groupby 为可选的单个绑定时间列；timeRange 为半开区间“开始 : 结束”或空值；grainKey 为 day/week/month/quarter/year/fiscal_year；数据截止日由数据源提供。
- * - 处理流程：读取绑定列和当前状态→按快捷范围、日历或粒度按钮计算范围→统一经 applyFilter 构造 DataMask→保存可恢复的范围、粒度、预设和财年状态；点击按财年或本财年立即选中当前完整财年，财年日历选择单个历史财年。
- * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份。
+ * - 处理流程：读取绑定列和当前状态→按快捷范围、日历或粒度按钮计算范围→统一经 applyFilter 构造 DataMask→保存可恢复的范围、粒度、预设和财年状态；按财年进入财年维度后，连续点击两个财年按钮选择包含首尾财年的连续区间。
+ * - 业务规则：严格使用 formData.groupby 指定的列，不从图表 x 轴推断；财年从 4 月 1 日到次年 3 月 30 日，内部以次年 3 月 31 日右开边界表示；按财年按钮只产生财年分组，不保留日历年分组；本财年和财年日历同时设置范围与财年粒度；其他快捷范围只改变范围；财年列表只能选择不晚于数据截止财年的年份；第一次财年点击作为起点，第二次点击按年份排序后生成连续区间，再次点击重新开始选择。
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
- * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受与当前范围完全匹配的财年状态。
- * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版“fiscalYear + 精确财年区间”状态必须恢复为 fiscal_year。
- * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、按财年当前/历史选择、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
+ * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
+ * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；财年多选只能形成连续区间，不能生成离散日期集合。
+ * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
 
 export default function CustomTimeFilterPlugin(props: any) {
@@ -303,10 +309,13 @@ export default function CustomTimeFilterPlugin(props: any) {
   const savedEndDate = parsedSavedRange.endExclusive
     ? subtractDays(parsedSavedRange.endExclusive, 1)
     : getDataEndDate();
-  const restoredFiscalYear =
+  const restoredFiscalYearRange =
     filterState?.value === 'this_fiscal_year'
-      ? fiscalYearStartFromDate(getDataEndDate())
-      : getRestoredFiscalYear(savedRange, ownState.fiscalYear);
+      ? {
+          start: fiscalYearStartFromDate(getDataEndDate()),
+          end: fiscalYearStartFromDate(getDataEndDate()),
+        }
+      : getRestoredFiscalYearRange(savedRange);
   const initialGrain = getEffectiveGrain(
     filterState?.value,
     (ownState.activeGrain as string | undefined) ||
@@ -328,7 +337,13 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const [activePreset, setActivePreset] = useState<string | null>(initialPreset);
   const [activeFiscalYear, setActiveFiscalYear] = useState<number | null>(
-    restoredFiscalYear,
+    restoredFiscalYearRange?.start ?? null,
+  );
+  const [activeFiscalYearEnd, setActiveFiscalYearEnd] = useState<number | null>(
+    restoredFiscalYearRange &&
+    restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+      ? restoredFiscalYearRange.end
+      : null,
   );
   const [activeGrain, setActiveGrain] = useState<string>(initialGrain);
   const [startDate, setStartDate] = useState(
@@ -390,6 +405,7 @@ export default function CustomTimeFilterPlugin(props: any) {
   const [pendingMonthStart, setPendingMonthStart] = useState('');
   const [pendingQuarterStart, setPendingQuarterStart] = useState('');
   const [pendingYearStart, setPendingYearStart] = useState<number | null>(null);
+  const [pendingFiscalYearStart, setPendingFiscalYearStart] = useState<number | null>(null);
 
   const lastRangeRef = useRef<string>(savedRange);
 
@@ -410,6 +426,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       return {
         activePreset,
         fiscalYear: activeFiscalYear,
+        fiscalYearEnd: activeFiscalYearEnd,
         activeGrain,
         lastRange: currentRange,
         profitDataEndDate: getDataEndDate(),
@@ -432,6 +449,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     [
       activePreset,
       activeFiscalYear,
+      activeFiscalYearEnd,
       activeGrain,
       endDate,
       endMonth,
@@ -519,6 +537,8 @@ export default function CustomTimeFilterPlugin(props: any) {
         activePreset: null,
         activeGrain: grainKey,
         lastRange: '',
+        fiscalYear: null,
+        fiscalYearEnd: null,
       });
     } else if (filterState?.value) {
       const grainKey = getEffectiveGrain(
@@ -535,27 +555,34 @@ export default function CustomTimeFilterPlugin(props: any) {
             : null;
         setActiveGrain(grainKey);
         setActiveFiscalYear(fiscalYear);
+        setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
+          fiscalYearEnd: null,
           ...(fiscalYear !== null
             ? { rangeLabel: `${fiscalYear}财年` }
             : {}),
         });
       } else {
-        const restoredFiscalYear = getRestoredFiscalYear(
-          filterState.value,
-          ownState.fiscalYear,
-        );
+        const restoredFiscalYearRange = getRestoredFiscalYearRange(filterState.value);
         applyFilter(filterState.value as string, grainKey, null, {
           activePreset: null,
           activeGrain: grainKey,
           lastRange: filterState.value,
-          fiscalYear: restoredFiscalYear,
-          ...(restoredFiscalYear !== null
+          fiscalYear: restoredFiscalYearRange?.start ?? null,
+          fiscalYearEnd:
+            restoredFiscalYearRange &&
+            restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+              ? restoredFiscalYearRange.end
+              : null,
+          ...(restoredFiscalYearRange !== null
             ? {
-                rangeLabel: `${restoredFiscalYear}财年`,
+                rangeLabel: getProfitFiscalYearRange(
+                  restoredFiscalYearRange.start,
+                  restoredFiscalYearRange.end,
+                ).label,
               }
             : {}),
         });
@@ -570,10 +597,12 @@ export default function CustomTimeFilterPlugin(props: any) {
             : null;
         setActiveGrain(grainKey);
         setActiveFiscalYear(fiscalYear);
+        setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
+          fiscalYearEnd: null,
           ...(fiscalYear !== null
             ? { rangeLabel: `${fiscalYear}财年` }
             : {}),
@@ -596,11 +625,14 @@ export default function CustomTimeFilterPlugin(props: any) {
       if (filterState.value === null) {
         setActivePreset(null);
         setActiveFiscalYear(null);
+        setActiveFiscalYearEnd(null);
+        setPendingFiscalYearStart(null);
         applyFilter('', grainKey, null, {
           activePreset: null,
           activeGrain: grainKey,
           lastRange: '',
           fiscalYear: null,
+          fiscalYearEnd: null,
         });
       } else {
         const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
@@ -612,28 +644,47 @@ export default function CustomTimeFilterPlugin(props: any) {
           setActivePreset(preset.key);
           setActiveGrain(grainKey);
           setActiveFiscalYear(fiscalYear);
+          setActiveFiscalYearEnd(null);
+          setPendingFiscalYearStart(null);
           applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
             activePreset: preset.key,
             activeGrain: grainKey,
             fiscalYear,
+            fiscalYearEnd: null,
             ...(fiscalYear !== null
               ? { rangeLabel: `${fiscalYear}财年` }
               : {}),
           });
         } else if (filterState.value) {
-          const restoredFiscalYear = getRestoredFiscalYear(
-            filterState.value,
-            ownState.fiscalYear,
-          );
+          const restoredFiscalYearRange = getRestoredFiscalYearRange(filterState.value);
           setActivePreset(null);
-          setActiveFiscalYear(restoredFiscalYear);
+          setActiveFiscalYear(restoredFiscalYearRange?.start ?? null);
+          setActiveFiscalYearEnd(
+            restoredFiscalYearRange &&
+            restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+              ? restoredFiscalYearRange.end
+              : null,
+          );
+          if (restoredFiscalYearRange === null) {
+            setPendingFiscalYearStart(null);
+          }
           applyFilter(filterState.value as string, grainKey, null, {
             activePreset: null,
             activeGrain: grainKey,
             lastRange: filterState.value,
-            fiscalYear: restoredFiscalYear,
-            ...(restoredFiscalYear !== null
-              ? { rangeLabel: `${restoredFiscalYear}财年` }
+            fiscalYear: restoredFiscalYearRange?.start ?? null,
+            fiscalYearEnd:
+              restoredFiscalYearRange &&
+              restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+                ? restoredFiscalYearRange.end
+                : null,
+            ...(restoredFiscalYearRange !== null
+              ? {
+                  rangeLabel: getProfitFiscalYearRange(
+                    restoredFiscalYearRange.start,
+                    restoredFiscalYearRange.end,
+                  ).label,
+                }
               : {}),
           });
         }
@@ -658,6 +709,15 @@ export default function CustomTimeFilterPlugin(props: any) {
     setPendingMonthStart('');
     setPendingQuarterStart('');
     setPendingYearStart(null);
+    setPendingFiscalYearStart(null);
+  };
+
+  const clearNonFiscalPendingSelections = () => {
+    setPendingDayStart('');
+    setPendingWeekStart('');
+    setPendingMonthStart('');
+    setPendingQuarterStart('');
+    setPendingYearStart(null);
   };
 
   const handlePresetClick = (preset: TimePreset) => {
@@ -670,28 +730,50 @@ export default function CustomTimeFilterPlugin(props: any) {
     setActivePreset(preset.key);
     setActiveGrain(grainKey);
     setActiveFiscalYear(fiscalYear);
+    setActiveFiscalYearEnd(null);
     applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
       activePreset: preset.key,
       activeGrain: grainKey,
       fiscalYear,
+      fiscalYearEnd: null,
       ...(fiscalYear !== null
         ? { rangeLabel: `${fiscalYear}财年` }
         : {}),
     });
   };
 
-  const handleFiscalYearClick = (fiscalYear: number) => {
-    const fiscalRange = getProfitFiscalYearRange(fiscalYear);
-    clearPendingSelections();
+  const applyFiscalYearRange = (rangeStart: number, rangeEnd: number) => {
+    const fiscalRange = getProfitFiscalYearRange(rangeStart, rangeEnd);
+    const isSingleFiscalYear = rangeStart === rangeEnd;
     setActivePreset(null);
-    setActiveFiscalYear(fiscalYear);
     setActiveGrain('fiscal_year');
+    setActiveFiscalYear(rangeStart);
+    setActiveFiscalYearEnd(isSingleFiscalYear ? null : rangeEnd);
     applyFilter(fiscalRange.timeRange, 'fiscal_year', null, {
       activePreset: null,
       activeGrain: 'fiscal_year',
-      fiscalYear,
+      fiscalYear: rangeStart,
+      fiscalYearEnd: isSingleFiscalYear ? null : rangeEnd,
       rangeLabel: fiscalRange.label,
     });
+  };
+
+  const handleFiscalYearClick = (fiscalYear: number) => {
+    clearNonFiscalPendingSelections();
+    setActivePreset(null);
+    setActiveGrain('fiscal_year');
+    if (pendingFiscalYearStart === null) {
+      setPendingFiscalYearStart(fiscalYear);
+      applyFiscalYearRange(fiscalYear, fiscalYear);
+      return;
+    }
+    const [rangeStart, rangeEnd] = normalizePair(
+      pendingFiscalYearStart,
+      fiscalYear,
+      (a, b) => a - b,
+    );
+    setPendingFiscalYearStart(null);
+    applyFiscalYearRange(rangeStart, rangeEnd);
   };
 
   const handleGrainClick = (grain: TimeGrainOption) => {
@@ -699,7 +781,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     if (grain.key === 'fiscal_year') {
       const currentFiscalYear = fiscalYearStartFromDate(getDataEndDate());
       setFiscalYearOffset(0);
-      handleFiscalYearClick(currentFiscalYear);
+      applyFiscalYearRange(currentFiscalYear, currentFiscalYear);
       return;
     }
 
@@ -709,17 +791,21 @@ export default function CustomTimeFilterPlugin(props: any) {
       : lastRangeRef.current;
     setActiveGrain(grain.key);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
     if (range) {
       applyFilter(range, grain.key, nextPreset, {
         activePreset: nextPreset,
         activeGrain: grain.key,
         fiscalYear: null,
+        fiscalYearEnd: null,
       });
     } else {
       applyFilter('', grain.key, null, {
         activePreset: null,
         activeGrain: grain.key,
         lastRange: '',
+        fiscalYear: null,
+        fiscalYearEnd: null,
       });
     }
   };
@@ -752,6 +838,7 @@ export default function CustomTimeFilterPlugin(props: any) {
 
     setActivePreset(null);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
 
     if (!pendingDayStart) {
       setPendingDayStart(val);
@@ -760,6 +847,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyFilter(`${val} : ${addDays(val, 1)}`, activeGrain, null, {
         activePreset: null,
         fiscalYear: null,
+        fiscalYearEnd: null,
         startDate: val,
         endDate: val,
       });
@@ -773,6 +861,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyFilter(`${rangeStart} : ${addDays(rangeEnd, 1)}`, activeGrain, null, {
       activePreset: null,
       fiscalYear: null,
+      fiscalYearEnd: null,
       startDate: rangeStart,
       endDate: rangeEnd,
     });
@@ -784,6 +873,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyFilter(`${rangeStart} : ${addDays(rangeEnd, 7)}`, activeGrain, null, {
       activePreset: null,
       fiscalYear: null,
+      fiscalYearEnd: null,
       weekStartDate: rangeStart,
       weekEndDate: rangeEnd,
     });
@@ -795,6 +885,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
     setActivePreset(null);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
     if (!pendingWeekStart) {
       setPendingWeekStart(weekStart);
       applyWeekRange(weekStart, weekStart);
@@ -811,6 +902,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyFilter(`${monthStartFromMonth(rangeStart)} : ${nextMonthStart(rangeEnd)}`, activeGrain, null, {
       activePreset: null,
       fiscalYear: null,
+      fiscalYearEnd: null,
       startMonth: rangeStart,
       endMonth: rangeEnd,
     });
@@ -822,6 +914,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
     setActivePreset(null);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
     if (!pendingMonthStart) {
       setPendingMonthStart(month);
       applyMonthRange(month, month);
@@ -844,6 +937,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyFilter(`${qs.start} : ${qe.end}`, activeGrain, null, {
       activePreset: null,
       fiscalYear: null,
+      fiscalYearEnd: null,
       qStartYear: start.year,
       qStartQ: start.q,
       qEndYear: end.year,
@@ -858,6 +952,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
     setActivePreset(null);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
     if (!pendingQuarterStart) {
       setPendingQuarterStart(id);
       applyQuarterRange(id, id);
@@ -874,6 +969,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     applyFilter(`${fmtDate(rangeStart, 1, 1)} : ${fmtDate(rangeEnd + 1, 1, 1)}`, activeGrain, null, {
       activePreset: null,
       fiscalYear: null,
+      fiscalYearEnd: null,
       startYear: rangeStart,
       endYear: rangeEnd,
     });
@@ -885,6 +981,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
     setActivePreset(null);
     setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
     if (pendingYearStart === null) {
       setPendingYearStart(year);
       applyYearRange(year, year);
@@ -897,7 +994,9 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const currentLabel =
     activeFiscalYear !== null
-      ? `${activeFiscalYear}财年`
+      ? activeFiscalYearEnd !== null
+        ? `${activeFiscalYear}-${activeFiscalYearEnd}财年`
+        : `${activeFiscalYear}财年`
       : activePreset === 'this_fiscal_year'
         ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
         : activePreset
@@ -1208,9 +1307,16 @@ export default function CustomTimeFilterPlugin(props: any) {
           后十二年 {'>'}
         </button>
       </div>
+      <div style={{ ...styles.hint }}>
+        单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。
+      </div>
       <div data-test="custom-time-fiscal-year-grid" style={styles.yearGrid}>
         {fiscalYearOptions.map(year => {
           const capped = year > fiscalYearStart;
+          const selected =
+            activeFiscalYear !== null &&
+            year >= activeFiscalYear &&
+            year <= (activeFiscalYearEnd ?? activeFiscalYear);
           return (
             <button
               key={year}
@@ -1220,7 +1326,7 @@ export default function CustomTimeFilterPlugin(props: any) {
               disabled={capped}
               onClick={() => handleFiscalYearClick(year)}
               style={{
-                ...(activeFiscalYear === year ? styles.periodActive : styles.periodBtn),
+                ...(selected ? styles.periodActive : styles.periodBtn),
                 opacity: capped ? 0.45 : 1,
                 cursor: capped ? 'not-allowed' : 'pointer',
               }}

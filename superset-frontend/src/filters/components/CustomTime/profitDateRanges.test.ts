@@ -52,6 +52,13 @@ describe('profitDateRanges', () => {
     });
   });
 
+  it('builds a continuous range across selected fiscal years', () => {
+    expect(getProfitFiscalYearRange(2024, 2025)).toEqual({
+      timeRange: '2024-04-01 : 2026-03-31',
+      label: '2024-2025财年',
+    });
+  });
+
   it('builds recent ranges ending on the available profit day inclusively', () => {
     expect(getProfitPresetRange('last_7d', now)).toEqual({
       timeRange: '2026-06-24 : 2026-07-01',
