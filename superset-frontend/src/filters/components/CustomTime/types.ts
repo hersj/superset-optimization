@@ -27,4 +27,5 @@ export const TIME_GRAIN_OPTIONS: TimeGrainOption[] = [
   { label: '月',   key: 'month',   value: 'P1M',        xAxisFormat: '%Y年%m月' },
   { label: '季度', key: 'quarter', value: 'P3M_FISCAL', xAxisFormat: '%Y Q' },
   { label: '年',   key: 'year',    value: 'P1Y',        xAxisFormat: '%Y年' },
+  { label: '财年', key: 'fiscal_year', value: 'P1Y_FISCAL', xAxisFormat: '%Y财年' },
 ];

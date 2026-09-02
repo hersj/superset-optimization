@@ -236,12 +236,14 @@ TIME_GRAIN_FUNCTIONS = {
 TIME_GRAIN_ADDONS = {
     "P3M_FISCAL": "Fiscal Quarter (Apr start)",
     "P1W_SUN": "Week (Sunday start)",
+    "P1Y_FISCAL": "Fiscal Year (Apr start)",
 }
 
 TIME_GRAIN_ADDON_EXPRESSIONS = {
     "postgresql": {
         "P3M_FISCAL": "DATE_TRUNC('quarter', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
         "P1W_SUN": "DATE_TRUNC('week', {col} + INTERVAL '1 day') - INTERVAL '1 day'",
+        "P1Y_FISCAL": "DATE_TRUNC('year', {col} - INTERVAL '3 months') + INTERVAL '3 months'",
     },
 }
 

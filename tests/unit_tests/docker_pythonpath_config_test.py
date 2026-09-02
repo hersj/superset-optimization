@@ -31,3 +31,20 @@ def test_dashboard_defer_data_is_enabled_in_final_feature_flags() -> None:
     feature_flags = config["FEATURE_FLAGS"]
 
     assert feature_flags["DASHBOARD_VIRTUALIZATION_DEFER_DATA"] is True
+
+
+def test_fiscal_year_time_grain_is_configured_for_postgresql() -> None:
+    config_path = (
+        Path(__file__).resolve().parents[2]
+        / "docker"
+        / "pythonpath_dev"
+        / "superset_config.py"
+    )
+
+    config = run_path(str(config_path))
+
+    assert config["TIME_GRAIN_ADDONS"]["P1Y_FISCAL"] == "Fiscal Year (Apr start)"
+    assert (
+        config["TIME_GRAIN_ADDON_EXPRESSIONS"]["postgresql"]["P1Y_FISCAL"]
+        == "DATE_TRUNC('year', {col} - INTERVAL '3 months') + INTERVAL '3 months'"
+    )

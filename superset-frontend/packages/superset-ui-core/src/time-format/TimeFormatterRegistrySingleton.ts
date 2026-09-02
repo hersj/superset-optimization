@@ -111,6 +111,11 @@ function getFiscalQuarterLabel(date: Date) {
   return `${fiscalYear}年Q${fiscalQuarter}`;
 }
 
+function getFiscalYearLabel(date: Date) {
+  const { year, month } = getBusinessDateParts(date);
+  return `${month < 3 ? year - 1 : year}财年`;
+}
+
 function getBusinessTimeGrainFormatter(granularity: TimeGranularity) {
   let formatFunc: ((date: Date) => string) | undefined;
 
@@ -133,6 +138,9 @@ function getBusinessTimeGrainFormatter(granularity: TimeGranularity) {
       break;
     case TimeGranularity.YEAR:
       formatFunc = date => `${getBusinessDateParts(date).year}年`;
+      break;
+    case TimeGranularity.FISCAL_YEAR:
+      formatFunc = getFiscalYearLabel;
       break;
     case TimeGranularity.WEEK_STARTING_SUNDAY_SELLERFOX:
       formatFunc = getSellerfoxSundayWeekLabel;

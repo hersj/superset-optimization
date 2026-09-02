@@ -207,7 +207,7 @@ describe('CustomTimeFilterPlugin', () => {
     jest.useRealTimers();
   });
 
-  it('uses one 按财年 entry for current and historical fiscal years', () => {
+  it('uses one 按财年 grain for current and historical fiscal years', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
 
@@ -225,23 +225,104 @@ describe('CustomTimeFilterPlugin', () => {
     expect(screen.queryByRole('button', { name: '本财年' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '按财年' })).toHaveLength(1);
     userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2026-04-01 : 2027-03-31',
+          time_grain_sqla: 'P1Y_FISCAL',
+        }),
+        filterState: expect.objectContaining({
+          grain: 'fiscal_year',
+          label: '2026财年 | 财年',
+        }),
+      }),
+    );
     userEvent.click(screen.getByRole('button', { name: '2026财年' }));
 
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
         extraFormData: expect.objectContaining({
           time_range: '2026-04-01 : 2027-03-31',
-          time_grain_sqla: 'P1D',
+          time_grain_sqla: 'P1Y_FISCAL',
         }),
         filterState: {
           value: '2026-04-01 : 2027-03-31',
-          grain: 'day',
-          label: '2026财年 | 日',
+          grain: 'fiscal_year',
+          label: '2026财年 | 财年',
         },
         ownState: expect.objectContaining({ fiscalYear: 2026 }),
       }),
     );
-    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2026财年 | 日');
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2026财年 | 财年');
+    jest.useRealTimers();
+  });
+
+  it('restores the legacy 本财年 state as the fiscal-year grain', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{ value: 'this_fiscal_year', grain: 'day' }}
+        ownState={{}}
+      />,
+    );
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_grain_sqla: 'P1Y_FISCAL',
+        }),
+        filterState: expect.objectContaining({
+          value: 'this_fiscal_year',
+          grain: 'fiscal_year',
+          label: '2026财年 | 财年',
+        }),
+      }),
+    );
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2026财年 | 财年');
+    jest.useRealTimers();
+  });
+
+  it('leaves fiscal mode when changing to another grain', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{}}
+        ownState={{}}
+      />,
+    );
+
+    expandFilter();
+    userEvent.click(screen.getByRole('button', { name: '按财年' }));
+    setDataMask.mockClear();
+    userEvent.click(screen.getByRole('button', { name: '按月' }));
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2026-04-01 : 2027-03-31',
+          time_grain_sqla: 'P1M',
+        }),
+        filterState: {
+          value: '2026-04-01 : 2027-03-31',
+          grain: 'month',
+          label: '自定义范围 | 月',
+        },
+        ownState: expect.objectContaining({
+          activePreset: null,
+          activeGrain: 'month',
+          fiscalYear: null,
+        }),
+      }),
+    );
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('自定义范围 | 月');
     jest.useRealTimers();
   });
 
@@ -271,6 +352,7 @@ describe('CustomTimeFilterPlugin', () => {
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
         extraFormData: expect.objectContaining({
+          time_grain_sqla: 'P1Y_FISCAL',
           filters: [
             { col: 'ship_date', op: 'TEMPORAL_RANGE', val: '2026-04-01 : 2027-03-31' },
           ],
@@ -278,13 +360,12 @@ describe('CustomTimeFilterPlugin', () => {
         }),
         filterState: expect.objectContaining({
           value: '2026-04-01 : 2027-03-31',
-          label: '2026财年 | 日',
+          grain: 'fiscal_year',
+          label: '2026财年 | 财年',
         }),
       }),
     );
-    userEvent.click(screen.getByRole('button', { name: '按财年' }));
-    userEvent.click(screen.getByRole('button', { name: '返回日期范围' }));
-    expect(screen.queryByTestId('custom-time-fiscal-year-grid')).not.toBeInTheDocument();
+    expect(screen.getByTestId('custom-time-fiscal-year-grid')).toBeInTheDocument();
     jest.useRealTimers();
   });
 
@@ -317,7 +398,7 @@ describe('CustomTimeFilterPlugin', () => {
     expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 日');
   });
 
-  it('selects a historical fiscal year without changing the display grain', () => {
+  it('selects a historical fiscal year and uses the fiscal-year grain', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
 
@@ -342,22 +423,22 @@ describe('CustomTimeFilterPlugin', () => {
       expect.objectContaining({
         extraFormData: expect.objectContaining({
           time_range: '2025-04-01 : 2026-03-31',
-          time_grain_sqla: 'P1D',
+          time_grain_sqla: 'P1Y_FISCAL',
         }),
         filterState: {
           value: '2025-04-01 : 2026-03-31',
-          grain: 'day',
-          label: '2025财年 | 日',
+          grain: 'fiscal_year',
+          label: '2025财年 | 财年',
         },
         ownState: expect.objectContaining({
           activePreset: null,
           fiscalYear: 2025,
-          activeGrain: 'day',
+          activeGrain: 'fiscal_year',
           lastRange: '2025-04-01 : 2026-03-31',
         }),
       }),
     );
-    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 日');
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 财年');
     jest.useRealTimers();
   });
 

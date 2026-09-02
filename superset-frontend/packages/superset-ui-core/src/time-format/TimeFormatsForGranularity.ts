@@ -25,6 +25,7 @@ const MINUTE = '%Y-%m-%d %H:%M';
 const MONTH = '%Y年%-m月';
 const QUARTER = '%Y年Q%q';
 const YEAR = '%Y年';
+const FISCAL_YEAR = '%Y财年';
 const WEEK_NUMBER = '%Y年第%-U周';
 
 /**
@@ -50,6 +51,7 @@ const TimeFormatsForGranularity: Record<TimeGranularity, string> = {
   [TimeGranularity.WEEK_ENDING_SATURDAY]: DATABASE_DATE,
   [TimeGranularity.WEEK_ENDING_SUNDAY]: DATABASE_DATE,
   [TimeGranularity.FISCAL_QUARTER]: QUARTER,
+  [TimeGranularity.FISCAL_YEAR]: FISCAL_YEAR,
 };
 
 export default TimeFormatsForGranularity;

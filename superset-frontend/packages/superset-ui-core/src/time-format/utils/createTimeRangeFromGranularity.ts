@@ -87,6 +87,16 @@ export default function createTimeRangeFromGranularity(
   granularity: TimeGranularity,
   useLocalTime = false,
 ) {
+  if (granularity === TimeGranularity.FISCAL_YEAR) {
+    const month = useLocalTime ? time.getMonth() : time.getUTCMonth();
+    const year = useLocalTime ? time.getFullYear() : time.getUTCFullYear();
+    const fiscalYearStart = month < 3 ? year - 1 : year;
+    const mode = useLocalTime ? 'local' : 'utc';
+    const startTime = createTime(mode, fiscalYearStart, 3, 1);
+    const endTime = deductOneMs(createTime(mode, fiscalYearStart + 1, 3, 1));
+    return [startTime, endTime];
+  }
+
   const endTime = computeEndTimeFromGranularity(
     time,
     granularity,

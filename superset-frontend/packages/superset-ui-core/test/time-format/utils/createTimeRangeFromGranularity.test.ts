@@ -125,6 +125,12 @@ describe('createTimeRangeFromGranularity(time, granularity, useLocalTime)', () =
       expect(testUTC(TimeGranularity.YEAR, 2020, 0, 1)).toEqual(
         '2020-01-01 00:00:00.000 — 2020-12-31 23:59:59.999',
       );
+      expect(testUTC(TimeGranularity.FISCAL_YEAR, 2025, 3, 1)).toEqual(
+        '2025-04-01 00:00:00.000 — 2026-03-31 23:59:59.999',
+      );
+      expect(testUTC(TimeGranularity.FISCAL_YEAR, 2026, 0, 1)).toEqual(
+        '2025-04-01 00:00:00.000 — 2026-03-31 23:59:59.999',
+      );
     });
   });
   describe('Local time', () => {

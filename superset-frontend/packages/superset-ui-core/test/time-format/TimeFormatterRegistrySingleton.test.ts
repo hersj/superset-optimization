@@ -184,6 +184,20 @@ describe('TimeFormatterRegistrySingleton', () => {
         expect(
           formatTime(
             undefined,
+            new Date('2026-01-01T00:00:00+08:00'),
+            TimeGranularity.FISCAL_YEAR,
+          ),
+        ).toEqual('2025财年');
+        expect(
+          formatTime(
+            undefined,
+            new Date('2026-04-01T00:00:00+08:00'),
+            TimeGranularity.FISCAL_YEAR,
+          ),
+        ).toEqual('2026财年');
+        expect(
+          formatTime(
+            undefined,
             new Date(Date.UTC(2026, 1, 8, 8)),
             'P1W_SUN' as TimeGranularity,
           ),

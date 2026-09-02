@@ -134,6 +134,20 @@ test('getXAxisFormatter time grain aware formatting should prevent problematic f
   });
 });
 
+test('getXAxisFormatter formats fiscal-year buckets as YYYY财年', () => {
+  const formatter = getXAxisFormatter(
+    SMART_DATE_ID,
+    TimeGranularity.FISCAL_YEAR,
+  );
+
+  expect(
+    (formatter as TimeFormatter).format(new Date('2025-04-01T00:00:00')),
+  ).toEqual('2025财年');
+  expect(
+    (formatter as TimeFormatter).format(new Date('2026-01-01T00:00:00')),
+  ).toEqual('2025财年');
+});
+
 test('getXAxisFormatter time grain parameter should be passed correctly', () => {
   // Test that formatter with time grain is different from formatter without
   const formatterWithGrain = getXAxisFormatter(

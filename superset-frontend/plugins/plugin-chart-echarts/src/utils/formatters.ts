@@ -94,6 +94,9 @@ function formatByGrain(date: Date, timeGrain: string): string {
   if (timeGrain === TimeGranularity.YEAR) {
     return `${y}年`;
   }
+  if (timeGrain === TimeGranularity.FISCAL_YEAR || timeGrain === 'P1Y_FISCAL') {
+    return `${date.getMonth() < 3 ? y - 1 : y}财年`;
+  }
   if (isQuarterGrain(timeGrain)) {
     const q = getFiscalQuarter(date.getMonth());
     return `${y}年${q}`;

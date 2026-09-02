@@ -183,6 +183,32 @@ describe('plugin-chart-table', () => {
       expect(String(parsedDate)).toBe('2020-01-01 12:34:56');
       expect(parsedDate.getTime()).toBe(1577882096000);
     });
+
+    test('should format fiscal-year timestamps as fiscal years', () => {
+      const transformedProps = transformProps({
+        ...testData.basic,
+        formData: {
+          ...testData.basic.formData,
+          timeGrainSqla: TimeGranularity.FISCAL_YEAR,
+          tableTimestampFormat: SMART_DATE_ID,
+        },
+        rawFormData: {
+          ...testData.basic.rawFormData,
+          time_grain_sqla: TimeGranularity.FISCAL_YEAR,
+          table_timestamp_format: SMART_DATE_ID,
+        },
+      });
+      const timestampColumn = transformedProps.columns.find(
+        col => col.key === '__timestamp',
+      );
+
+      expect(timestampColumn).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((timestampColumn?.formatter as any)?.(new Date('2026-01-15'))).toBe(
+        '2025财年',
+      );
+    });
+
     test('should process comparison columns when time_compare and comparison_type are set', () => {
       const transformedProps = transformProps(testData.comparison);
       const comparisonColumns = transformedProps.columns.filter(
