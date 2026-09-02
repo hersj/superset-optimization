@@ -120,8 +120,22 @@ function isPresetKey(value: unknown): value is string {
   return typeof value === 'string' && DEFAULT_PRESETS.some(p => p.key === value);
 }
 
-function getEffectiveGrain(value: unknown, fallback: string): string {
-  return value === 'this_fiscal_year' ? 'fiscal_year' : fallback;
+/**
+ * 仅把明确保存了 fiscalYear 的旧财年状态恢复为财年粒度；没有该状态的普通日期区间仍保持原粒度。
+ */
+function getEffectiveGrain(
+  value: unknown,
+  fallback: string,
+  timeRange?: unknown,
+  fiscalYear?: unknown,
+): string {
+  const hasLegacyFiscalSelection =
+    typeof fiscalYear === 'number' &&
+    Number.isInteger(fiscalYear) &&
+    getRestoredFiscalYear(timeRange, fiscalYear) !== null;
+  return value === 'this_fiscal_year' || hasLegacyFiscalSelection
+    ? 'fiscal_year'
+    : fallback;
 }
 
 function getGrainDisplayLabel(label: string): string {
@@ -262,7 +276,7 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
  * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；恢复时仅接受与当前范围完全匹配的财年状态。
- * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态必须恢复为 fiscal_year。
+ * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版“fiscalYear + 精确财年区间”状态必须恢复为 fiscal_year。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、按财年当前/历史选择、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
 
@@ -298,6 +312,8 @@ export default function CustomTimeFilterPlugin(props: any) {
     (ownState.activeGrain as string | undefined) ||
       (filterState?.grain as string | undefined) ||
       defaultGrain,
+    savedRange,
+    ownState.fiscalYear,
   );
   const initialPreset =
     ownState.activePreset !== undefined
@@ -496,6 +512,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       const grainKey = getEffectiveGrain(
         filterState.value,
         (filterState.grain as string) || defaultGrain,
+        filterState.value,
+        ownState.fiscalYear,
       );
       applyFilter('', grainKey, null, {
         activePreset: null,
@@ -506,6 +524,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       const grainKey = getEffectiveGrain(
         filterState.value,
         (filterState.grain as string) || defaultGrain,
+        filterState.value,
+        ownState.fiscalYear,
       );
       const preset = DEFAULT_PRESETS.find(p => p.key === filterState.value);
       if (preset) {
@@ -570,6 +590,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       const grainKey = getEffectiveGrain(
         filterState.value,
         (filterState.grain as string) || activeGrain,
+        filterState.value,
+        ownState.fiscalYear,
       );
       if (filterState.value === null) {
         setActivePreset(null);

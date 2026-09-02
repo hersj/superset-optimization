@@ -398,6 +398,47 @@ describe('CustomTimeFilterPlugin', () => {
     expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 日');
   });
 
+  it('restores the legacy fiscal-year grain when fiscalYear state is present', () => {
+    const setDataMask = jest.fn();
+
+    render(
+      <CustomTimeFilterPlugin
+        {...baseProps}
+        setDataMask={setDataMask}
+        filterState={{
+          value: '2025-04-01 : 2026-03-31',
+          grain: 'day',
+          label: '2025财年 | 日',
+        }}
+        ownState={{
+          activePreset: null,
+          activeGrain: 'day',
+          fiscalYear: 2025,
+          lastRange: '2025-04-01 : 2026-03-31',
+        }}
+      />,
+    );
+
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: expect.objectContaining({
+          time_range: '2025-04-01 : 2026-03-31',
+          time_grain_sqla: 'P1Y_FISCAL',
+        }),
+        filterState: {
+          value: '2025-04-01 : 2026-03-31',
+          grain: 'fiscal_year',
+          label: '2025财年 | 财年',
+        },
+        ownState: expect.objectContaining({
+          fiscalYear: 2025,
+          activeGrain: 'fiscal_year',
+        }),
+      }),
+    );
+    expect(screen.getByTestId('custom-time-filter')).toHaveTextContent('2025财年 | 财年');
+  });
+
   it('selects a historical fiscal year and uses the fiscal-year grain', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-07-02T10:00:00+08:00'));
     const setDataMask = jest.fn();
