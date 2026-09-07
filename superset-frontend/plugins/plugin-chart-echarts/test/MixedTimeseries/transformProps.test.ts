@@ -37,6 +37,7 @@ import {
 import { DEFAULT_FORM_DATA } from '../../src/MixedTimeseries/types';
 import { createEchartsTimeseriesTestChartProps } from '../helpers';
 import type { SeriesOption } from 'echarts';
+import { GenericDataType } from '@apache-superset/core/common';
 
 /**
  * Creates a partial ChartDataResponseResult for testing.
@@ -143,6 +144,57 @@ const queriesData: ChartDataResponseResult[] = [
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
 ];
+
+test('dashboard weekly grain aligns mixed bars and lines without changing temporal drill values', () => {
+  const dates = Array.from(
+    { length: 13 },
+    (_, i) => Date.UTC(2026, 5, 7) + i * 604800000,
+  );
+  const rows = dates.map((ds, i) => ({ ds, boy: i + 1, girl: i + 2 }));
+  const query = createTestQueryData(rows, {
+    colnames: ['ds', 'boy', 'girl'],
+    coltypes: [
+      GenericDataType.Temporal,
+      GenericDataType.Numeric,
+      GenericDataType.Numeric,
+    ],
+    label_map: defaultLabelMap,
+  });
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      seriesTypeB: EchartsTimeseriesSeriesType.Smooth,
+      stack: true,
+      stackB: false,
+      showValue: true,
+      showValueB: true,
+      time_grain_sqla: 'P1D',
+      extra_form_data: { time_grain_sqla: 'P1W_SUN' },
+    },
+    queriesData: [query, query],
+  });
+  const output = transformProps(props);
+  expect(output.xAxis.type).toBe('time');
+  expect(output.echartOptions.xAxis.type).toBe('category');
+  expect(output.echartOptions.xAxis.data).toEqual(dates.map(String));
+  for (const series of output.echartOptions.series) {
+    expect(series.data.map(row => row[0])).toEqual(dates);
+    expect(series.encode).toEqual({ x: 2, y: 1 });
+    expect(
+      series.label.formatter({
+        value: series.data[0],
+        dataIndex: 0,
+        seriesIndex: 0,
+        seriesName: series.name,
+      }),
+    ).not.toContain('1780');
+  }
+});
 
 test('keeps grouped LT counts as counts and preserves the BSR dimension in the tooltip', () => {
   const chartProps = createEchartsTimeseriesTestChartProps<

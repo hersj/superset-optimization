@@ -34,7 +34,7 @@ import {
   ValueFormatter,
 } from '@superset-ui/core';
 
-function isWeekGrain(timeGrain: string): boolean {
+export function isWeekGrain(timeGrain?: string): boolean {
   return (
     timeGrain === TimeGranularity.WEEK ||
     timeGrain === TimeGranularity.WEEK_STARTING_SUNDAY ||

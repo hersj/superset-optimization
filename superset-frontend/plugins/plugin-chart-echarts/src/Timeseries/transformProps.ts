@@ -18,6 +18,7 @@
  */
 /* eslint-disable camelcase */
 import { invert } from 'lodash';
+import { alignWeeklyAxis } from '../utils/weeklyAxis';
 import { t } from '@apache-superset/core/translation';
 import {
   AnnotationLayer,
@@ -1185,9 +1186,14 @@ export default function transformProps(
     customEchartOptions = undefined;
   }
 
+  const alignedEchartOptions = alignWeeklyAxis(
+    echartOptions,
+    timeGrainSqla,
+    isHorizontal,
+  );
   let mergedEchartOptions = customEchartOptions
-    ? mergeCustomEChartOptions(echartOptions, customEchartOptions)
-    : echartOptions;
+    ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)
+    : alignedEchartOptions;
 
   // If visualMap is configured, remove static itemStyle.color from series so
   // visualMap can control per-bar colors (static color overrides visualMap).
