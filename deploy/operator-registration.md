@@ -48,3 +48,9 @@ OPERATOR_REGISTRATION_TEST_URL='<本地隔离库运行时连接>' python -m pyte
 查询直接使用 asin_sku_mapping 的最新归属，不依赖只增不减的 shop_staff 清单。现有主流程每天07:00运行；成功同步后，试点 RLS 的五分钟缓存版本键保证最迟五分钟内的新查询按新归属过滤；已打开页面需刷新。同步失败不能视作权限已更新。整店模式下同店的新增 ASIN 自动可见；ASIN/SKU 模式按对应当前归属，人工上限继续有效。
 
 无 ERP 工号的王云明保留已明确授权的人工 LT 试点角色，自动登记 TEMP 身份；没有真实工号前不宣称可以自动匹配其 ERP 归属。后续 Mapping 出现真实工号时使用既有 rekey 机制。
+
+## ERP 品线自动授权
+
+角色“运营试点-ERP品线”按当前 Mapping 的 (shop_id, lt) 归属授权同店铺整条品线；最后一条归属撤销则收回，缓存最多沿用五分钟。切换用户时移除固定 LT 角色，产品 BASE 不开放。无 ERP 工号或归属时返回空；暂存身份由已有 Mapping 入口转换。
+
+验证：在测试库运行 deploy/tests/check_operator_erp_line.py 的 check(connection)，禁止生产测试写入。

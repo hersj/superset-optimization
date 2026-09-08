@@ -41,6 +41,7 @@ SELLERFOX_OPERATOR_ROLES = (
     "运营试点-整店",
     "运营试点-ASIN",
     "运营试点-商品SKU",
+    "运营试点-ERP品线",
 )
 _previous_mutator = globals().get("FLASK_APP_MUTATOR")
 

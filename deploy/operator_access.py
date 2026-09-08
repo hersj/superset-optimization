@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-ROLES = {"shop": "运营试点-整店", "asin": "运营试点-ASIN", "sku": "运营试点-商品SKU"}
+ROLES = {"shop": "运营试点-整店", "asin": "运营试点-ASIN", "sku": "运营试点-商品SKU", "lt": "运营试点-ERP品线"}
 DATASETS = (27, 30, 31, 32, 33, 57, 79, 80, 95, 98, 100, 109, 149)
 
 
@@ -37,10 +37,20 @@ def clauses(mode: str) -> dict[int, str]:
         " FROM public.asin_sku_mapping m JOIN public.operators o "
         "ON o.operator_id = m.operator_engineer_id "
     )
+    if mode == "lt":
+        # 品线归属限于同一店铺；只要该店铺品线仍有一条 ERP 分配，就可见整条品线。
+        source = " FROM public.asin_sku_mapping m "
+        identity = (
+            "NULLIF(btrim(m.lt), '') IS NOT NULL AND EXISTS ("
+            "SELECT 1 FROM public.asin_sku_mapping owned JOIN public.operators o "
+            "ON o.operator_id = owned.operator_engineer_id "
+            "WHERE owned.shop_id = m.shop_id AND owned.lt = m.lt AND "
+            + identity + ")"
+        )
     result = {}
     for did in DATASETS:
         # 100 的查询读取 98，继承底层过滤；不能在汇总后的虚拟表引用身份列。
-        if did == 100:
+        if did == 100 or (mode == "lt" and did in (27, 109)):
             continue
         if did == 27 or (mode == "sku" and did not in (32, 33, 98, 109)):
             result[did] = "1 = 0"
@@ -77,14 +87,18 @@ def clauses(mode: str) -> dict[int, str]:
 
 def configure(apply: bool = False) -> dict[str, Any]:
     """功能审计（可重写规格）：人工选择粒度、自动跟随归属的最小试点。
-    - 功能目的与触发方式：管理员一次执行本脚本，创建三个可选原生角色；
+    - 功能目的与触发方式：管理员一次执行本脚本，创建四个可选原生角色；
       默认 dry-run，--apply 才保存，管理员在用户管理界面选择角色。
     - 输入契约：固定试点数据集、已有 LT 试点只读权限；Mapping 包含真实运营工号。
     - 输出契约：创建/维护本脚本命名的角色和 Regular RLS，不自动给用户分配角色。
     - 处理流程：校验源角色权限→构建按粒度的 Mapping 子查询→原子保存角色/RLS。
     - 业务规则：整店按当前 Mapping 的店铺集合；ASIN/SKU 增加对应联合键。
       所有者使用 operators 登录桥接且须启用；人工 LT/ASIN/SKU 限制另设 RLS 取交集。
+      ERP 品线按当前 Mapping 中该账号实际拥有的 (shop_id, lt) 集合开放该店铺整条品线；
+      新分配自动加入，某店铺品线最后一条归属撤销后自动收回；空 LT 不授权。
+      切换 ERP 品线须移除旧固定 LT 角色，不凭姓名或 shop_staff 推断 ERP 分配。
       同一店铺 ASIN 跨 FNSKU 的多个运营均有权；SKU 指 commodity_sku。
+      产品 BASE 数据集 27/109 始终不向这些运营角色授予访问。
     - 状态与副作用：只写 Superset 元数据；不复制权限清单，不改旧角色或业务归属。
     - 外部依赖：复用原生 RLS 与虚拟表底层 RLS 继承；每日 Mapping 同步后查询即生效。
     - 异常与边界：无归属/未启用返回空；缺粒度字段的数据集强制空，禁止以汇总代替隔离。
@@ -92,7 +106,7 @@ def configure(apply: bool = False) -> dict[str, Any]:
     - 不变量与约束：新增角色只具备既有试点的只读数据访问权限；固定独立命名空间；
       group_key 为空以与人工限制取交集；不启用 SQL Lab，不自动切换其他用户。
     - 验证方式：隔离 PostgreSQL 验证整店/ASIN/SKU、归属转移和人工上限；
-      真实数据集 EXPLAIN 与底层过滤继承验证。业务验收由管理员完成。
+      真实数据集 EXPLAIN 与底层过滤继承验证；check_operator_erp_line.py 验证新增/撤销/跨店铺/停用。业务验收由管理员完成。
     """
     from superset import db, security_manager as sm
     from superset.connectors.sqla.models import RowLevelSecurityFilter, SqlaTable
@@ -124,7 +138,14 @@ def configure(apply: bool = False) -> dict[str, Any]:
             if role is None:
                 role = sm.role_model(name=role_name)
                 db.session.add(role)
-            role.permissions = list(source.permissions)
+            blocked_base = {tables[did].perm for did in (27, 109)}
+            role.permissions = [
+                permission for permission in source.permissions
+                if not (
+                    permission.permission.name == "datasource_access"
+                    and permission.view_menu.name in blocked_base
+                )
+            ]
             for did, clause in conditions.items():
                 name = f"{role_name}-dataset-{did}"
                 rule = (
