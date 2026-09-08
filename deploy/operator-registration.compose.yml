@@ -1,0 +1,14 @@
+# Apply last, alongside the existing production Compose files.
+x-registration: &registration
+  environment:
+    SUPERSET_CONFIG_PATH: /app/operator-registration/operator_registration_config.py
+  volumes:
+    - ${OPERATOR_REGISTRATION_RELEASE:?}/deploy/operator_registration_config.py:/app/operator-registration/operator_registration_config.py:ro
+    - ${OPERATOR_REGISTRATION_RELEASE:?}/docker/pythonpath_dev/operator_registration.py:/app/operator-registration/operator_registration.py:ro
+services:
+  superset:
+    <<: *registration
+  superset-worker:
+    <<: *registration
+  superset-worker-beat:
+    <<: *registration

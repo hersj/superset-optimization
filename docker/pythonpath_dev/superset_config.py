@@ -142,27 +142,3 @@ try:
     )
 except ImportError:
     logger.info("Using default Docker config...")
-
-
-# 仅显式启用的 Sellerfox 环境登记运营；凭据复用已配置的数据库连接。
-SELLERFOX_OPERATOR_DATABASE = os.environ.get("SELLERFOX_OPERATOR_DATABASE", "")
-SELLERFOX_OPERATOR_ROLES = tuple(
-    role.strip()
-    for role in os.environ.get("SELLERFOX_OPERATOR_ROLES", "").split(",")
-    if role.strip()
-)
-if SELLERFOX_OPERATOR_DATABASE and SELLERFOX_OPERATOR_ROLES:
-    from operator_registration import install as install_operator_registration
-
-    _previous_app_mutator = globals().get("FLASK_APP_MUTATOR")
-
-    def FLASK_APP_MUTATOR(app):
-        """保留已有应用扩展，再安装运营登记事务监听。"""
-        if _previous_app_mutator:
-            _previous_app_mutator(app)
-        install_operator_registration(app)
-
-    CELERY_CONFIG.beat_schedule["sellerfox-operator-registration"] = {
-        "task": "sellerfox.register_operators",
-        "schedule": crontab(minute="*/5"),
-    }

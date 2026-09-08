@@ -6,16 +6,16 @@
 
 ## 启用与回滚
 
-1. 按正式发布流程部署包含本变更的已审核版本。生产正在运行的分支与 origin/master 不一致，发布前必须保留并验证线上既有变更；禁止直接替换成旧 master 镜像。
-2. 在 web、worker、beat 的正式部署环境中统一设置：
+1. 按正式发布流程获取已审核 commit 到独立 release 目录。仅叠加 deploy/operator-registration.compose.yml，保留既有所有 Compose 文件和镜像，不替换原配置文件。
+2. 覆盖文件统一设置 SUPERSET_CONFIG_PATH；wrapper 从各服务原配置路径加载现有配置，使用以下已确认范围：
    - `SELLERFOX_OPERATOR_DATABASE=sellerfox_sync`：这是已有 Superset 数据库连接的名称，先核对实际目标库与写入权限；不要在文档或命令中放密码。
    - `SELLERFOX_OPERATOR_ROLES=用户运营,LT试点-直杆LED1-EU`：精确角色名单，不使用模糊匹配。
-3. 通过正式 Docker Compose 流程重建/重启 web、worker、beat，并记录前后容器ID、镜像和配置版本。只更新挂载文件不算部署验收。
+3. 将 OPERATOR_REGISTRATION_RELEASE 设为已审核版本的绝对目录，以原有 Compose 文件顺序再加此覆盖文件，通过正式 Docker Compose 流程重建/重启 web、worker、beat，并记录前后容器ID、镜像和配置版本。只更新挂载文件不算部署验收。
 4. 发布前只读输出候选用户名、暂存ID及已有登记状态，核对影响范围。发布后在 Superset app context 执行 `operator_registration.scan()` 一次并读回，以补齐王云明和其他缺失的指定运营身份。
 5. 在隔离测试环境经真实 FAB 创建账号、先建账号后分配运营角色、取消事务，验证运营表结果；生产用已授权账号检查补扫与后续五分钟周期，不制造生产测试数据。
 6. 验证原 LT 规则、店铺关系、商品关系和其他用户权限均不变。登记未启用是预期行为，不把登记成功解释为开通权限或修复看板无数据。
 
-回滚：清除两个环境变量并通过正式管理器重启上述服务。已新增身份默认保留未启用；若确需删除，先确认该次新增ID仍未启用且没有任何关联或真实工号迁移，再单独审核执行。不得批量删除 TEMP 身份。
+回滚：移除本次 Compose 覆盖文件，使用原有 Compose 文件顺序重建上述服务。已新增身份默认保留未启用；若确需删除，先确认该次新增ID仍未启用且没有任何关联或真实工号迁移，再单独审核执行。不得批量删除 TEMP 身份。
 
 ## 异常与边界
 
