@@ -1,6 +1,7 @@
 # Apply last, alongside the existing production Compose files.
 x-registration: &registration
   environment:
+    SELLERFOX_ORIGINAL_CONFIG_PATH: ${SELLERFOX_ORIGINAL_CONFIG_PATH:?}
     SUPERSET_CONFIG_PATH: /app/operator-registration/operator_registration_config.py
   volumes:
     - ${OPERATOR_REGISTRATION_RELEASE:?}/deploy/operator_registration_config.py:/app/operator-registration/operator_registration_config.py:ro

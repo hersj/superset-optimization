@@ -1,3 +1,4 @@
+# ruff: noqa: S608 -- 测试受控 SQL 子句及登录名转义，不接收外部 SQL。
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -19,9 +20,11 @@
 import importlib.util
 import os
 import sys
+from collections.abc import Iterator
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -36,15 +39,17 @@ from sqlalchemy import (
     Table,
     text,
 )
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, Session, sessionmaker
 
 spec = importlib.util.spec_from_file_location(
     "operator_registration",
     Path(__file__).parents[2] / "docker/pythonpath_dev/operator_registration.py",
 )
+assert spec is not None
+assert spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-Base = declarative_base()
+Base: Any = declarative_base()
 links = Table(
     "links",
     Base.metadata,
@@ -74,12 +79,12 @@ class Database(Base):
     id = Column(Integer, primary_key=True)
     database_name = Column(String)
 
-    def get_sqla_engine(self):
+    def get_sqla_engine(self) -> Any:
         raise NotImplementedError
 
 
 @pytest.fixture
-def source():
+def source() -> Iterator[tuple[Session, Mock]]:
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -90,7 +95,9 @@ def source():
     engine.dispose()
 
 
-def test_committed_account_and_role_changes_trigger_but_login_does_not(source):
+def test_committed_account_and_role_changes_trigger_but_login_does_not(
+    source: tuple[Session, Mock],
+) -> None:
     session, enqueue = source
     user = User(username="测试运营", active=True)
     role = Role(name="用户运营")
@@ -111,7 +118,9 @@ def test_committed_account_and_role_changes_trigger_but_login_does_not(source):
     assert enqueue.call_count == 4
 
 
-def test_rollback_and_savepoint_do_not_dispatch_early(source):
+def test_rollback_and_savepoint_do_not_dispatch_early(
+    source: tuple[Session, Mock],
+) -> None:
     session, enqueue = source
     session.add(User(username="回滚", active=True))
     session.flush()
@@ -131,7 +140,9 @@ def test_rollback_and_savepoint_do_not_dispatch_early(source):
     enqueue.assert_called_once()
 
 
-def test_broker_failure_does_not_fail_committed_account(source):
+def test_broker_failure_does_not_fail_committed_account(
+    source: tuple[Session, Mock],
+) -> None:
     session, enqueue = source
     enqueue.side_effect = RuntimeError("broker offline")
     session.add(User(username="消息故障", active=True))
@@ -139,7 +150,10 @@ def test_broker_failure_does_not_fail_committed_account(source):
     assert session.query(User).count() == 1
 
 
-def test_postgres_idempotency_conflict_and_transaction_rollback(source, monkeypatch):
+def test_postgres_idempotency_conflict_and_transaction_rollback(
+    source: tuple[Session, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     url = os.environ.get("OPERATOR_REGISTRATION_TEST_URL")
     if not url:
         pytest.skip("Set OPERATOR_REGISTRATION_TEST_URL to an isolated test database")
@@ -243,4 +257,122 @@ def test_postgres_idempotency_conflict_and_transaction_rollback(source, monkeypa
     finally:
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE operators"))
+        engine.dispose()
+
+
+def test_original_config_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import runpy
+
+    original = tmp_path / "original.py"
+    original.write_text(
+        "class Config:\n    beat_schedule = {'existing': {'schedule': 10}}\n"
+        "CELERY_CONFIG = Config\nFEATURE_FLAGS = {'existing': True}\n"
+        "def FLASK_APP_MUTATOR(app):\n    app.config['original_hook'] = True\n"
+    )
+    wrapper = Path(__file__).parents[1] / "operator_registration_config.py"
+    monkeypatch.setenv("SELLERFOX_ORIGINAL_CONFIG_PATH", str(original))
+    installer = Mock()
+    monkeypatch.setitem(
+        sys.modules, "operator_registration", SimpleNamespace(install=installer)
+    )
+    settings = runpy.run_path(str(wrapper))
+    assert settings["FEATURE_FLAGS"] == {"existing": True}
+    assert "existing" in settings["CELERY_CONFIG"].beat_schedule
+    app = Flask(__name__)
+    settings["FLASK_APP_MUTATOR"](app)
+    assert app.config["original_hook"]
+    installer.assert_called_once_with(app)
+    monkeypatch.setenv("SELLERFOX_ORIGINAL_CONFIG_PATH", str(wrapper))
+    with pytest.raises(ValueError, match="Invalid original"):
+        runpy.run_path(str(wrapper))
+
+
+def test_mapping_scope_changes_and_manual_cap() -> None:
+    import runpy
+
+    from jinja2 import Environment
+
+    url = os.environ.get("OPERATOR_REGISTRATION_TEST_URL")
+    if not url:
+        pytest.skip("Set isolated PostgreSQL test URL")
+    engine = create_engine(url)
+    assert engine.url.database == "operator_registration_test"
+    build = runpy.run_path(str(Path(__file__).parents[1] / "operator_access.py"))[
+        "clauses"
+    ]
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE operators(operator_id text, login_username text, is_active boolean)"  # noqa: E501
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE asin_sku_mapping(shop_id text, asin text, commodity_sku text, operator_engineer_id text)"  # noqa: E501
+            )
+        )
+        conn.execute(
+            text("CREATE TABLE fact(shop_id text, asin text, commodity_sku text)")
+        )
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO operators VALUES ('1', :name, TRUE), ('2', 'other', TRUE)"  # noqa: E501
+                ),
+                {"name": "O'Brien"},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO asin_sku_mapping VALUES ('s1','a1','k1','1'), ('s1','a2','k2','2'), ('s1','a1','k3','2')"  # noqa: E501
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO fact SELECT shop_id,asin,commodity_sku FROM asin_sku_mapping"  # noqa: E501
+                )
+            )
+            rendered = {
+                mode: Environment(autoescape=False)  # noqa: S701 -- 测试 SQL 模板，非 HTML。
+                .from_string(build(mode)[98])
+                .render(
+                    current_username=lambda: "O'Brien",
+                    cache_key_wrapper=lambda value: value,
+                    operator_scope_epoch=lambda: 0,
+                )
+                for mode in ("shop", "asin", "sku")
+            }
+            counts = {
+                mode: conn.execute(
+                    text("SELECT count(*) FROM fact WHERE " + clause)
+                ).scalar()
+                for mode, clause in rendered.items()
+            }
+            assert counts == {"shop": 3, "asin": 2, "sku": 1}
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM fact WHERE "
+                        + rendered["asin"]
+                        + " AND asin='a2'"
+                    )
+                ).scalar()
+                == 0
+            )
+            conn.execute(
+                text(
+                    "UPDATE asin_sku_mapping SET operator_engineer_id='2' WHERE commodity_sku='k1'"  # noqa: E501
+                )
+            )
+            assert all(
+                conn.execute(text("SELECT count(*) FROM fact WHERE " + clause)).scalar()
+                == 0
+                for clause in rendered.values()
+            )
+            assert build("sku")[30].startswith("1 = 0")
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE fact,asin_sku_mapping,operators"))
         engine.dispose()

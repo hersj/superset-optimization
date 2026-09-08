@@ -7,7 +7,7 @@
 ## 启用与回滚
 
 1. 按正式发布流程获取已审核 commit 到独立 release 目录。仅叠加 deploy/operator-registration.compose.yml，保留既有所有 Compose 文件和镜像，不替换原配置文件。
-2. 覆盖文件统一设置 SUPERSET_CONFIG_PATH；wrapper 从各服务原配置路径加载现有配置，使用以下已确认范围：
+2. 部署前在三个服务核实原 SUPERSET_CONFIG_PATH；未设置时读取已加载 superset_config.__file__。只有三者原路径一致才将 SELLERFOX_ORIGINAL_CONFIG_PATH 设为该路径；不一致则禁止套用此共享覆盖文件。wrapper 必须显式收到这个路径，缺失、文件不存在或指向自身均拒绝启动。使用以下已确认范围：
    - `SELLERFOX_OPERATOR_DATABASE=sellerfox_sync`：这是已有 Superset 数据库连接的名称，先核对实际目标库与写入权限；不要在文档或命令中放密码。
    - `SELLERFOX_OPERATOR_ROLES=用户运营,LT试点-直杆LED1-EU`：精确角色名单，不使用模糊匹配。
 3. 将 OPERATOR_REGISTRATION_RELEASE 设为已审核版本的绝对目录，以原有 Compose 文件顺序再加此覆盖文件，通过正式 Docker Compose 流程重建/重启 web、worker、beat，并记录前后容器ID、镜像和配置版本。只更新挂载文件不算部署验收。
@@ -34,3 +34,17 @@ OPERATOR_REGISTRATION_TEST_URL='<本地隔离库运行时连接>' python -m pyte
 ```
 
 覆盖提交/回滚/保存点、双向角色关系修改、登录计数不触发、投递失败不影响账号、PostgreSQL 中文身份/重复/真实身份保留/冲突回滚、指定角色与启用状态筛选和存量补扫幂等。
+
+## 人工粒度选择与每日归属
+
+先执行 `deploy/operator_access.py` dry-run 核对，再以 `--apply` 原子创建三个独立试点角色；不自动改任何用户角色。管理员在 Superset 用户管理中选择一个：
+
+- 运营试点-整店：默认推荐，按当前 Mapping 归属获取整店数据。
+- 运营试点-ASIN：按店铺+ASIN 当前归属。
+- 运营试点-商品SKU：按店铺+ASIN+commodity_sku 当前归属；没有 SKU 粒度的数据集拒绝访问。
+
+使用新角色时替换旧的“用户运营”角色，避免叠加旧店铺策略；可额外分配已有 LT 试点角色作为人工上限。其他自定义上限使用原生 Regular RLS，group_key 留空以取交集。不要给试点账号 Admin/Alpha/SQL Lab 或宽数据库权限。现有员工不会被批量切换。
+
+查询直接使用 asin_sku_mapping 的最新归属，不依赖只增不减的 shop_staff 清单。现有主流程每天07:00运行；成功同步后，试点 RLS 的五分钟缓存版本键保证最迟五分钟内的新查询按新归属过滤；已打开页面需刷新。同步失败不能视作权限已更新。整店模式下同店的新增 ASIN 自动可见；ASIN/SKU 模式按对应当前归属，人工上限继续有效。
+
+无 ERP 工号的王云明保留已明确授权的人工 LT 试点角色，自动登记 TEMP 身份；没有真实工号前不宣称可以自动匹配其 ERP 归属。后续 Mapping 出现真实工号时使用既有 rekey 机制。
