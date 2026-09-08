@@ -37,16 +37,19 @@ def clauses(mode: str) -> dict[int, str]:
         " FROM public.asin_sku_mapping m JOIN public.operators o "
         "ON o.operator_id = m.operator_engineer_id "
     )
+    operator_identity = identity
     if mode == "lt":
-        # 品线归属限于同一店铺；只要该店铺品线仍有一条 ERP 分配，就可见整条品线。
-        source = " FROM public.asin_sku_mapping m "
-        identity = (
-            "NULLIF(btrim(m.lt), '') IS NOT NULL AND EXISTS ("
-            "SELECT 1 FROM public.asin_sku_mapping owned JOIN public.operators o "
-            "ON o.operator_id = owned.operator_engineer_id "
-            "WHERE owned.shop_id = m.shop_id AND owned.lt = m.lt AND "
-            + identity + ")"
+        # 先去重账号的店铺品线，再扩展到该店铺品线的 ASIN，避免逐行相关查找。
+        source = (
+            " FROM public.asin_sku_mapping m JOIN ("
+            "SELECT DISTINCT owned.shop_id, owned.lt "
+            "FROM public.asin_sku_mapping owned JOIN public.operators o "
+            "ON o.operator_id = owned.operator_engineer_id WHERE "
+            + operator_identity
+            + " AND NULLIF(btrim(owned.lt), '') IS NOT NULL) scope "
+            "ON scope.shop_id = m.shop_id AND scope.lt = m.lt "
         )
+        identity = "TRUE"
     result = {}
     for did in DATASETS:
         # 100 的查询读取 98，继承底层过滤；不能在汇总后的虚拟表引用身份列。
@@ -70,16 +73,27 @@ def clauses(mode: str) -> dict[int, str]:
         if mode == "sku":
             fields.append('"commodity_sku"::text')
             selected.append("m.commodity_sku::text")
+        query_source, query_identity = source, identity
+        if mode == "lt" and did in (32, 33, 95, 98):
+            # 有 LT 的事实直接按店铺品线过滤，避免利润视图先算全量 ASIN 再筛选。
+            lt = '\"LT\"' if did == 95 else '\"lt\"'
+            fields = [shop + "::text", lt + "::text"]
+            selected = ["owned.shop_id::text", "owned.lt::text"]
+            query_source = (
+                " FROM public.asin_sku_mapping owned JOIN public.operators o "
+                "ON o.operator_id = owned.operator_engineer_id "
+            )
+            query_identity = operator_identity + " AND NULLIF(btrim(owned.lt), '') IS NOT NULL"
         result[did] = (
             "("
             + ",".join(fields)
-            + ") IN (SELECT "
+            + (") IN (WITH allowed AS MATERIALIZED (SELECT DISTINCT " if mode == "lt" else ") IN (SELECT ")
             + ",".join(selected)
-            + source
+            + query_source
             + joins
             + "WHERE "
-            + identity
-            + ")"
+            + query_identity
+            + (") SELECT * FROM allowed)" if mode == "lt" else ")")
         )
     epoch = " /* scope_epoch={{ cache_key_wrapper(operator_scope_epoch()) }} */"
     return {did: clause + epoch for did, clause in result.items()}

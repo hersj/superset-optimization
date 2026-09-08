@@ -43,7 +43,7 @@ def check(connection):
             for did, clause in rules.items():
                 sql = Template(clause.replace("public.","pg_temp.")).render(
                     current_username=lambda:"王云明",cache_key_wrapper=lambda x:x,operator_scope_epoch=lambda:1)
-                cur.execute('SELECT asin FROM (SELECT m.*,m.shop_id AS "店铺ID",m.asin AS "ASIN",s.name FROM pg_temp.asin_sku_mapping m JOIN pg_temp.shops s ON s.id=m.shop_id) data WHERE '+sql)
+                cur.execute('SELECT asin FROM (SELECT m.*,m.shop_id AS "店铺ID",m.asin AS "ASIN",m.lt AS "LT",s.name FROM pg_temp.asin_sku_mapping m JOIN pg_temp.shops s ON s.id=m.shop_id) data WHERE '+sql)
                 assert {row[0] for row in cur.fetchall()} == expected, did
         visible({'a1','a2'})
         cur.execute("UPDATE asin_sku_mapping SET operator_engineer_id='w' WHERE asin='a4'")
