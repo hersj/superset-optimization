@@ -341,7 +341,7 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；连续模式的财年多选仍形成连续区间。
  * - 点选输入与输出：selectionMode 默认 continuous；points 必须绑定时间列，selectedRanges 为排序后的 ISO 日期半开区间数组，写入 filterState/ownState 及该列 TEMPORAL_RANGE.val；顶层 time_range 仅为包络，不能替代并集条件；空数组保留恒假过滤，不能视为不过滤。
  * - 点选交互规则：日/周/月/季/年/财年点击单位执行集合并，完整选中后再点执行集合差；跨年和乱序点击不改变日期排序。切换粒度保留精确日期集合，预设替换为预设范围；连续转点选保留范围；点选转连续有空档时用确认框明确补齐，取消不改变状态或请求。
- * - 比较与恢复：points 发“上一选中区间”，支持比较的时间轴图表按日期顺序 B/A、C/B，缺数据不能跳期，图表关闭比较优先；无时间轴图表只聚合并集。分享恢复按保存的模式和完整集合，包络相同也必须恢复不同的选中项；非法点选整体失败。
+ * - 比较与恢复：points 发“上一选中区间”，支持比较的时间轴图表按日期顺序 B/A、C/B，缺数据不能跳期，图表关闭比较优先；无时间轴图表只聚合并集。恢复以 filterState 为准，缺少 selectionMode 的历史配置默认连续，不继承本地或 ownState 的点选模式/集合；恢复当次就必须发布字符串 TEMPORAL_RANGE 和普通比较，不能先发一帧点选查询。包络相同也须恢复模式/完整集合；非法点选整体失败。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、默认 2022-01-01 与每个筛选器自定义起始日期、起始日期前选项隐藏、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
 
@@ -349,12 +349,17 @@ export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { formData, filterState, ownState = {}, setDataMask } = props;
+  // 恢复配置与用户点击分开取值：历史配置没有模式字段，不能借用上一帧点选状态。
+  const restoredSelection = useMemo(() => ({
+    selectionMode: (filterState?.selectionMode === 'points' ? 'points' : 'continuous') as SelectionMode,
+    selectedRanges: filterState?.selectionMode === 'points'
+      ? normalizeSelectedRanges(filterState.selectedRanges ?? []) : [],
+  }), [filterState?.selectionMode, filterState?.selectedRanges]);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(
-    (filterState?.selectionMode ?? ownState.selectionMode) === 'points'
-      ? 'points' : 'continuous',
+    restoredSelection.selectionMode,
   );
   const [selectedRanges, setSelectedRanges] = useState<string[]>(() =>
-    normalizeSelectedRanges(filterState?.selectedRanges ?? ownState.selectedRanges ?? []),
+    restoredSelection.selectedRanges,
   );
 
   const {
@@ -550,17 +555,14 @@ export default function CustomTimeFilterPlugin(props: any) {
       presetKey?: string | null,
       stateOverrides: Record<string, unknown> = {},
     ) => {
-      // 外部恢复的完整点选集合优先于本地上一帧；不能先把新包络发布为连续集合。
-      const restoringPoints = filterState?.selectionMode === 'points' &&
-        timeRange === (filterState.value ?? '') &&
-        stateOverrides.selectionMode === undefined && stateOverrides.selectedRanges === undefined;
+      // 恢复入口显式传入模式/集合；点击入口才使用本地交互状态，不按包络相等猜测恢复。
       const mode = (stateOverrides.selectionMode as SelectionMode | undefined) ??
-        (restoringPoints ? 'points' : selectionMode);
+        selectionMode;
       if (mode === 'points' && !timeColumn) {
         throw new Error('点选区间需要绑定时间列，不能回退全历史');
       }
       const points = mode === 'points'
-        ? normalizeSelectedRanges(stateOverrides.selectedRanges ?? (restoringPoints ? filterState.selectedRanges : undefined) ??
+        ? normalizeSelectedRanges(stateOverrides.selectedRanges ??
             (timeRange !== lastRangeRef.current ? (timeRange ? [timeRange] : []) : selectedRanges))
         : [];
       if (mode === 'points') {
@@ -621,20 +623,15 @@ export default function CustomTimeFilterPlugin(props: any) {
         }),
       });
     },
-    [buildOwnState, setDataMask, timeColumn, selectionMode, selectedRanges, filterState?.selectionMode, filterState?.value, filterState?.selectedRanges],
+    [buildOwnState, setDataMask, timeColumn, selectionMode, selectedRanges, filterState?.selectionMode],
   );
 
   // 分享链接/外部恢复可改变点选集合，即使包络不变也必须同步高亮。
-  const savedPointsKey = JSON.stringify(filterState?.selectedRanges ?? []);
+  const savedSelectionKey = JSON.stringify(restoredSelection);
   useEffect(() => {
-    if (filterState?.selectionMode === 'points') {
-      setSelectionMode('points');
-      setSelectedRanges(normalizeSelectedRanges(filterState.selectedRanges ?? []));
-    } else if (filterState?.selectionMode === 'continuous') {
-      setSelectionMode('continuous');
-      setSelectedRanges([]);
-    }
-  }, [filterState?.selectionMode, savedPointsKey]);
+    setSelectionMode(restoredSelection.selectionMode);
+    setSelectedRanges(restoredSelection.selectedRanges);
+  }, [restoredSelection]);
 
   useEffect(() => {
     if (filterState?.value === null) {
@@ -645,6 +642,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         ownState.fiscalYear,
       );
       applyFilter('', grainKey, null, {
+        ...restoredSelection,
         activePreset: null,
         activeGrain: grainKey,
         lastRange: '',
@@ -668,6 +666,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         setActiveFiscalYear(fiscalYear);
         setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
+          ...restoredSelection,
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
@@ -679,6 +678,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       } else {
         const restoredFiscalYearRange = getRestoredFiscalYearRange(filterState.value);
         applyFilter(filterState.value as string, grainKey, null, {
+          ...restoredSelection,
           activePreset: null,
           activeGrain: grainKey,
           lastRange: filterState.value,
@@ -710,6 +710,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         setActiveFiscalYear(fiscalYear);
         setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
+          ...restoredSelection,
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
@@ -724,9 +725,11 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const prevFSValue = useRef(filterState?.value);
   const prevFSGrain = useRef(filterState?.grain);
+  const prevFSSelection = useRef(savedSelectionKey);
   useEffect(() => {
-    if (filterState?.value !== prevFSValue.current) {
+    if (filterState?.value !== prevFSValue.current || savedSelectionKey !== prevFSSelection.current) {
       prevFSValue.current = filterState.value;
+      prevFSSelection.current = savedSelectionKey;
       const grainKey = getEffectiveGrain(
         filterState.value,
         (filterState.grain as string) || activeGrain,
@@ -739,6 +742,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         setActiveFiscalYearEnd(null);
         setPendingFiscalYearStart(null);
         applyFilter('', grainKey, null, {
+          ...restoredSelection,
           activePreset: null,
           activeGrain: grainKey,
           lastRange: '',
@@ -758,6 +762,7 @@ export default function CustomTimeFilterPlugin(props: any) {
           setActiveFiscalYearEnd(null);
           setPendingFiscalYearStart(null);
           applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
+            ...restoredSelection,
             activePreset: preset.key,
             activeGrain: grainKey,
             fiscalYear,
@@ -780,6 +785,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             setPendingFiscalYearStart(null);
           }
           applyFilter(filterState.value as string, grainKey, null, {
+            ...restoredSelection,
             activePreset: null,
             activeGrain: grainKey,
             lastRange: filterState.value,
@@ -808,6 +814,8 @@ export default function CustomTimeFilterPlugin(props: any) {
   }, [
     filterState?.value,
     filterState?.grain,
+    savedSelectionKey,
+    restoredSelection,
     ownState.fiscalYear,
     activeGrain,
     applyFilter,

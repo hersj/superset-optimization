@@ -16,6 +16,7 @@
 import { render, screen, userEvent } from 'spec/helpers/testing-library';
 import CustomTimeFilterPlugin from './CustomTimeFilterPlugin';
 import { useState } from 'react';
+import { DataMask } from '@superset-ui/core';
 
 const january = '2026-01-01 : 2026-02-01';
 const march = '2026-03-01 : 2026-04-01';
@@ -57,6 +58,99 @@ beforeEach(() =>
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
+});
+
+test.each([march, january])(
+  'restoring legacy continuous state %s exits point mode without an intermediate point query',
+  restoredRange => {
+    const writes = jest.fn();
+    function ControlledLegacyRestore() {
+      const [mask, setMask] = useState<DataMask>({
+        filterState: {
+          value: january,
+          grain: 'month',
+          selectionMode: 'points',
+          selectedRanges: [january],
+        },
+        ownState: {
+          activePreset: null,
+          activeGrain: 'month',
+          lastRange: january,
+          selectionMode: 'points',
+          selectedRanges: [january],
+        },
+      });
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setMask({
+                filterState: { value: restoredRange, grain: 'month' },
+                // 即使 ownState 残留点选信息，旧 filterState 也必须按连续模式解释。
+                ownState: mask.ownState,
+              })
+            }
+          >
+            restore legacy
+          </button>
+          <CustomTimeFilterPlugin
+            formData={{ groupby: ['event_date'], enableCustomRange: true }}
+            {...mask}
+            setDataMask={(next: DataMask) => {
+              writes(next);
+              setMask(next);
+            }}
+            width={320}
+          />
+        </>
+      );
+    }
+    render(<ControlledLegacyRestore />);
+    const expand = screen.queryByText(/展开/);
+    if (expand) userEvent.click(expand);
+    writes.mockClear();
+    userEvent.click(screen.getByRole('button', { name: 'restore legacy' }));
+    expect(writes).toHaveBeenCalled();
+    for (const [mask] of writes.mock.calls) {
+      expect(mask.extraFormData.filters[0].val).toBe(restoredRange);
+      expect(mask.extraFormData.time_compare).toBe('1 month ago');
+      expect(mask.ownState.selectionMode).toBe('continuous');
+      expect(mask.ownState.selectedRanges).toEqual([]);
+    }
+    expect(screen.getByRole('button', { name: '连续区间' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: '点选区间' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  },
+);
+
+test('initial legacy state ignores a stale point-mode ownState', () => {
+  const writes = jest.fn();
+  render(
+    <CustomTimeFilterPlugin
+      formData={{ groupby: ['event_date'], enableCustomRange: true }}
+      filterState={{ value: march, grain: 'month' }}
+      ownState={{
+        activePreset: null,
+        activeGrain: 'month',
+        lastRange: january,
+        selectionMode: 'points',
+        selectedRanges: [january],
+      }}
+      setDataMask={writes}
+      width={320}
+    />,
+  );
+  expect(writes).toHaveBeenCalled();
+  for (const [mask] of writes.mock.calls) {
+    expect(mask.extraFormData.filters[0].val).toBe(march);
+    expect(mask.extraFormData.time_compare).toBe('1 month ago');
+  }
 });
 
 test('controlled mask updates and restored new envelopes never fill gaps', () => {
