@@ -203,6 +203,78 @@ def test_point_union_executes_without_gaps_and_keeps_rls(database: Database):
         assert result.df.iloc[1, -1] == 1
 
 
+@pytest.mark.parametrize("legacy_granularity", [None, "event_date"])
+@pytest.mark.parametrize(
+    "selected",
+    [
+        ["2026-09-01 : 2026-09-02", "2026-09-03 : 2026-09-04"],
+        [],
+    ],
+)
+def test_point_ranges_survive_query_context_factory(
+    database, legacy_granularity, selected
+):
+    """复现线上入口：工厂处理后执行 SQL，不得混入中间日期或越过 RLS。"""
+    from sqlalchemy import text
+
+    from superset.common.query_context_factory import QueryContextFactory
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    with database.get_sqla_engine() as engine:
+        engine.execute(
+            text(
+                "CREATE TABLE selected_days "
+                "(event_date DATETIME, shop TEXT, profit INTEGER)"
+            )
+        )
+        engine.execute(
+            text(
+                "INSERT INTO selected_days VALUES "
+                "('2026-09-01 12:00:00','A',10), "
+                "('2026-09-02 12:00:00','A',1000), "
+                "('2026-09-03 12:00:00','A',20), "
+                "('2026-09-03 12:00:00','B',900)"
+            )
+        )
+    table = SqlaTable(
+        database=database,
+        table_name="selected_days",
+        columns=[
+            TableColumn(column_name="event_date", type="DATETIME", is_dttm=True),
+            TableColumn(column_name="shop", type="TEXT"),
+            TableColumn(column_name="profit", type="INTEGER"),
+        ],
+    )
+    payload = dict(
+        columns=["event_date"],
+        metrics=[
+            {"expressionType": "SQL", "sqlExpression": "SUM(profit)", "label": "profit"}
+        ],
+        granularity=legacy_granularity,
+        time_range="2026-09-01 : 2026-09-04",
+        filters=[{"col": "event_date", "op": "TEMPORAL_RANGE", "val": selected}],
+    )
+    with (
+        patch(
+            "superset.daos.datasource.DatasourceDAO.get_datasource", return_value=table
+        ),
+        patch.object(
+            table, "get_sqla_row_level_filters", return_value=[text("shop = 'A'")]
+        ),
+    ):
+        context = QueryContextFactory().create(
+            datasource={"id": 1, "type": "table"},
+            queries=[payload],
+            form_data={"x_axis": "event_date"},
+        )
+        query = context.queries[0]
+        result = table.get_query_result(query)
+        assert result.df["profit"].tolist() == ([10, 20] if selected else [])
+        assert query.filter == [
+            {"col": "event_date", "op": "TEMPORAL_RANGE", "val": selected}
+        ]
+
+
 def test_values_for_column_with_rls(database: Database) -> None:
     """
     Test the `values_for_column` method with RLS enabled.

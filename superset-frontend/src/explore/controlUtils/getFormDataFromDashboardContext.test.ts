@@ -17,10 +17,42 @@
  * under the License.
  */
 
-import { JsonObject, VizType } from '@superset-ui/core';
+import { buildQueryContext, JsonObject, VizType } from '@superset-ui/core';
 import { getExploreFormData } from 'spec/fixtures/mockExploreFormData';
 import { getDashboardFormData } from 'spec/fixtures/mockDashboardFormData';
 import { getFormDataWithDashboardContext } from './getFormDataWithDashboardContext';
+
+test.each([
+  { values: ['2026-09-01 : 2026-09-02', '2026-09-03 : 2026-09-04'] },
+  { values: [] },
+])('Explore 保留点选条件而不是包络 %j', ({ values }) => {
+  const formData = getFormDataWithDashboardContext(
+    {
+      datasource: '98__table',
+      viz_type: 'mixed_timeseries',
+      adhoc_filters: [],
+      adhoc_filters_b: [],
+    },
+    {
+      extra_form_data: {
+        time_range: '2026-09-01 : 2026-09-04',
+        filters: [
+          { col: 'earliest_ship_date', op: 'TEMPORAL_RANGE', val: values },
+        ],
+      },
+    },
+  );
+  for (const key of ['adhoc_filters', 'adhoc_filters_b']) {
+    expect(formData[key]).toEqual([
+      expect.objectContaining({ comparator: values }),
+    ]);
+  }
+  expect(buildQueryContext(formData).queries[0].filters).toContainEqual({
+    col: 'earliest_ship_date',
+    op: 'TEMPORAL_RANGE',
+    val: values,
+  });
+});
 
 const getExpectedResultFormData = (overrides: JsonObject = {}) => ({
   adhoc_filters: [

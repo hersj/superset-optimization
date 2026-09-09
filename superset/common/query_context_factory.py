@@ -117,6 +117,17 @@ class QueryContextFactory:  # pylint: disable=too-few-public-methods
         form_data: dict[str, Any] | None,
         query_object: QueryObject,
     ) -> QueryObject:
+        """功能审计（可重写规格）：查询入口保留点选时间约束。
+        - 目的与触发：所有图表查询进入工厂时规范化粒度和筛选。
+        - 输入与输出：TEMPORAL_RANGE 的 list 值是绑定原列的区间并集；
+          包含空 list，必须原样保留到 SQL 层，不能用顶层连续包络代替。
+        - 流程与规则：先处理旧粒度再合并时间；字符串沿用原有连续规则，
+          点选不得因粒度迁移而删除、换列或扩成中间日期。
+        - 副作用与边界：仅修改查询对象；区间合法性、空集拒绝、OR 括号
+          和 RLS 的 AND 约束由既有数据集 SQL 路径执行，不新增缓存或降级。
+        - 验证：test_point_ranges_survive_query_context_factory 从本入口执行
+          含 RLS 的 SQL，验证不连续日期和空选择，兼容有/无旧粒度。
+        """
         self._apply_granularity(query_object, form_data, datasource)
         self._apply_filters(query_object)
         self._add_tooltip_columns(query_object, form_data)
@@ -303,10 +314,17 @@ class QueryContextFactory:  # pylint: disable=too-few-public-methods
                     filter
                     for filter in query_object.filter
                     if filter["col"] != filter_to_remove
+                    # 点选并集不能由后续单一粒度时间条件替代。
+                    or (
+                        filter["op"] == "TEMPORAL_RANGE"
+                        and isinstance(filter.get("val"), list)
+                    )
                 ]
 
     def _apply_filters(self, query_object: QueryObject) -> None:
         if query_object.time_range:
             for filter_object in query_object.filter:
-                if filter_object["op"] == "TEMPORAL_RANGE":
+                if filter_object["op"] == "TEMPORAL_RANGE" and not isinstance(
+                    filter_object.get("val"), list
+                ):
                     filter_object["val"] = query_object.time_range

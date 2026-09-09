@@ -171,6 +171,15 @@ const mergeNativeFiltersToFormData = (
   return nativeFiltersData;
 };
 
+/**
+ * 功能审计（可重写规格）：Explore 继承看板时间条件。
+ * - 触发与输入：合并看板上下文到图表各 adhoc_filters 列表；顶层 time_range
+ *   是连续范围或点选包络，TEMPORAL_RANGE 数组 comparator 是实际点选并集。
+ * - 输出与规则：字符串条件沿用顶层覆盖；数组（包括空数组）保留原列和原值，
+ *   不得将包络当作选中日期。无顶层时间时不改动条件。
+ * - 副作用与边界：仅返回表单条件；不请求、不新增状态；区间校验与 RLS 由后端执行。
+ * - 验证：getFormDataFromDashboardContext.test.ts 覆盖双查询条件与最终查询 payload。
+ */
 const applyTimeRangeFilters = (
   dashboardFormData: JsonObject,
   adhocFilters: AdhocFilter[],
@@ -178,7 +187,10 @@ const applyTimeRangeFilters = (
   const extraFormData = dashboardFormData.extra_form_data || {};
   if ('time_range' in extraFormData) {
     return adhocFilters.map((filter: SimpleAdhocFilter) => {
-      if (filter.operator === 'TEMPORAL_RANGE') {
+      if (
+        filter.operator === 'TEMPORAL_RANGE' &&
+        !Array.isArray(filter.comparator)
+      ) {
         return {
           ...filter,
           comparator: extraFormData.time_range,
