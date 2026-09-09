@@ -85,6 +85,31 @@ const formDataMixedChartWithAA = {
   resample_method_b: 'asfreq',
 };
 
+test('point weeks reach both mixed queries without fixed offsets or gap resampling', () => {
+  const ranges = ['2025-04-27 : 2025-05-04', '2026-07-05 : 2026-07-12'];
+  const result = buildQuery({
+    ...formDataMixedChartWithAA,
+    x_axis: 'ds',
+    extra_form_data: {
+      time_range: '2025-04-27 : 2026-07-12',
+      time_grain_sqla: 'P1W_SUN',
+      time_compare: ['上一选中区间'],
+      filters: [{ col: 'ds', op: 'TEMPORAL_RANGE', val: ranges }],
+    },
+  });
+  for (const query of result.queries) {
+    expect(query.filters).toContainEqual({
+      col: 'ds',
+      op: 'TEMPORAL_RANGE',
+      val: ranges,
+    });
+    expect(query.time_offsets).toEqual(['上一选中区间']);
+    expect(
+      query.post_processing?.some(step => step?.operation === 'resample'),
+    ).toBe(false);
+  }
+});
+
 test('should compile query object A', () => {
   const query = buildQuery(formDataMixedChart).queries[0];
   expect(query).toEqual({

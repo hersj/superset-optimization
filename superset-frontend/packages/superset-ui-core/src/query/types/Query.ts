@@ -40,11 +40,13 @@ export type BaseQueryObjectFilterClause = {
   isExtra?: boolean;
 };
 
-export type BinaryQueryObjectFilterClause = BaseQueryObjectFilterClause & {
-  op: BinaryOperator;
-  val: DataRecordValue;
-  formattedVal?: string;
-};
+// 点选时间复用 TEMPORAL_RANGE：数组表示半开日期区间并集；其他二元操作仍只接受标量。
+export type BinaryQueryObjectFilterClause = BaseQueryObjectFilterClause &
+  { formattedVal?: string } &
+  (
+    | { op: Exclude<BinaryOperator, 'TEMPORAL_RANGE'>; val: DataRecordValue }
+    | { op: 'TEMPORAL_RANGE'; val: DataRecordValue | string[] }
+  );
 
 export type SetQueryObjectFilterClause = BaseQueryObjectFilterClause & {
   op: SetOperator;
@@ -73,7 +75,7 @@ export type QueryObjectExtras = Partial<{
   /** Instant Time Comparison */
   instant_time_comparison_range?: string;
 
-  time_compare?: string;
+  time_compare?: string | string[];
 
   /** If true, WHERE/HAVING clauses need transpilation to target dialect */
   transpile_to_dialect?: boolean;

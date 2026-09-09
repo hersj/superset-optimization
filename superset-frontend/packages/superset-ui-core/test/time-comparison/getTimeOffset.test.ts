@@ -20,6 +20,21 @@
 import { getTimeOffset } from '@superset-ui/core';
 import timezoneMock from 'timezone-mock';
 
+test.each([{ shifts: [] }, { shifts: ['1 week ago'] }])(
+  'point comparison uses selected predecessor only when enabled: %p',
+  ({ shifts }) => {
+    expect(
+      getTimeOffset({
+        startDate: '2025-04-27',
+        timeRangeFilter: {
+          comparator: ['2025-04-27 : 2025-05-04', '2026-07-05 : 2026-07-12'],
+        } as any,
+        shifts,
+      }),
+    ).toEqual(shifts.length ? ['上一选中区间'] : []);
+  },
+);
+
 // NOW will be set at midnight 2024-06-03 and transforme dfrom local timezone to UTC
 const NOW_IN_UTC = '2024-06-03T00:00:00Z';
 const NOW_UTC_IN_EUROPE = '2024-06-02T22:00:00Z'; // Same as 2024-06-03T00:00:00+02:00

@@ -39,6 +39,50 @@ const dataMask = (id: string, extraFormData: unknown, filterState?: unknown) =>
   }) as any;
 
 describe('native filter implicit time dependencies', () => {
+  test('keeps the point union in both cascade metadata and chart fallback', () => {
+    const ranges = ['2025-04-27 : 2025-05-04', '2026-07-05 : 2026-07-12'];
+    const result = resolveNativeFilterDependencies({
+      datasetId: 98,
+      childFilter,
+      nativeFilters: { time: timeFilter('time') },
+      dataMaskSelected: {
+        time: dataMask('time', {
+          time_range: '2025-04-27 : 2026-07-12',
+          filters: [{ col: 'event_date', op: 'TEMPORAL_RANGE', val: ranges }],
+        }),
+      },
+      initializedFilters: new Set(['time']),
+    });
+    expect(result).toMatchObject({
+      status: 'ready',
+      timeRanges: ranges,
+      timeColumn: 'event_date',
+      extraFormData: {
+        filters: [{ col: 'event_date', op: 'TEMPORAL_RANGE', val: ranges }],
+      },
+    });
+  });
+
+  test.each([{ ranges: [] }, { ranges: ['bad'] }])(
+    'blocks empty or invalid point selections %p',
+    ({ ranges }) => {
+      expect(
+        resolveNativeFilterDependencies({
+          datasetId: 98,
+          childFilter,
+          nativeFilters: { time: timeFilter('time') },
+          dataMaskSelected: {
+            time: dataMask('time', {
+              filters: [
+                { col: 'event_date', op: 'TEMPORAL_RANGE', val: ranges },
+              ],
+            }),
+          },
+          initializedFilters: new Set(['time']),
+        }).status,
+      ).toBe('invalid');
+    },
+  );
   test('uses an unhydrated parent default without treating it as user state', () => {
     const result = resolveNativeFilterDependencies({
       datasetId: 98,

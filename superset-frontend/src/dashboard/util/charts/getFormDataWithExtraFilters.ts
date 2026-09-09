@@ -601,12 +601,55 @@ export default function getFormDataWithExtraFilters({
    * - 异常与边界：没有原生筛选器或自定义项时仍可写入空数组；其他控制字段不受影响。
    * - 不变量与约束：最终覆盖优先级高于所有筛选器和自定义项，数字显示和图例状态不在此处处理。
    * - 验证方式：测试覆盖原生偏移及图表自定义项再次写入偏移时仍保持空数组。
+   * - 点选边界：TEMPORAL_RANGE 数组保留并集；先应用显式关闭，再将启用的比较规范为“上一选中区间”。
+   *   只有绑定日期确实为时间轴/行维度时保留比较，无时间轴的合计图清空比较；混合图两查询同步关闭。
+   *   不以默认 granularity_sqla 单独证明存在时间轴，不修改保存的图表参数；定向测试覆盖卡片、饼图、时序和关闭状态。
    */
   if (Object.prototype.hasOwnProperty.call(extraControls, 'time_compare')) {
     formData.time_compare = extraControls.time_compare;
     formData.extra_form_data = {
       ...(formData.extra_form_data as JsonObject | undefined),
       time_compare: extraControls.time_compare,
+    };
+  }
+  const pointFilters = formData.extra_form_data?.filters?.filter(
+    (filter: { op?: string; val?: unknown }) =>
+      filter.op === 'TEMPORAL_RANGE' && Array.isArray(filter.val),
+  );
+  if (pointFilters?.length) {
+    // 无时间轴的饼图/指标卡只显示并集合计；不能把合计伪装为B/A比较。
+    const axes = [
+      formData.x_axis,
+      ...(formData.is_timeseries || formData.viz_type === 'mixed_timeseries'
+        ? [formData.granularity_sqla]
+        : []),
+      ...ensureIsArray(formData.groupbyRows),
+    ];
+    const hasSelectedTimeAxis = pointFilters.some((filter: { col: string }) =>
+      axes.some(
+        axis =>
+          axis === filter.col ||
+          (axis &&
+            typeof axis === 'object' &&
+            axis.sqlExpression === filter.col),
+      ),
+    );
+    const enabled =
+      ensureIsArray(
+        formData.extra_form_data?.time_compare ?? formData.time_compare,
+      ).length > 0;
+    const comparison = hasSelectedTimeAxis && enabled ? ['上一选中区间'] : [];
+    formData.time_compare = comparison;
+    if (formData.viz_type === 'mixed_timeseries') {
+      formData.time_compare_b =
+        Object.prototype.hasOwnProperty.call(extraControls, 'time_compare_b') &&
+        !ensureIsArray(extraControls.time_compare_b).length
+          ? []
+          : comparison;
+    }
+    formData.extra_form_data = {
+      ...formData.extra_form_data,
+      time_compare: comparison,
     };
   }
   cachedFiltersByChart[sliceId] = filters;

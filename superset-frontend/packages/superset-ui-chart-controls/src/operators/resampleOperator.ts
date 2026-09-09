@@ -25,6 +25,14 @@ export const resampleOperator: PostProcessingFactory<PostProcessingResample> = (
   formData,
   queryObject,
 ) => {
+  // 点选模式不能通过补齐日期生成未选择的空档；保持查询实际返回的周期。
+  if (
+    queryObject.filters?.some(
+      filter => filter.op === 'TEMPORAL_RANGE' && Array.isArray(filter.val),
+    )
+  ) {
+    return undefined;
+  }
   const resampleZeroFill = formData.resample_method === 'zerofill';
   const resampleMethod = resampleZeroFill ? 'asfreq' : formData.resample_method;
   const resampleRule = formData.resample_rule;

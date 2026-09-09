@@ -25,6 +25,20 @@ from superset.utils.pandas_postprocessing.utils import FLAT_COLUMN_SEPARATOR
 from tests.unit_tests.fixtures.dataframes import multiple_metrics_df, timeseries_df2
 
 
+def test_selected_predecessor_zero_is_null_not_infinity():
+    from superset.utils.core import TIME_COMPARISON
+    from superset.utils.selected_time_ranges import PREVIOUS_SELECTED_PERIOD
+
+    previous = TIME_COMPARISON.join(["profit", PREVIOUS_SELECTED_PERIOD])
+    df = pd.DataFrame({"profit": [20, 30], previous: [0, 20]})
+    actual = pp.compare(
+        df, source_columns=["profit"], compare_columns=[previous], compare_type=PPC.PCT
+    )
+    values = actual.iloc[:, -1]
+    assert pd.isna(values.iloc[0])
+    assert values.iloc[1] == 0.5
+
+
 def test_compare_should_not_side_effect():
     _timeseries_df2 = timeseries_df2.copy()
     pp.compare(

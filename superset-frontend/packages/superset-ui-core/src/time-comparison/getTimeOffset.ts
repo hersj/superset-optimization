@@ -205,6 +205,10 @@ export const getTimeOffset = ({
   startDate,
   includeFutureOffsets = true,
 }: TimeOffsetArgs): string[] => {
+  // 点选区间不是一个固定偏移；保留显式关闭，否则交给后端按选中周期配对。
+  if (Array.isArray(timeRangeFilter?.comparator)) {
+    return ensureIsArray(shifts).length ? ['上一选中区间'] : [];
+  }
   const { customRange, matchedFlag } = customTimeRangeDecode(
     timeRangeFilter?.comparator ?? '',
   );

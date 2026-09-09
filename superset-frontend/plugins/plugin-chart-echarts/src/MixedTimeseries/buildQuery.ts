@@ -80,6 +80,10 @@ export default function buildQuery(formData: QueryFormData) {
           (fd.extra_form_data && fd.extra_form_data.time_grain_sqla) ||
           fd.time_grain_sqla;
         const comparisonAllowed =
+          // 点选比较按选中周期关联，不使用旧的固定日期偏移对齐。
+          ensureIsArray(fd.time_compare).every(
+            offset => offset === '上一选中区间',
+          ) ||
           activeGrain === 'P1D' ||
           activeGrain === 'P1W' ||
           activeGrain === 'P1M';

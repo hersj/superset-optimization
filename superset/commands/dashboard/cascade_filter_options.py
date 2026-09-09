@@ -35,6 +35,7 @@ from superset.commands.base import BaseCommand
 from superset.common.utils.time_range_utils import get_since_until_from_time_range
 from superset.connectors.sqla.models import SqlaTable
 from superset.models.dashboard import Dashboard
+from superset.utils.selected_time_ranges import parse_selected_time_ranges
 
 GENERIC_STRING_TYPE = 1
 CASCADE_FILTER_OPTIONS_CACHE_TTL_SECONDS = 30
@@ -95,12 +96,16 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         applied_filters: dict[str, list[Any]] | None = None,
         time_range: str | None = None,
         limit: int = 1000,
+        time_ranges: list[str] | None = None,
+        time_column: str | None = None,
     ) -> None:
         self._dashboard_id = dashboard_id
         self._dataset_id = dataset_id
         self._columns = columns
         self._applied_filters = applied_filters or {}
         self._time_range = time_range
+        self._time_ranges = time_ranges
+        self._time_column = time_column
         self._limit = min(max(limit, 1), 5000)
         self._filter_metadata: dict[str, Any] | None = None
 
@@ -218,6 +223,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 "columns": self._columns,
                 "applied_filters": self._applied_filters,
                 "time_range": self._time_range,
+                "time_ranges": self._time_ranges,
+                "time_column": self._time_column,
                 "limit": self._limit,
             },
             sort_keys=True,
@@ -225,7 +232,9 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         )
 
     def _get_dataset(self) -> SqlaTable:
-        return db.session.query(SqlaTable).filter(SqlaTable.id == self._dataset_id).one()
+        return (
+            db.session.query(SqlaTable).filter(SqlaTable.id == self._dataset_id).one()
+        )
 
     @staticmethod
     def _compile_rls_clauses(
@@ -273,6 +282,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             chart.id: chart.datasource_id for chart in (dashboard.slices or [])
         }
         applicable_time_filter_count = 0
+        time_columns: set[str] = set()
         time_filter_scope_ambiguous = False
 
         for filter_config in filter_configs:
@@ -288,6 +298,14 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                         for target in targets
                     ):
                         applicable_time_filter_count += 1
+                        time_columns.update(
+                            target["column"]["name"]
+                            for target in targets
+                            if target.get("datasetId") == self._dataset_id
+                            and isinstance(
+                                (target.get("column") or {}).get("name"), str
+                            )
+                        )
                 else:
                     chart_ids = filter_config.get("chartsInScope")
                     if chart_ids is None:
@@ -331,6 +349,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             "parent_columns_by_column": parent_columns_by_column,
             "applicable_time_filter_count": applicable_time_filter_count,
             "time_filter_scope_ambiguous": time_filter_scope_ambiguous,
+            "time_columns": time_columns,
         }
 
     def _build_statement(
@@ -344,7 +363,11 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         params: dict[str, Any] = {}
         bindparams = []
         metadata = self._get_filter_metadata()
-        time_column = getattr(dataset, "main_dttm_col", None)
+        time_column = (
+            self._time_column
+            if self._time_ranges is not None
+            else getattr(dataset, "main_dttm_col", None)
+        )
         subqueries = []
         # 每个维度值都有独立的 UNION 子查询，RLS 不能只加在外层，否则
         # 子查询的分组结果可能已经包含规则外数据。rls_clauses 保留完整布尔分组。
@@ -370,10 +393,26 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                     params[param_name] = values
                     bindparams.append(bindparam(param_name, expanding=True))
 
-            if since is not None and time_column:
+            if self._time_ranges is not None:
+                # 每个UNION都使用同一绑定列的区间并集；整体括号后再AND父维度和RLS。
+                ranges = parse_selected_time_ranges(self._time_ranges)
+                if not ranges or not time_column:
+                    raise ValueError(
+                        "Point selection requires a time column and nonempty ranges"
+                    )
+                clauses = []
+                for index, (start, end) in enumerate(ranges):
+                    params[f"range_{index}_since"] = start
+                    params[f"range_{index}_until"] = end
+                    clauses.append(
+                        f"({quote_identifier(time_column)} >= :range_{index}_since "
+                        f"AND {quote_identifier(time_column)} < :range_{index}_until)"
+                    )
+                where_clauses.append("(" + " OR ".join(clauses) + ")")
+            elif since is not None and time_column:
                 where_clauses.append(f"{quote_identifier(time_column)} >= :since")
                 params["since"] = since
-            if until is not None and time_column:
+            if self._time_ranges is None and until is not None and time_column:
                 where_clauses.append(f"{quote_identifier(time_column)} < :until")
                 params["until"] = until
 
@@ -384,7 +423,7 @@ SELECT
   to_jsonb({quoted_column}) AS __value,
   {quoted_column}::text AS __sort
 FROM {table_name}
-WHERE {' AND '.join(where_clauses)}
+WHERE {" AND ".join(where_clauses)}
 GROUP BY {quoted_column}
 ORDER BY {quoted_column} ASC
 LIMIT :limit_{column_index}
@@ -394,7 +433,7 @@ LIMIT :limit_{column_index}
         sql = f"""
 SELECT __column, __value
 FROM (
-  {' UNION ALL '.join(f'SELECT * FROM ({subquery}) AS cascade_options_{index}' for index, subquery in enumerate(subqueries))}
+  {" UNION ALL ".join(f"SELECT * FROM ({subquery}) AS cascade_options_{index}" for index, subquery in enumerate(subqueries))}
 ) AS cascade_options
 ORDER BY __column ASC, __sort ASC
 """
@@ -402,9 +441,11 @@ ORDER BY __column ASC, __sort ASC
         if bindparams:
             statement = statement.bindparams(*bindparams)
         return statement, params
+
     # 功能审计（可重写规格）：级联筛选选项的时间范围边界
     # - 功能目的与触发方式：级联选项请求按看板实际适用的时间筛选器收敛数据范围，由 run 触发。
     # - 输入契约：time_range 只能是非空字符串；看板元数据提供适用时间筛选器数量及 scope 歧义状态。
+    #   点选增加 time_ranges（非空ISO日期半开区间数组）和 time_column（元数据中该数据集适用时间筛选器绑定列）；time_range 必须恰为包络。
     # - 输出契约：返回各列选项；合法时间范围生成 since/until，非法或缺失时返回 ValueError（API 转 400）。
     # - 处理流程：先校验列和 scope，再解析时间范围，再生成带主时间列谓词的 SQL；无适用筛选器才允许无范围查询。
     # - 业务规则：多个适用筛选器必须提供同一有效范围；解析后 since、until 均为空视为无效，不能扩大到全历史。
@@ -412,13 +453,29 @@ ORDER BY __column ASC, __sort ASC
     # - 外部依赖：Dashboard JSON、dashboard.slices datasource_id、SqlaTable.main_dttm_col 和既有时间解析器。
     # - 异常与边界：数组、对象、空字符串、No filter、scope 未完成或冲突均拒绝；仅一侧边界的有效范围可保留开放区间。
     # - 不变量与约束：无适用筛选器的旧无范围行为不变；有适用筛选器绝不发无范围 cascade SQL。
+    #   点选每段参数化并以整体 OR 写入每个 UNION，外层 AND 父维度和完整 RLS；不查询空档，缓存键包含完整集合和时间列。
     # - 验证方式：tests/unit_tests/dashboards/test_cascade_filter_options.py 及真实 dashboard 44/51 cascade 请求。
     def _resolve_time_range(self) -> tuple[datetime | None, datetime | None]:
         metadata = self._get_filter_metadata()
         if metadata.get("time_filter_scope_ambiguous"):
-            raise ValueError(
-                "Cannot resolve applicable dashboard time filter scope"
-            )
+            raise ValueError("Cannot resolve applicable dashboard time filter scope")
+
+        if self._time_ranges is not None:
+            ranges = parse_selected_time_ranges(self._time_ranges)
+            if (
+                not ranges
+                or not isinstance(self._time_column, str)
+                or self._time_column not in metadata.get("time_columns", set())
+            ):
+                raise ValueError(
+                    "Point selection requires nonempty ranges "
+                    "and the configured time column"
+                )
+            start, end = ranges[0][0], max(right for _, right in ranges)
+            expected = f"{start:%Y-%m-%d} : {end:%Y-%m-%d}"
+            if self._time_range != expected:
+                raise ValueError("Point ranges and time_range envelope conflict")
+            return start, end
 
         if self._time_range is None:
             if metadata.get("applicable_time_filter_count", 0):

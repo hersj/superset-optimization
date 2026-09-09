@@ -94,6 +94,62 @@ describe('getFormDataWithExtraFilters', () => {
     expect(result.stack).toEqual('Stacked');
   });
 
+  test.each([
+    ['pie', {}, {}, []],
+    ['big_number_total', {}, {}, []],
+    ['mixed_timeseries', { x_axis: 'date' }, {}, ['上一选中区间']],
+    ['mixed_timeseries', { x_axis: 'date' }, { time_compare: [] }, []],
+    ['pivot_table_v2', { groupbyRows: ['date', 'shop'] }, {}, ['上一选中区间']],
+  ])(
+    'point selection comparison respects axis and dashboard switch: %s %p %p',
+    (vizType, axes, controls, expected) => {
+      const result = getFormDataWithExtraFilters({
+        ...mockArgs,
+        filters: { ...mockArgs.filters },
+        chart: {
+          ...mockChart,
+          form_data: {
+            ...mockChart.form_data,
+            viz_type: vizType,
+            granularity_sqla: 'date',
+            ...axes,
+          },
+        },
+        chartConfiguration: {
+          [filterId]: {
+            id: filterId,
+            targets: [{ datasetId: 123, column: { name: 'date' } }],
+            scope: { rootPath: ['ROOT_ID'], excluded: [] },
+            cascadeParentIds: [],
+          },
+        } as any,
+        dataMask: {
+          [filterId]: {
+            id: filterId,
+            filterState: {},
+            ownState: {},
+            extraFormData: {
+              filters: [
+                {
+                  col: 'date',
+                  op: 'TEMPORAL_RANGE',
+                  val: ['2025-04-27 : 2025-05-04', '2026-07-05 : 2026-07-12'],
+                },
+              ],
+              time_compare: ['上一选中区间'],
+            },
+          },
+        },
+        extraControls: controls,
+      } as any);
+      expect(result.time_compare).toEqual(expected);
+      expect(result.extra_form_data?.time_compare).toEqual(expected);
+      if (vizType === 'mixed_timeseries')
+        expect(result).toEqual(expect.objectContaining({ time_compare_b: expected }));
+      expect(result.extra_form_data?.filters?.[0].val).toHaveLength(2);
+    },
+  );
+
   test('lets an explicit dashboard comparison disable override the native filter', () => {
     const result = getFormDataWithExtraFilters({
       ...mockArgs,

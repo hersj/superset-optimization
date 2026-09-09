@@ -35,6 +35,54 @@ describe('sellerfox cascade filter options', () => {
     clearSellerfoxCascadeFilterOptionsCache();
   });
 
+  it('posts the full point union and separates cache entries with the same envelope', async () => {
+    const post = jest
+      .spyOn(SupersetClient, 'post')
+      .mockResolvedValue({ json: { result: {} } } as any);
+    const nativeFilters = {
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 98, column: { name: 'shop' } }],
+      },
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 98, column: { name: 'event_date' } }],
+      },
+    } as any;
+    const ranges = ['2026-01-01 : 2026-02-01', '2026-03-01 : 2026-04-01'];
+    for (const selection of [ranges, ['2026-01-01 : 2026-04-01']]) {
+      await getCascadeFilterOptions(
+        44,
+        98,
+        nativeFilters,
+        {
+          time: {
+            id: 'time',
+            extraFormData: {
+              time_range: '2026-01-01 : 2026-04-01',
+              filters: [
+                { col: 'event_date', op: 'TEMPORAL_RANGE', val: selection },
+              ],
+            },
+          },
+        } as any,
+        undefined,
+        { childFilterId: 'shop', initializedFilters: new Set(['time']) },
+      );
+    }
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[0][0]).toMatchObject({
+      jsonPayload: {
+        time_range: '2026-01-01 : 2026-04-01',
+        time_ranges: ranges,
+        time_column: 'event_date',
+        applied_filters: {},
+      },
+    });
+  });
+
   it('builds a generic dashboard batch payload from filter metadata', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: {

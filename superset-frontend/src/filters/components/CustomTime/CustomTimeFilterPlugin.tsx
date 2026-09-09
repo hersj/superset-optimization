@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTheme } from '@apache-superset/core/theme';
 import { DEFAULT_PRESETS, TIME_GRAIN_OPTIONS, TimePreset, TimeGrainOption } from './types';
+import { normalizeSelectedRanges, selectedRangeEnvelope, selectedRangesHaveGaps, toggleSelectedRange, SelectionMode } from './selectedTimeRanges';
 import {
   getProfitComparisonRanges,
   getProfitDataEndDate,
@@ -337,7 +338,10 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 状态与副作用：仅更新当前 Dashboard 会话 DataMask 和 ownState，不直接写数据库；切换普通预设、日历或粒度时清除已失效的财年状态，避免恢复陈旧范围。
  * - 外部依赖：依赖原生筛选器传入的 formData、Superset DataMask/QueryContext 对 TEMPORAL_RANGE、time_grain_sqla 和 time_compare 的处理。
  * - 异常与边界：旧配置没有 groupby 时保留全局 time_range 兼容路径；绑定列缺失时不伪造过滤列；空范围不得保留前一次范围；非法 calendarStartDate 安全回退默认日期；日历不能通过补位日期、周或其他粒度导航绕过当前起点；已保存的旧范围仍可恢复；恢复时仅接受完整财年边界组成的连续区间；未来财年按钮不可选。
- * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；财年多选只能形成连续区间，不能生成离散日期集合。
+ * - 不变量与约束：一次只绑定一个时间列；时间粒度行只出现一个按财年入口；预设、财年日历、粒度和不过滤均走同一 applyFilter 路径，比较参数不能因入口不同而丢失；旧 this_fiscal_year 状态及旧版单/多财年区间状态必须恢复为 fiscal_year；连续模式的财年多选仍形成连续区间。
+ * - 点选输入与输出：selectionMode 默认 continuous；points 必须绑定时间列，selectedRanges 为排序后的 ISO 日期半开区间数组，写入 filterState/ownState 及该列 TEMPORAL_RANGE.val；顶层 time_range 仅为包络，不能替代并集条件；空数组保留恒假过滤，不能视为不过滤。
+ * - 点选交互规则：日/周/月/季/年/财年点击单位执行集合并，完整选中后再点执行集合差；跨年和乱序点击不改变日期排序。切换粒度保留精确日期集合，预设替换为预设范围；连续转点选保留范围；点选转连续有空档时用确认框明确补齐，取消不改变状态或请求。
+ * - 比较与恢复：points 发“上一选中区间”，支持比较的时间轴图表按日期顺序 B/A、C/B，缺数据不能跳期，图表关闭比较优先；无时间轴图表只聚合并集。分享恢复按保存的模式和完整集合，包络相同也必须恢复不同的选中项；非法点选整体失败。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、默认 2022-01-01 与每个筛选器自定义起始日期、起始日期前选项隐藏、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
 */
 
@@ -345,6 +349,13 @@ export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { formData, filterState, ownState = {}, setDataMask } = props;
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(
+    (filterState?.selectionMode ?? ownState.selectionMode) === 'points'
+      ? 'points' : 'continuous',
+  );
+  const [selectedRanges, setSelectedRanges] = useState<string[]>(() =>
+    normalizeSelectedRanges(filterState?.selectedRanges ?? ownState.selectedRanges ?? []),
+  );
 
   const {
     defaultPreset = 'last_7d',
@@ -539,6 +550,23 @@ export default function CustomTimeFilterPlugin(props: any) {
       presetKey?: string | null,
       stateOverrides: Record<string, unknown> = {},
     ) => {
+      // 外部恢复的完整点选集合优先于本地上一帧；不能先把新包络发布为连续集合。
+      const restoringPoints = filterState?.selectionMode === 'points' &&
+        timeRange === (filterState.value ?? '') &&
+        stateOverrides.selectionMode === undefined && stateOverrides.selectedRanges === undefined;
+      const mode = (stateOverrides.selectionMode as SelectionMode | undefined) ??
+        (restoringPoints ? 'points' : selectionMode);
+      if (mode === 'points' && !timeColumn) {
+        throw new Error('点选区间需要绑定时间列，不能回退全历史');
+      }
+      const points = mode === 'points'
+        ? normalizeSelectedRanges(stateOverrides.selectedRanges ?? (restoringPoints ? filterState.selectedRanges : undefined) ??
+            (timeRange !== lastRangeRef.current ? (timeRange ? [timeRange] : []) : selectedRanges))
+        : [];
+      if (mode === 'points') {
+        timeRange = selectedRangeEnvelope(points);
+        setSelectedRanges(points);
+      }
       lastRangeRef.current = timeRange;
       const grainOption = TIME_GRAIN_OPTIONS.find(g => g.key === grainKey);
       const grainValue = grainOption?.value || 'P1D';
@@ -553,7 +581,9 @@ export default function CustomTimeFilterPlugin(props: any) {
           fiscal_year: '1 year ago',
         }[grainKey] || '1 day ago';
       const nextActivePreset = presetKey ?? null;
-      const rangeLabel = !timeRange
+      const rangeLabel = mode === 'points'
+        ? (points.length ? `点选区间（${points.length}段）` : '请选择区间')
+        : !timeRange
         ? '不过滤'
         : (stateOverrides.rangeLabel as string | undefined) ||
           (nextActivePreset === 'this_fiscal_year'
@@ -566,30 +596,45 @@ export default function CustomTimeFilterPlugin(props: any) {
         extraFormData: {
           ...(timeColumn
             ? {
-                filters: timeRange
-                  ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange }]
-                  : [],
+                filters: mode === 'points'
+                  ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: points }]
+                  : timeRange ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange }] : [],
                 time_range: timeRange || 'No filter',
               }
             : { time_range: timeRange }),
           time_grain_sqla: grainValue,
-          time_compare: timeCompare,
+          time_compare: mode === 'points' ? (points.length ? ['上一选中区间'] : []) : timeCompare,
         },
         filterState: {
           value: timeRange ? nextActivePreset || timeRange : null,
           grain: grainKey,
           label: rangeLabel + ' | ' + grainLabel,
+          ...(mode === 'points' || filterState?.selectionMode ? { selectionMode: mode, selectedRanges: points } : {}),
         },
         ownState: buildOwnState({
           activePreset: nextActivePreset,
           activeGrain: grainKey,
           lastRange: timeRange,
           ...stateOverrides,
+          selectionMode: mode,
+          selectedRanges: points,
         }),
       });
     },
-    [buildOwnState, setDataMask, timeColumn],
+    [buildOwnState, setDataMask, timeColumn, selectionMode, selectedRanges, filterState?.selectionMode, filterState?.value, filterState?.selectedRanges],
   );
+
+  // 分享链接/外部恢复可改变点选集合，即使包络不变也必须同步高亮。
+  const savedPointsKey = JSON.stringify(filterState?.selectedRanges ?? []);
+  useEffect(() => {
+    if (filterState?.selectionMode === 'points') {
+      setSelectionMode('points');
+      setSelectedRanges(normalizeSelectedRanges(filterState.selectedRanges ?? []));
+    } else if (filterState?.selectionMode === 'continuous') {
+      setSelectionMode('continuous');
+      setSelectedRanges([]);
+    }
+  }, [filterState?.selectionMode, savedPointsKey]);
 
   useEffect(() => {
     if (filterState?.value === null) {
@@ -786,6 +831,41 @@ export default function CustomTimeFilterPlugin(props: any) {
     setPendingYearStart(null);
   };
 
+  const selectPoint = (unit: string, grain = activeGrain) => {
+    clearPendingSelections();
+    setActivePreset(null);
+    setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
+    applyFilter(lastRangeRef.current, grain, null, {
+      selectionMode: 'points',
+      selectedRanges: toggleSelectedRange(selectedRanges, unit),
+      fiscalYear: null,
+      fiscalYearEnd: null,
+    });
+  };
+
+  const changeSelectionMode = (mode: SelectionMode) => {
+    if (mode === selectionMode) return;
+    if (mode === 'points' && !timeColumn) return;
+    if (mode === 'continuous' && selectedRangesHaveGaps(selectedRanges)) {
+      // 原生确认阻止扩大日期范围；取消不修改 DataMask，也不发起查询。
+      // eslint-disable-next-line no-alert
+      if (!window.confirm('切换到连续区间将包含中间所有未选日期，是否继续？')) return;
+    }
+    const range = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
+    const points = mode === 'points' && range ? [range] : [];
+    const continuous = selectionMode === 'points' ? selectedRangeEnvelope(selectedRanges) : range;
+    clearPendingSelections();
+    setSelectionMode(mode);
+    setActivePreset(null);
+    setActiveFiscalYear(null);
+    setActiveFiscalYearEnd(null);
+    applyFilter(continuous, activeGrain, null, {
+      selectionMode: mode, selectedRanges: points,
+      fiscalYear: null, fiscalYearEnd: null,
+    });
+  };
+
   const handlePresetClick = (preset: TimePreset) => {
     const isFiscalPreset = preset.key === 'this_fiscal_year';
     const fiscalYear = isFiscalPreset
@@ -801,6 +881,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     setActiveFiscalYear(fiscalYear);
     setActiveFiscalYearEnd(null);
     applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
+      ...(selectionMode === 'points' ? { selectedRanges: [getPresetTimeRange(preset.key)] } : {}),
       activePreset: preset.key,
       activeGrain: grainKey,
       fiscalYear,
@@ -838,6 +919,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     ) {
       return;
     }
+    if (selectionMode === 'points') {
+      selectPoint(getProfitFiscalYearRange(fiscalYear).timeRange, 'fiscal_year');
+      return;
+    }
     clearNonFiscalPendingSelections();
     setActivePreset(null);
     setActiveGrain('fiscal_year');
@@ -857,6 +942,11 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const handleGrainClick = (grain: TimeGrainOption) => {
     clearPendingSelections();
+    if (selectionMode === 'points') {
+      setActiveGrain(grain.key);
+      applyFilter(lastRangeRef.current, grain.key, null, { selectedRanges });
+      return;
+    }
     if (grain.key === 'fiscal_year') {
       const currentFiscalYear = fiscalYearStartFromDate(getDataEndDate());
       setFiscalYearOffset(0);
@@ -919,6 +1009,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     setActiveFiscalYear(null);
     setActiveFiscalYearEnd(null);
 
+    if (selectionMode === 'points') {
+      selectPoint(`${val} : ${addDays(val, 1)}`);
+      return;
+    }
     if (!pendingDayStart) {
       setPendingDayStart(val);
       setStartDate(val);
@@ -962,6 +1056,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     if (weekStart < minimumCalendarDate || weekStart > getDataEndDate()) {
       return;
     }
+    if (selectionMode === 'points') {
+      selectPoint(`${weekStart} : ${addDays(weekStart, 7)}`);
+      return;
+    }
     setActivePreset(null);
     setActiveFiscalYear(null);
     setActiveFiscalYearEnd(null);
@@ -992,6 +1090,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       monthStartFromMonth(month) < minimumCalendarDate ||
       monthStartFromMonth(month) > getDataEndDate()
     ) {
+      return;
+    }
+    if (selectionMode === 'points') {
+      selectPoint(`${monthStartFromMonth(month)} : ${nextMonthStart(month)}`);
       return;
     }
     setActivePreset(null);
@@ -1036,6 +1138,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     ) {
       return;
     }
+    if (selectionMode === 'points') {
+      selectPoint(`${quarterRange.start} : ${quarterRange.end}`);
+      return;
+    }
     setActivePreset(null);
     setActiveFiscalYear(null);
     setActiveFiscalYearEnd(null);
@@ -1068,6 +1174,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     ) {
       return;
     }
+    if (selectionMode === 'points') {
+      selectPoint(`${fmtDate(year, 1, 1)} : ${fmtDate(year + 1, 1, 1)}`);
+      return;
+    }
     setActivePreset(null);
     setActiveFiscalYear(null);
     setActiveFiscalYearEnd(null);
@@ -1082,7 +1192,9 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const currentLabel =
-    activeFiscalYear !== null
+    selectionMode === 'points'
+      ? selectedRanges.length ? `点选区间（${selectedRanges.length}段）` : '请选择区间'
+      : activeFiscalYear !== null
       ? activeFiscalYearEnd !== null
         ? `${activeFiscalYear}-${activeFiscalYearEnd}财年`
         : `${activeFiscalYear}财年`
@@ -1095,6 +1207,8 @@ export default function CustomTimeFilterPlugin(props: any) {
             : '不过滤';
   const currentGrain = TIME_GRAIN_OPTIONS.find(g => g.key === activeGrain)?.label || '日';
   const currentRange = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
+  const displayRanges = selectionMode === 'points' ? selectedRanges : [currentRange];
+  const dateSelected = (date: string) => displayRanges.some(range => isDateInRange(date, range));
 
   const baseMonth = getMonthStart(getDataEndDate());
   const calendarStartMonth =
@@ -1194,8 +1308,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 5 }}>
         {getMonthDays(monthStart).map(day => {
-          const selected = isDateInRange(day.date, currentRange);
-          const endpoint = isDateRangeEndpoint(day.date, currentRange);
+          const selected = dateSelected(day.date);
+          const endpoint = displayRanges.some(range => isDateRangeEndpoint(day.date, range));
           const capped = day.date > getDataEndDate();
           if (day.date < minimumCalendarDate) {
             return <span key={day.date} aria-hidden="true" />;
@@ -1205,6 +1319,7 @@ export default function CustomTimeFilterPlugin(props: any) {
               key={day.date}
               type="button"
               aria-label={day.date}
+              aria-pressed={selected}
               disabled={capped}
               onClick={() => handleCalendarDayClick(day.date)}
               style={{
@@ -1240,8 +1355,8 @@ export default function CustomTimeFilterPlugin(props: any) {
         {getMonthDays(monthStart, true).map(day => {
           const weekStart = toSunday(day.date);
           const weekEndExclusive = addDays(weekStart, 7);
-          const selected = Boolean(currentRange && weekStart < parseRange(currentRange).endExclusive && weekEndExclusive > parseRange(currentRange).start);
-          const endpoint = parseRange(currentRange).start === weekStart || parseRange(currentRange).endExclusive === weekEndExclusive;
+          const selected = displayRanges.some(range => Boolean(range && weekStart < parseRange(range).endExclusive && weekEndExclusive > parseRange(range).start));
+          const endpoint = displayRanges.some(range => parseRange(range).start === weekStart || parseRange(range).endExclusive === weekEndExclusive);
           const capped = day.date > getDataEndDate();
           if (weekStart < minimumCalendarDate) {
             return <span key={day.date} aria-hidden="true" />;
@@ -1254,6 +1369,7 @@ export default function CustomTimeFilterPlugin(props: any) {
               disabled={capped}
               onClick={() => handleWeekClick(weekStart)}
               title={`周 ${weekStart} ~ ${addDays(weekStart, 6)}`}
+              aria-pressed={selected}
               style={{
                 width: 26,
                 height: 26,
@@ -1277,7 +1393,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     <>
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
-        单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。
+        {selectionMode === 'points' ? '逐项点选，再次点击取消；中间未选日期不参与查询。' : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
       </div>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {renderCalendarMonth(firstCalendarMonth)}
@@ -1306,7 +1422,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       </div>
     <div data-test="custom-time-month-grid" style={styles.monthGrid}>
       {monthOptions.map(month => {
-        const selected = isDateInRange(monthStartFromMonth(month), currentRange);
+        const selected = dateSelected(monthStartFromMonth(month));
         const capped = monthStartFromMonth(month) > getDataEndDate();
         return (
           <button
@@ -1314,6 +1430,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             type="button"
             disabled={capped}
             onClick={() => handleMonthClick(month)}
+            aria-pressed={selected}
             style={{
               ...(selected ? styles.periodActive : styles.periodBtn),
               opacity: capped ? 0.45 : 1,
@@ -1339,7 +1456,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       {quarterOptions.map(id => {
         const { year, q } = parseQuarterId(id);
         const range = getFQRange(year, q);
-        const selected = isDateInRange(range.start, currentRange);
+        const selected = dateSelected(range.start);
         const capped = range.start < minimumCalendarDate || range.start > getDataEndDate();
         return (
           <button
@@ -1347,6 +1464,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             type="button"
             disabled={capped}
             onClick={() => handleQuarterClick(id)}
+            aria-pressed={selected}
             style={{
               ...(selected ? styles.periodActive : styles.periodBtn),
               opacity: capped ? 0.45 : 1,
@@ -1370,7 +1488,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       </div>
     <div data-test="custom-time-year-grid" style={styles.yearGrid}>
       {yearOptions.map(year => {
-        const selected = isDateInRange(fmtDate(year, 1, 1), currentRange);
+        const selected = dateSelected(fmtDate(year, 1, 1));
         const capped =
           fmtDate(year, 1, 1) < minimumCalendarDate ||
           fmtDate(year, 1, 1) > getDataEndDate();
@@ -1380,6 +1498,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             type="button"
             disabled={capped}
             onClick={() => handleYearClick(year)}
+            aria-pressed={selected}
             style={{
               ...(selected ? styles.periodActive : styles.periodBtn),
               opacity: capped ? 0.45 : 1,
@@ -1439,7 +1558,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         </button>
       </div>
       <div style={{ ...styles.hint }}>
-        单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。
+        {selectionMode === 'points' ? '逐项选择财年，再次点击取消；不自动包含中间财年。' : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
       </div>
       <div data-test="custom-time-fiscal-year-grid" style={styles.yearGrid}>
         {fiscalYearOptions.map(year => {
@@ -1447,7 +1566,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             year < minimumFiscalYear ||
             year > fiscalYearStart;
           const selected =
-            activeFiscalYear !== null &&
+            selectionMode === 'points' ? dateSelected(fmtDate(year, 4, 1)) : activeFiscalYear !== null &&
             year >= activeFiscalYear &&
             year <= (activeFiscalYearEnd ?? activeFiscalYear);
           return (
@@ -1458,6 +1577,7 @@ export default function CustomTimeFilterPlugin(props: any) {
               title={getProfitFiscalYearRange(year).timeRange}
               disabled={capped}
               onClick={() => handleFiscalYearClick(year)}
+              aria-pressed={selected}
               style={{
                 ...(selected ? styles.periodActive : styles.periodBtn),
                 opacity: capped ? 0.45 : 1,
@@ -1507,6 +1627,23 @@ export default function CustomTimeFilterPlugin(props: any) {
         <button type="button" onClick={() => setCollapsed(true)} style={{ ...styles.btn, color: styles.colors.primary }}>▲ 收起</button>
       </div>
       <div style={styles.shell}>
+        {enableCustomRange && (
+          <div style={styles.grainColumn}>
+            <div role="group" aria-label="区间选择方式" style={styles.grainGrid}>
+              {(['continuous', 'points'] as const).map(mode => (
+                <button type="button" key={mode}
+                  aria-pressed={selectionMode === mode}
+                  disabled={mode === 'points' && !timeColumn}
+                  style={selectionMode === mode ? styles.grainActive : styles.grainBtn}
+                  onClick={() => changeSelectionMode(mode)}>
+                  {mode === 'continuous' ? '连续区间' : '点选区间'}
+                </button>
+              ))}
+            </div>
+            {selectionMode === 'points' && <div style={styles.hint}>比较方式：较上一选中区间；无时间轴图表显示选中区间合计。</div>}
+            {!timeColumn && <div style={styles.hint}>绑定时间列后可使用点选区间。</div>}
+          </div>
+        )}
         {enableTimeGrain && (
           <div style={styles.grainColumn}>
             <div style={styles.grainGrid}>

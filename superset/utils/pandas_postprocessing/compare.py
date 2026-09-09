@@ -24,6 +24,7 @@ from superset.constants import PandasPostprocessingCompare
 from superset.exceptions import InvalidPostProcessingError
 from superset.utils.core import TIME_COMPARISON
 from superset.utils.pandas_postprocessing.utils import validate_column_args
+from superset.utils.selected_time_ranges import PREVIOUS_SELECTED_PERIOD
 
 
 @validate_column_args("source_columns", "compare_columns")
@@ -47,6 +48,13 @@ def compare(  # pylint: disable=too-many-arguments
     :param precision: Round a change rate to a variable number of decimal places.
     :return: DataFrame with compared columns.
     :raises InvalidPostProcessingError: If the request in incorrect.
+
+    功能审计（可重写规格）：点选比较的零基期。
+    - 目的与触发：既有compare后处理收到“上一选中区间”基期列时防止比例结果无穷大。
+    - 输入与输出：沿用当前/基期列及difference、percentage、ratio；仅点选比例的零基期转NaN。
+    - 规则：先将零基期标为缺失再计算，缺失不回填零、不寻找更早基期；差额与普通比较保持原行为。
+    - 副作用与依赖：只操作本次DataFrame，沿用既有格式化的空值展示，无SQL或网络调用。
+    - 边界与验证：第一期/缺数据沿用NaN；test_selected_predecessor_zero_is_null_not_infinity验证零及正常基期。
     """
     if len(source_columns) != len(compare_columns):
         raise InvalidPostProcessingError(
@@ -64,6 +72,12 @@ def compare(  # pylint: disable=too-many-arguments
         s_df.rename(columns={s_col: "__intermediate"}, inplace=True)
         c_df = df.loc[:, [c_col]]
         c_df.rename(columns={c_col: "__intermediate"}, inplace=True)
+        # 点选相邻周期的比例比较：零基期必须为空值，不能显示无穷大或伪造零增长。
+        if (
+            PREVIOUS_SELECTED_PERIOD in str(c_col)
+            and compare_type != PandasPostprocessingCompare.DIFF
+        ):
+            c_df = c_df.mask(c_df == 0)
         if compare_type == PandasPostprocessingCompare.DIFF:
             diff_df = s_df - c_df
         elif compare_type == PandasPostprocessingCompare.PCT:

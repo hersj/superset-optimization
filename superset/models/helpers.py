@@ -120,6 +120,11 @@ from superset.utils.core import (
 from superset.utils.date_parser import get_past_or_future, normalize_time_delta
 from superset.utils.dates import datetime_to_epoch
 from superset.utils.rls import apply_rls
+from superset.utils.selected_time_ranges import (
+    parse_selected_time_ranges,
+    PREVIOUS_SELECTED_PERIOD,
+    selected_period_starts,
+)
 
 
 class ValidationResultDict(TypedDict):
@@ -1393,6 +1398,16 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         # use columns that are not metrics as join keys
         join_keys = [col for col in df.columns if col not in metric_names]
 
+        if PREVIOUS_SELECTED_PERIOD in query_object.time_offsets:
+            # 点选比较直接复用本次已带RLS的结果，不向未选日期发起额外查询。
+            return CachedTimeOffset(
+                df=self._compare_selected_periods(
+                    df, query_object, metric_names, join_keys
+                ),
+                queries=[],
+                cache_keys=[],
+            )
+
         for offset in query_object.time_offsets:
             try:
                 original_offset = offset
@@ -1635,6 +1650,82 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             )
 
         return CachedTimeOffset(df=df, queries=queries, cache_keys=cache_keys)
+
+    @staticmethod
+    def _compare_selected_periods(
+        df: pd.DataFrame,
+        query_object: QueryObject,
+        metric_names: list[str],
+        join_keys: list[str],
+    ) -> pd.DataFrame:
+        """功能审计（可重写规格）：相邻选中时间周期比较。
+        - 目的与触发：时间轴查询请求“上一选中区间”时，为既有compare后处理提供基期列。
+        - 输入：已执行权限过滤的聚合结果、同一绑定列上的点选TEMPORAL_RANGE数组及时间粒度。
+        - 输出：保留当前值，增加metric__上一选中区间列；第一期/缺数据的基期为NaN。
+        - 流程与规则：从选择而非数据行生成周期顺序；A映射到B、B映射到C，再按全部维度左连接。
+        - 副作用：仅处理当前DataFrame，不重查SQL、不访问共享缓存、不改变RLS或用户身份。
+        - 边界：缺少日期轴、粒度不支持、多个不同点选条件、截断/分页结果或重复聚合键时拒绝比较，不能跨系列串值；不自动放大查询限额。
+        - 约束：缺失B时C仍比B，不跳回A；本方法不计算除法，交给原compare操作及其缺失值规则。
+        - 验证：selected-period测试覆盖乱序、维度隔离、缺期和第一期。
+        """
+        point_filters = [
+            flt
+            for flt in query_object.filter
+            if flt.get("op") == FilterOperator.TEMPORAL_RANGE
+            and isinstance(flt.get("val"), list)
+        ]
+        if not point_filters or query_object.time_offsets != [PREVIOUS_SELECTED_PERIOD]:
+            raise QueryObjectValidationError(
+                "Selected-period comparison requires one point selection"
+            )
+        if query_object.row_offset or (
+            query_object.row_limit and len(df) >= query_object.row_limit
+        ):
+            raise QueryObjectValidationError(
+                "Selected-period comparison requires an untruncated result; "
+                "narrow the selection or raise the chart row limit"
+            )
+        try:
+            ranges = parse_selected_time_ranges(point_filters[0]["val"])
+            if any(
+                parse_selected_time_ranges(flt["val"]) != ranges
+                or flt.get("col") != point_filters[0].get("col")
+                for flt in point_filters[1:]
+            ):
+                raise ValueError("Selected-period filters conflict")
+            periods = selected_period_starts(
+                ranges, ExploreMixin.get_time_grain(query_object)
+            )
+        except ValueError as ex:
+            raise QueryObjectValidationError(str(ex)) from ex
+        index = (get_base_axis_labels(query_object.columns) or [DTTM_ALIAS])[0]
+        if index not in join_keys or not dataframe_utils.is_datetime_series(
+            df.get(index)
+        ):
+            raise QueryObjectValidationError(
+                "Selected-period comparison requires a time axis"
+            )
+        timezone = df[index].dt.tz
+        mapping = {
+            pd.Timestamp(a).tz_localize(timezone): pd.Timestamp(b).tz_localize(timezone)
+            for a, b in zip(periods, periods[1:], strict=False)
+        }
+        previous = df[join_keys + metric_names].copy()
+        previous[index] = previous[index].map(mapping)
+        previous = previous.dropna(subset=[index]).rename(
+            columns={
+                metric: TIME_COMPARISON.join([metric, PREVIOUS_SELECTED_PERIOD])
+                for metric in metric_names
+            }
+        )
+        try:
+            return df.merge(
+                previous, how="left", on=join_keys, validate="one_to_one", sort=False
+            )
+        except pd.errors.MergeError as ex:
+            raise QueryObjectValidationError(
+                "Selected-period comparison has duplicate series keys"
+            ) from ex
 
     @staticmethod
     def get_time_grain(query_object: QueryObject) -> Any | None:
@@ -2656,7 +2747,18 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         timeseries_limit_metric: Optional[Metric] = None,
         time_shift: Optional[str] = None,
     ) -> SqlaQuery:
-        """Querying any sqla table from this common interface"""
+        """Querying any sqla table from this common interface.
+
+        功能审计（可重写规格）：图表点选日期并集查询。
+        - 目的与触发：此公共SQL入口接受绑定日期列的 TEMPORAL_RANGE 数组，使所有图表仅查询选中的日期。
+        - 输入：filter.col 为数据集 is_dttm 列；val 为ISO日期半开区间数组，连续字符串沿用既有路径。
+        - 输出：每段>=start且<end，整个并集作为括号OR谓词，与其它过滤及RLS做AND；空数组生成恒假谓词。
+        - 流程：先解析列、验证模板没有移除该过滤，再严格解析所有区间，复用 get_time_filter 按数据源方言生成谓词。
+        - 边界：缺列/非日期列/非法日期/SQL模板移除/相对time_shift均拒绝，不能忽略过滤或替换为包络。
+        - 副作用与依赖：只构造既有查询；后续执行与权限/数据库生命周期不变，不增加查询或缓存对象。
+        - 不变量：任何坏项使整个请求失败；SQL空档记录与RLS范围外记录不能进入聚合。
+        - 验证：helpers_test 点选测试实际执行 SQLite 数据、RLS、空集、非法列及完整比较处理链。
+        """
         if granularity not in self.dttm_cols and granularity is not None:
             granularity = self.main_dttm_col
 
@@ -2982,9 +3084,22 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         having_clause_and: list[ColumnElement] = []
 
         for flt in filter or []:
+            is_point_range = str(
+                flt.get("op", "")
+            ).upper() == utils.FilterOperator.TEMPORAL_RANGE and isinstance(
+                flt.get("val"), list
+            )
             if not all(flt.get(s) for s in ["col", "op"]):
+                if is_point_range:
+                    raise QueryObjectValidationError(
+                        "Point ranges require a bound time column"
+                    )
                 continue
             flt_col = flt["col"]
+            if is_point_range and not isinstance(flt_col, str):
+                raise QueryObjectValidationError(
+                    "Point ranges require a named dataset time column"
+                )
             val = flt.get("val")
             flt_grain = flt.get("grain")
             op = utils.FilterOperator(flt["op"].upper())
@@ -3019,6 +3134,11 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     is_metric_filter = True
             filter_grain = flt.get("grain")
 
+            if is_point_range and (col_obj is None or not col_obj.is_dttm):
+                raise QueryObjectValidationError(
+                    "Point ranges require a dataset time column"
+                )
+
             # Check if this filter should be skipped because it was handled in
             # template. Special handling for __timestamp alias: check both the
             # alias and the actual column name
@@ -3030,6 +3150,10 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 should_skip_filter = col_obj.column_name in removed_filters
 
             if should_skip_filter:
+                if is_point_range:
+                    raise QueryObjectValidationError(
+                        "Point ranges cannot be removed by a SQL template"
+                    )
                 # Skip generating SQLA filter when the jinja template handles it.
                 continue
 
@@ -3143,6 +3267,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                             utils.FilterOperator.NOT_EQUALS,
                         }
                         and eq is None
+                        and not is_point_range
                     ):
                         raise QueryObjectValidationError(
                             _(
@@ -3183,6 +3308,35 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                             target_clause_list.append(sqla_col.not_like(eq))
                         else:
                             target_clause_list.append(sqla_col.not_ilike(eq))
+                    elif op == utils.FilterOperator.TEMPORAL_RANGE and isinstance(
+                        val, list
+                    ):
+                        # 同一个日期字段上的点选项按OR组合；外层仍AND全部父维度与RLS。
+                        if col_obj is None or time_shift:
+                            raise QueryObjectValidationError(
+                                "Point ranges require a time column "
+                                "without a relative shift"
+                            )
+                        try:
+                            selected_ranges = parse_selected_time_ranges(val)
+                        except ValueError as ex:
+                            raise QueryObjectValidationError(str(ex)) from ex
+                        target_clause_list.append(
+                            sa.or_(
+                                sa.false(),
+                                *[
+                                    self.get_time_filter(
+                                        time_col=col_obj,
+                                        start_dttm=start,
+                                        end_dttm=end,
+                                        time_grain=flt_grain,
+                                        label=sqla_col.key,
+                                        template_processor=template_processor,
+                                    )
+                                    for start, end in selected_ranges
+                                ],
+                            )
+                        )
                     elif (
                         op == utils.FilterOperator.TEMPORAL_RANGE
                         and isinstance(eq, str)

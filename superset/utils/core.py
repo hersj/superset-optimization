@@ -1018,6 +1018,9 @@ def _update_existing_temporal_filter(
     chart_has_granularity_sqla: bool,
 ) -> None:
     """Update an existing temporal filter with new subject/comparator."""
+    # 点选并集绑定自己的列；全局包络或粒度列覆盖不能改变其语义。
+    if isinstance(temporal_filter.get("comparator"), list):
+        return
     if (
         granularity_sqla_override is not None
         and temporal_filter.get("expressionType") == "SIMPLE"

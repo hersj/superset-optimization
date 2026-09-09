@@ -98,6 +98,111 @@ def test_values_for_column(database: Database) -> None:
         assert table.values_for_column("a") == [1, None]
 
 
+def test_point_union_executes_without_gaps_and_keeps_rls(database: Database):
+    from sqlalchemy import text
+
+    from superset.common.query_object import QueryObject
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+    from superset.exceptions import QueryObjectValidationError
+    from superset.utils.core import TIME_COMPARISON
+    from superset.utils.selected_time_ranges import PREVIOUS_SELECTED_PERIOD
+
+    with database.get_sqla_engine() as engine:
+        engine.execute(
+            text(
+                "CREATE TABLE point_events (event_date DATETIME, shop TEXT, profit INTEGER)"
+            )
+        )
+        engine.execute(
+            text(
+                "INSERT INTO point_events VALUES ('2025-04-27 12:00:00', 'A', 10), ('2025-06-01 12:00:00', 'A', 1000), ('2026-07-05 12:00:00', 'A', 20), ('2026-07-05 12:00:00', 'B', 900)"
+            )
+        )
+    table = SqlaTable(
+        database=database,
+        table_name="point_events",
+        columns=[
+            TableColumn(column_name="event_date", type="DATETIME", is_dttm=True),
+            TableColumn(column_name="shop", type="TEXT"),
+            TableColumn(column_name="profit", type="INTEGER"),
+        ],
+    )
+    metric = {
+        "expressionType": "SQL",
+        "sqlExpression": "SUM(profit)",
+        "label": "profit",
+    }
+    selected = ["2025-04-27 : 2025-05-04", "2026-07-05 : 2026-07-12"]
+    with patch.object(
+        table, "get_sqla_row_level_filters", return_value=[text("shop = 'A'")]
+    ):
+        for values, expected in [(selected, 30), ([], None)]:
+            query = table.get_sqla_query(
+                columns=[],
+                metrics=[metric],
+                extras={},
+                is_timeseries=False,
+                filter=[{"col": "event_date", "op": "TEMPORAL_RANGE", "val": values}],
+            )
+            with database.get_sqla_engine() as engine:
+                assert engine.execute(query.sqla_query).scalar() == expected, str(
+                    query.sqla_query.compile(compile_kwargs={"literal_binds": True})
+                )
+        for column, value in [
+            ("missing", selected),
+            ("shop", selected),
+            ("event_date", ["bad"]),
+        ]:
+            with pytest.raises(QueryObjectValidationError):
+                table.get_sqla_query(
+                    columns=[],
+                    metrics=[metric],
+                    extras={},
+                    is_timeseries=False,
+                    filter=[{"col": column, "op": "TEMPORAL_RANGE", "val": value}],
+                )
+        # 真正走 datasource 的 query → normalize → offsets → compare，不只检查拼出的SQL。
+        previous = TIME_COMPARISON.join(["profit", PREVIOUS_SELECTED_PERIOD])
+        comparison = QueryObject(
+            columns=[
+                {
+                    "sqlExpression": "event_date",
+                    "label": "event_date",
+                    "expressionType": "SQL",
+                    "columnType": "BASE_AXIS",
+                    "timeGrain": "P1D",
+                    "isColumnReference": True,
+                }
+            ],
+            metrics=[metric],
+            is_timeseries=False,
+            row_limit=100,
+            filters=[
+                {
+                    "col": "event_date",
+                    "op": "TEMPORAL_RANGE",
+                    "val": ["2025-04-27 : 2025-04-28", "2026-07-05 : 2026-07-06"],
+                }
+            ],
+            time_range="2025-04-27 : 2026-07-06",
+            time_offsets=[PREVIOUS_SELECTED_PERIOD],
+            post_processing=[
+                {
+                    "operation": "compare",
+                    "options": {
+                        "source_columns": ["profit"],
+                        "compare_columns": [previous],
+                        "compare_type": "percentage",
+                    },
+                }
+            ],
+        )
+        comparison.validate()
+        result = table.get_query_result(comparison)
+        assert result.df["profit"].tolist() == [10, 20]
+        assert result.df.iloc[1, -1] == 1
+
+
 def test_values_for_column_with_rls(database: Database) -> None:
     """
     Test the `values_for_column` method with RLS enabled.

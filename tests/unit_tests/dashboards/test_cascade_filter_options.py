@@ -18,8 +18,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from flask import g
 import pytest
+from flask import g
 from sqlalchemy import bindparam, or_, text
 from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 
@@ -39,6 +39,52 @@ class FakeRows(list):
 
 def setup_function():
     clear_cascade_filter_options_cache()
+
+
+def test_point_cascade_compiles_union_in_every_column_with_rls():
+    command = GetCascadeFilterOptionsCommand(
+        44,
+        98,
+        ["shop", "country"],
+        time_range="2025-04-27 : 2026-07-12",
+        time_ranges=["2025-04-27 : 2025-05-04", "2026-07-05 : 2026-07-12"],
+        time_column="event_date",
+    )
+    dataset = MagicMock(schema="public", table_name="point_events", catalog=None)
+    # 精确传递绑定列，不借用数据集可能不同的 main_dttm_col。
+    dataset.main_dttm_col = "wrong_date"
+    metadata = {
+        "columns": ["shop", "country"],
+        "parent_columns_by_column": {"shop": [], "country": []},
+    }
+    command._get_dashboard_filter_metadata = MagicMock(return_value=metadata)
+    statement, params = command._build_statement(dataset, None, None, ["(shop = 42)"])
+    sql = str(statement)
+    assert sql.count("range_0_since") == 2 and sql.count("range_1_since") == 2
+    assert sql.count("(shop = 42)") == 2
+    assert "wrong_date" not in sql
+    assert params["range_0_until"] == datetime(2025, 5, 4)
+    assert params["range_1_since"] == datetime(2026, 7, 5)
+
+
+@pytest.mark.parametrize(
+    "ranges,column,envelope",
+    [
+        ([], "event_date", "No filter"),
+        ({}, "event_date", "2026-01-01 : 2026-02-01"),
+        (["2026-01-01 : 2026-02-01"], "unbound", "2026-01-01 : 2026-02-01"),
+        (["2026-01-01 : 2026-02-01"], "event_date", "2025-01-01 : 2026-02-01"),
+    ],
+)
+def test_point_cascade_rejects_invalid_binding_or_envelope(ranges, column, envelope):
+    command = GetCascadeFilterOptionsCommand(
+        44, 98, ["shop"], time_ranges=ranges, time_column=column, time_range=envelope
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={"time_columns": {"event_date"}}
+    )
+    with pytest.raises(ValueError):
+        command._resolve_time_range()
 
 
 def test_activate_request_identity_keeps_session_user_without_jwt(app, mocker):
@@ -101,7 +147,10 @@ def test_valid_jwt_identity_reaches_rls_and_bypasses_shared_cache(app, mocker):
     )
     mocker.patch(
         "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
-        return_value={"columns": ["country"], "parent_columns_by_column": {"country": []}},
+        return_value={
+            "columns": ["country"],
+            "parent_columns_by_column": {"country": []},
+        },
     )
     mocker.patch(
         "superset.commands.dashboard.cascade_filter_options.verify_jwt_in_request",
@@ -140,7 +189,10 @@ def test_invalid_jwt_fails_before_cascade_query(app, mocker):
     )
     mocker.patch(
         "superset.commands.dashboard.cascade_filter_options.GetCascadeFilterOptionsCommand._get_dashboard_filter_metadata",
-        return_value={"columns": ["country"], "parent_columns_by_column": {"country": []}},
+        return_value={
+            "columns": ["country"],
+            "parent_columns_by_column": {"country": []},
+        },
     )
     jwt_error = RuntimeError("invalid JWT")
     mocker.patch(
@@ -275,7 +327,6 @@ def test_cascade_filter_options_queries_each_column_with_parent_filters(mocker):
     assert params["until"] == datetime(2027, 1, 1)
 
 
-
 def test_cascade_filter_options_does_not_apply_implicit_time_filter_when_time_range_is_missing(
     mocker,
 ):
@@ -317,9 +368,7 @@ def test_cascade_filter_options_does_not_apply_implicit_time_filter_when_time_ra
 
     sql = str(fake_engine.execute.call_args.args[0])
 
-    assert result["department_label"]["data"] == [
-        {"department_label": "大EU部"}
-    ]
+    assert result["department_label"]["data"] == [{"department_label": "大EU部"}]
     assert '"created_at" < :until' not in sql
     assert '"created_at" >= :since' not in sql
 
@@ -692,12 +741,8 @@ def test_cascade_filter_options_applies_rls_and_does_not_share_cached_options(mo
     fake_dataset.main_dttm_col = "earliest_ship_date"
     fake_dataset.get_sqla_row_level_filters.return_value = [
         or_(
-            text('"shop_id" = :shop_a').bindparams(
-                bindparam("shop_a", value=42)
-            ),
-            text('"shop_id" = :shop_b').bindparams(
-                bindparam("shop_b", value=43)
-            ),
+            text('"shop_id" = :shop_a').bindparams(bindparam("shop_a", value=42)),
+            text('"shop_id" = :shop_b').bindparams(bindparam("shop_b", value=43)),
         )
     ]
 

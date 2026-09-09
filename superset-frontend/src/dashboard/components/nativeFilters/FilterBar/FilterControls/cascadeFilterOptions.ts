@@ -60,6 +60,8 @@ type SellerfoxCascadeOptionsPayload = {
   columns: string[];
   applied_filters: Record<string, unknown[]>;
   time_range?: string;
+  time_ranges?: string[];
+  time_column?: string;
 };
 
 const requestCache = new Map<
@@ -175,8 +177,8 @@ const toArray = (value: unknown): unknown[] => {
 /*
  * 功能审计（可重写规格）：自定义时间筛选器的级联依赖请求
  * - 功能目的与触发方式：下游 filter_select 加载选项时，为同一看板中适用的 filter_custom_time 自动增加时间父级约束。
- * - 输入契约：dashboard/dataset、nativeFilters、childFilterId、按 filterId 的 selected dataMask、initializedFilters、chart→dataset 映射和既有 scope 上下文；时间范围只能是非空字符串或 TEMPORAL_RANGE.val 非空字符串。
- * - 输出契约：返回当前级联列的 applied_filters；有且只有 ready 时附带唯一 time_range，否则在请求前抛出可观察错误。
+ * - 输入契约：dashboard/dataset、nativeFilters、childFilterId、按 filterId 的 selected dataMask、initializedFilters、chart→dataset 映射和既有 scope 上下文；连续范围为非空字符串，点选 TEMPORAL_RANGE.val 为非空 ISO 半开区间数组。
+ * - 输出契约：返回当前级联列的 applied_filters；有且只有 ready 时附带唯一 time_range，点选同时附带完整 time_ranges 和绑定 time_column，否则在请求前抛出可观察错误；点选不能仅发包络。
  * - 处理流程：按 targets 与既有 chartsInScope/scope 解析源父级和 child scope；对每个父级按自身 initializedFilters 选择 selected 或 defaultDataMask；校验同一范围后生成 payload。
  * - 业务规则：targets=[] 不代表全局；scope 需要按既有 helper 解析并与 child scope 求交；未 hydrate 才能使用默认值，hydrate 后空/非法值不得恢复默认；多个有效范围必须一致；无适用父级才省略 time_range。
  * - 状态与副作用：只读 Redux 配置和 dataMask，写入本地请求缓存并发起现有 cascade API 请求；不写看板、数据库或用户偏好。
@@ -222,7 +224,7 @@ const getPayload = (
         return;
       }
       const column = filter.col;
-      if (column && columnSet.has(column)) {
+      if (typeof column === 'string' && columnSet.has(column) && 'val' in filter) {
         const values = toArray(filter.val);
         if (values.length) {
           appliedFilters[column] = values;
@@ -250,6 +252,12 @@ const getPayload = (
     columns,
     applied_filters: appliedFilters,
     ...(timeRange ? { time_range: timeRange } : {}),
+    ...(dependencyResult?.timeRanges
+      ? {
+          time_ranges: dependencyResult.timeRanges,
+          time_column: dependencyResult.timeColumn,
+        }
+      : {}),
   };
 };
 
