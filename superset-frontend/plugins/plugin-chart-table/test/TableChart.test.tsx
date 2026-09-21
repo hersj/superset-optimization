@@ -37,7 +37,117 @@ import { GenericDataType } from '@apache-superset/core/common';
 import transformProps from '../src/transformProps';
 import DateWithFormatter from '../src/utils/DateWithFormatter';
 import testData from './testData';
+import setupFormatters from 'src/setup/setupFormatters';
+import { StickyWrap } from '../src/DataTable/hooks/useSticky';
 import { ProviderWrapper } from './testHelpers';
+
+test('Chinese legacy main-column format and canonical override survive', () => {
+  setupFormatters({}, {});
+  const source = cloneDeep(testData.comparison);
+  source.rawFormData.column_config = {
+    '主项 metric_1': { d3NumberFormat: 'CN_WANYI', currencyFormat: {} },
+    '# metric_1': { d3NumberFormat: 'CN_WAN' },
+    '△ metric_1': { d3NumberFormat: 'CN_WANYI' },
+    '% metric_1': { d3NumberFormat: '.2%' },
+  };
+  const result = transformProps(source);
+  expect(
+    result.columns.find(c => c.key === 'Main metric_1')?.formatter?.(120000000),
+  ).toBe('1.2亿');
+  expect(
+    result.columns.find(c => c.key === '# metric_1')?.formatter?.(12000),
+  ).toBe('1.2万');
+  expect(
+    result.columns.find(c => c.key === '△ metric_1')?.formatter?.(-12000),
+  ).toBe('-1.2万');
+  expect(
+    result.columns.find(c => c.key === '% metric_1')?.formatter?.(0.125),
+  ).toBe('12.50%');
+  source.rawFormData.column_config['Main metric_1'] = {
+    d3NumberFormat: '.2f',
+    displayOrder: 0,
+  };
+  const canonical = transformProps(source);
+  expect(canonical.columns[0].key).toBe('Main metric_1');
+  expect(canonical.columns[0].formatter?.(12)).toBe('12.00');
+});
+
+test('header menu freezes through selected column and can unfreeze', async () => {
+  const props = transformProps(testData.basic);
+  const onFrozenColumnsChange = jest.fn();
+  render(
+    <TableChart
+      {...props}
+      onFrozenColumnsChange={onFrozenColumnsChange}
+      sticky={false}
+    />,
+  );
+  const header = document.querySelector('th[data-column-name]')!;
+  fireEvent.contextMenu(header);
+  fireEvent.click(await screen.findByText('冻结至此列'));
+  expect(onFrozenColumnsChange).toHaveBeenLastCalledWith(1);
+  fireEvent.contextMenu(header);
+  fireEvent.click(await screen.findByText('取消冻结'));
+  expect(onFrozenColumnsChange).toHaveBeenLastCalledWith(0);
+});
+
+test('frozen cell offsets include measured widths and split grouped headers', () => {
+  const setStickyState = jest.fn();
+  const { container } = render(
+    <StickyWrap
+      width={200}
+      height={200}
+      frozenColumnCount={2}
+      setStickyState={setStickyState}
+      sticky={{
+        width: 200,
+        height: 200,
+        bodyHeight: 100,
+        columnWidths: [80, 90, 100],
+        setStickyState,
+      }}
+    >
+      <table>
+        <thead>
+          <tr>
+            <th colSpan={3}>Grouped metric</th>
+          </tr>
+          <tr>
+            <th>A</th>
+            <th>B</th>
+            <th>C</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>2</td>
+            <td>3</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <th>Total</th>
+            <th>2</th>
+            <th>3</th>
+          </tr>
+        </tfoot>
+      </table>
+    </StickyWrap>,
+  );
+  const cells = container.querySelectorAll('tbody td');
+  expect(getComputedStyle(cells[0]).position).toBe('sticky');
+  expect(getComputedStyle(cells[1]).left).toBe('80px');
+  expect(getComputedStyle(cells[2]).position).not.toBe('sticky');
+  const group = container.querySelectorAll('thead tr:first-child th');
+  expect(Array.from(group).map(c => c.getAttribute('colspan'))).toEqual([
+    '2',
+    '1',
+  ]);
+  expect(getComputedStyle(container.querySelectorAll('tfoot th')[1]).left).toBe(
+    '80px',
+  );
+});
 
 const expectValidAriaLabels = (container: HTMLElement) => {
   const allCells = container.querySelectorAll('tbody td');
@@ -204,9 +314,9 @@ describe('plugin-chart-table', () => {
 
       expect(timestampColumn).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((timestampColumn?.formatter as any)?.(new Date('2026-01-15'))).toBe(
-        '2025财年',
-      );
+      expect(
+        (timestampColumn?.formatter as any)?.(new Date('2026-01-15')),
+      ).toBe('2025财年');
     });
 
     test('should process comparison columns when time_compare and comparison_type are set', () => {

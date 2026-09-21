@@ -44,7 +44,7 @@ import {
 } from 'react-table';
 import { matchSorter, rankings } from 'match-sorter';
 import { isEqual } from 'lodash';
-import { Flex, Space } from '@superset-ui/core/components';
+import { Dropdown, Flex, Space } from '@superset-ui/core/components';
 import GlobalFilter, { GlobalFilterProps } from './components/GlobalFilter';
 import SelectPageSize, {
   SelectPageSizeProps,
@@ -77,6 +77,8 @@ export interface DataTableProps<D extends object> extends TableOptions<D> {
   pageSize?: number;
   noResults?: string | ((filterString: string) => ReactNode);
   sticky?: boolean;
+  frozenColumnCount?: number;
+  onFrozenColumnsChange?: (count: number) => void;
   rowCount: number;
   wrapperRef?: MutableRefObject<HTMLDivElement>;
   onColumnOrderChange?: () => void;
@@ -115,6 +117,8 @@ export default typedMemo(function DataTable<D extends object>({
   pageSizeOptions = PAGE_SIZE_OPTIONS,
   maxPageItemCount = 9,
   sticky: doSticky,
+  frozenColumnCount = 0,
+  onFrozenColumnsChange,
   searchInput = true,
   onServerPaginationChange,
   rowCount,
@@ -235,6 +239,10 @@ export default typedMemo(function DataTable<D extends object>({
       data,
       initialState,
       getTableSize: defaultGetTableSize,
+      frozenColumnCount: Math.max(
+        0,
+        Math.min(columns.length, Math.floor(Number(frozenColumnCount) || 0)),
+      ),
       globalFilter: defaultGlobalFilter,
       sortTypes,
       autoResetSortBy: !isEqual(columnNames, previousColumnNames),
@@ -363,13 +371,40 @@ export default typedMemo(function DataTable<D extends object>({
             headerGroup.getHeaderGroupProps();
           return (
             <tr key={headerGroupKey || headerGroup.id} {...headerGroupProps}>
-              {headerGroup.headers.map(column =>
-                column.render('Header', {
-                  key: column.id,
-                  ...column.getSortByToggleProps(),
-                  onDragStart,
-                  onDrop,
-                }),
+              {headerGroup.headers.map((column, index) =>
+                onFrozenColumnsChange ? (
+                  <Dropdown
+                    key={column.id}
+                    trigger={['contextMenu']}
+                    menu={{
+                      items: [
+                        {
+                          key: 'freeze',
+                          label: '冻结至此列',
+                          onClick: () => onFrozenColumnsChange(index + 1),
+                        },
+                        {
+                          key: 'unfreeze',
+                          label: '取消冻结',
+                          onClick: () => onFrozenColumnsChange(0),
+                        },
+                      ],
+                    }}
+                  >
+                    {column.render('Header', {
+                      ...column.getSortByToggleProps(),
+                      onDragStart,
+                      onDrop,
+                    })}
+                  </Dropdown>
+                ) : (
+                  column.render('Header', {
+                    key: column.id,
+                    ...column.getSortByToggleProps(),
+                    onDragStart,
+                    onDrop,
+                  })
+                ),
               )}
             </tr>
           );

@@ -19,6 +19,7 @@
 import {
   Children,
   cloneElement,
+  isValidElement,
   useRef,
   useMemo,
   useLayoutEffect,
@@ -30,7 +31,7 @@ import {
   UIEventHandler,
 } from 'react';
 import { TableInstance, Hooks } from 'react-table';
-import { useTheme, css } from '@apache-superset/core/theme';
+import { useTheme, css, styled } from '@apache-superset/core/theme';
 import getScrollBarSize from '../utils/getScrollBarSize';
 import needScrollBar from '../utils/needScrollBar';
 import useMountedMemo from '../utils/useMountedMemo';
@@ -85,6 +86,7 @@ export interface StickyState {
 
 export interface UseStickyTableOptions {
   getTableSize?: GetTableSize;
+  frozenColumnCount?: number;
 }
 
 export interface UseStickyInstanceProps {
@@ -109,22 +111,43 @@ const mergeStyleProp = (
   },
 });
 const fixedTableLayout: CSSProperties = { tableLayout: 'fixed' };
+const StickyContainer = styled.div<{ frozenWidths: number[] }>`
+  ${({ frozenWidths, theme }) =>
+    frozenWidths.map(
+      (_, index) => css`
+        tbody tr > :nth-child(${index + 1}),
+        thead tr:last-child > :nth-child(${index + 1}),
+        tfoot tr > :nth-child(${index + 1}) {
+          position: sticky;
+          left: ${frozenWidths.slice(0, index).reduce(sum, 0)}px;
+          z-index: 2;
+          background-color: ${theme.colorBgContainer};
+          background-image: linear-gradient(
+            var(--table-cell-background, ${theme.colorBgContainer}),
+            var(--table-cell-background, ${theme.colorBgContainer})
+          );
+        }
+      `,
+    )}
+`;
 
 /**
  * An HOC for generating sticky header and fixed-height scrollable area
  */
-function StickyWrap({
+export function StickyWrap({
   sticky = {},
   width: maxWidth,
   height: maxHeight,
   children: table,
   setStickyState,
+  frozenColumnCount = 0,
 }: {
   width: number;
   height: number;
   setStickyState: SetStickyState;
   children: Table;
   sticky?: StickyState; // current sticky element sizes
+  frozenColumnCount?: number;
 }) {
   const theme = useTheme();
 
@@ -287,6 +310,51 @@ function StickyWrap({
       ? maxWidth - scrollBarSize
       : maxWidth;
 
+    const headerRows = Children.toArray(thead.props.children).filter(
+      isValidElement,
+    ) as TrWithTh[];
+    const frozenHeader = cloneElement(
+      thead,
+      {},
+      headerRows.map((row, rowIndex) => {
+        if (rowIndex === headerRows.length - 1 || !frozenColumnCount)
+          return row;
+        let start = 0;
+        const cells = Children.toArray(row.props.children).filter(
+          isValidElement,
+        ) as Th[];
+        return cloneElement(
+          row,
+          {},
+          cells.flatMap((cell, index) => {
+            const end = start + (cell.props.colSpan || 1);
+            const segments =
+              start < frozenColumnCount && end > frozenColumnCount
+                ? [
+                    [start, frozenColumnCount],
+                    [frozenColumnCount, end],
+                  ]
+                : [[start, end]];
+            start = end;
+            return segments.map(([left, right]) =>
+              cloneElement(cell, {
+                key: `${index}-${left}`,
+                colSpan: right - left,
+                style: {
+                  ...cell.props.style,
+                  ...(left < frozenColumnCount && {
+                    position: 'sticky',
+                    left: colWidths.slice(0, left).reduce(sum, 0),
+                    zIndex: 2,
+                    backgroundColor: theme.colorBgContainer,
+                  }),
+                },
+              }),
+            );
+          }),
+        );
+      }),
+    );
     headerTable = (
       <div
         key="header"
@@ -302,7 +370,7 @@ function StickyWrap({
           cloneElement(table, { role: 'presentation' }),
           mergeStyleProp(table, fixedTableLayout),
           colgroup,
-          thead,
+          frozenHeader,
         )}
         {headerTable}
       </div>
@@ -363,7 +431,8 @@ function StickyWrap({
   }
 
   return (
-    <div
+    <StickyContainer
+      frozenWidths={(columnWidths || []).slice(0, frozenColumnCount)}
       style={{
         width: maxWidth,
         height: sticky.realHeight || maxHeight,
@@ -375,7 +444,7 @@ function StickyWrap({
       {bodyTable}
       {footerTable}
       {sizerTable}
-    </div>
+    </StickyContainer>
   );
 }
 
@@ -388,6 +457,7 @@ function useInstance<D extends object>(instance: TableInstance<D>) {
     rows,
     allColumns,
     getTableSize = () => undefined,
+    frozenColumnCount = 0,
   } = instance;
 
   const setStickyState = useCallback(
@@ -427,6 +497,7 @@ function useInstance<D extends object>(instance: TableInstance<D>) {
         height={height}
         sticky={sticky}
         setStickyState={setStickyState}
+        frozenColumnCount={frozenColumnCount}
       >
         {table}
       </StickyWrap>

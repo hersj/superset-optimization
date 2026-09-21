@@ -24,6 +24,21 @@ under the License.
 
 This plugin provides Table chart for Superset.
 
+### Column display controls
+
+Customize columns supports search, visibility, drag or keyboard ordering, and
+numeric-format updates for selected columns. Display order is stored with the
+existing per-column configuration; inactive/hidden-column settings are retained.
+Comparison columns use the stable `Main <metric>` key, while legacy Chinese
+`主项 <metric>` configurations remain readable (the stable key takes precedence).
+
+Right-click a column header to freeze the visible columns through that position
+or clear the freeze. In Explore, the `frozen_columns` render-only control can be
+saved with the chart. In a dashboard the menu only changes the current table view:
+it neither issues a query nor writes shared chart configuration. Frozen header,
+body and totals offsets use measured column widths; comparison headers crossing
+the boundary are split. Numerical data, sorting and exports remain unchanged.
+
 ### Usage
 
 Configure `key`, which can be any `string`, and register the plugin. This `key` will be used to

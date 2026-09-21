@@ -159,7 +159,7 @@ const percentMetricsControl: typeof sharedControls.metrics = {
  * Generate comparison column names for a given column.
  */
 const generateComparisonColumns = (colname: string) => [
-  `${t('Main')} ${colname}`,
+  `Main ${colname}`,
   `# ${colname}`,
   `△ ${colname}`,
   `% ${colname}`,
@@ -168,9 +168,6 @@ const generateComparisonColumns = (colname: string) => [
 /**
  * Generate column types for the comparison columns.
  */
-const generateComparisonColumnTypes = (count: number) =>
-  Array(count).fill(GenericDataType.Numeric);
-
 const percentMetricCalculationControl: ControlConfig<'SelectControl'> = {
   type: 'SelectControl',
   label: t('Percentage metric calculation'),
@@ -554,8 +551,23 @@ const config: ControlPanelConfig = {
         ],
         [
           {
+            name: 'frozen_columns',
+            config: {
+              type: 'TextControl',
+              label: '冻结左侧列数',
+              default: 0,
+              renderTrigger: true,
+              isInt: true,
+              description:
+                '从左侧连续冻结；也可右键表头选择冻结至此列。0为取消冻结。',
+            },
+          },
+        ],
+        [
+          {
             name: 'column_config',
             config: {
+              enableColumnManager: true,
               type: 'ColumnConfigControl',
               label: t('Customize columns'),
               description: t('Further customize how to display each column'),
@@ -615,9 +627,7 @@ const config: ControlPanelConfig = {
                           generateComparisonColumns(colname);
                         comparisonColumns.forEach((name, idx) => {
                           updatedColnames.push(name);
-                          updatedColtypes.push(
-                            ...generateComparisonColumnTypes(4),
-                          );
+                          updatedColtypes.push(GenericDataType.Numeric);
                           timeComparisonColumnMap[name] = true;
                           if (idx === 0 && name.startsWith('Main ')) {
                             childColumnMap[name] = false;

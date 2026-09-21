@@ -665,6 +665,7 @@ export interface ServerPaginationData {
 }
 
 export type TableColumnConfig = {
+  displayOrder?: number;
   d3NumberFormat?: string;
   d3SmallNumberFormat?: string;
   d3TimeFormat?: string;

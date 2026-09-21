@@ -343,7 +343,13 @@ const getComparisonColConfig = (
   columnConfig: Record<string, TableColumnConfig>,
 ) => {
   const comparisonKey = `${label} ${parentColKey}`;
-  const comparisonColConfig = columnConfig[comparisonKey] || {};
+  // Older Chinese configurations persisted the translated label as the key.
+  const comparisonColConfig =
+    columnConfig[comparisonKey] ||
+    (label === 'Main' &&
+      (columnConfig[`主项 ${parentColKey}`] ||
+        columnConfig[`${t('Main')} ${parentColKey}`])) ||
+    {};
   return comparisonColConfig;
 };
 
@@ -500,6 +506,7 @@ const transformProps = (
     hooks: {
       onAddFilter: onChangeFilter,
       setDataMask = () => {},
+      setControlValue,
       onContextMenu,
     },
     emitCrossFilters,
@@ -713,7 +720,16 @@ const transformProps = (
       : undefined;
 
   const passedData = isUsingTimeComparison ? comparisonData || [] : data;
-  const passedColumns = isUsingTimeComparison ? comparisonColumns : columns;
+  const sourceColumns = isUsingTimeComparison ? comparisonColumns : columns;
+  const passedColumns = sourceColumns.some(
+    col => col.config?.displayOrder !== undefined,
+  )
+    ? [...sourceColumns].sort(
+        (a, b) =>
+          (a.config?.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.config?.displayOrder ?? Number.MAX_SAFE_INTEGER),
+      )
+    : sourceColumns;
 
   const basicColorFormatters =
     comparisonColorEnabled && getBasicColorFormatter(baseQuery?.data, columns);
@@ -749,6 +765,10 @@ const transformProps = (
 
   const startDateOffset = chartProps.rawFormData?.start_date_offset;
   return {
+    frozenColumns: Number(formData.frozen_columns) || 0,
+    onFrozenColumnsChange: setControlValue
+      ? (count: number) => setControlValue('frozen_columns', count)
+      : undefined,
     height,
     width,
     isRawRecords: queryMode === QueryMode.Raw,

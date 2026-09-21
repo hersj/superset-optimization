@@ -341,7 +341,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     basicColorColumnFormatters,
     hasServerPageLengthChanged,
     serverPageLength,
-    slice_id,
+    slice_id: sliceId,
   } = props;
 
   const comparisonColumns = useMemo(
@@ -369,6 +369,14 @@ export default function TableChart<D extends DataRecord = DataRecord>(
   });
   // keep track of whether column order changed, so that column widths can too
   const [columnOrderToggle, setColumnOrderToggle] = useState(false);
+  // View-only freezing must not change data masks or trigger a chart query.
+  const [frozenColumns, setFrozenColumns] = useState(props.frozenColumns || 0);
+  useEffect(
+    // Reset the user's view-only override when a saved chart setting changes.
+    // eslint-disable-next-line react-you-might-not-need-an-effect/no-derived-state
+    () => setFrozenColumns(props.frozenColumns || 0),
+    [props.frozenColumns, sliceId],
+  );
   const [showComparisonDropdown, setShowComparisonDropdown] = useState(false);
   const [selectedComparisonColumns, setSelectedComparisonColumns] = useState([
     comparisonColumns[0].key,
@@ -520,7 +528,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
 
     return columnsMeta.filter(({ label, key }) => {
       // Extract the key portion after the space, assuming the format is always "label key"
-      const keyPortion = key.substring(label.length);
+      const keyPortion = key.substring(key.indexOf(' '));
       const isKeyHidded = hideComparisonKeys.includes(keyPortion);
       const isLableMain = label === main;
 
@@ -607,7 +615,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         // Check if element's label is one of the comparison labels
         if (comparisonLabels.includes(element.label)) {
           // Extract the key portion after the space, assuming the format is always "label key"
-          const keyPortion = element.key.substring(element.label.length);
+          const keyPortion = element.key.substring(element.key.indexOf(' '));
 
           // If the key portion is not in the map, initialize it with the current index
           if (!resultMap[keyPortion]) {
@@ -739,9 +747,18 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     // Sort entries by their first column index to ensure correct left-to-right order.
     // Object.entries() maintains insertion order, but when columns are filtered,
     // the first occurrence of each metric might not match the visual column order.
-    const sortedEntries = Object.entries(groupHeaderColumns || {}).sort(
-      (a, b) => a[1][0] - b[1][0],
-    );
+    // Reordering can split a comparison group into several contiguous runs.
+    const sortedEntries = Object.entries(groupHeaderColumns || {})
+      .flatMap(([key, indices]) => {
+        const runs: number[][] = [];
+        indices.forEach(index => {
+          const last = runs[runs.length - 1];
+          if (last && last[last.length - 1] === index - 1) last.push(index);
+          else runs.push([index]);
+        });
+        return runs.map(run => [key, run] as [string, number[]]);
+      })
+      .sort((a, b) => a[1][0] - b[1][0]);
 
     sortedEntries.forEach(([key, value]) => {
       // Calculate the number of placeholder columns needed before the current header
@@ -768,7 +785,11 @@ export default function TableChart<D extends DataRecord = DataRecord>(
 
       // Add the current header <th>
       headers.push(
-        <th key={`header-${key}`} colSpan={colSpan} style={{ borderBottom: 0 }}>
+        <th
+          key={`header-${key}-${startPosition}`}
+          colSpan={colSpan}
+          style={{ borderBottom: 0 }}
+        >
           {originalLabel}
           <span
             css={css`
@@ -800,6 +821,15 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       // Update the current column index
       currentColumnIndex = startPosition + colSpan;
     });
+    for (let i = currentColumnIndex; i < visibleColumnsMeta.length; i += 1) {
+      headers.push(
+        <th
+          key={`placeholder-${i}`}
+          style={{ borderBottom: 0 }}
+          aria-label={`Header-${i}`}
+        />,
+      );
+    }
 
     return (
       <tr
@@ -1006,6 +1036,8 @@ export default function TableChart<D extends DataRecord = DataRecord>(
               ? `${theme.fontWeightBold}`
               : `${theme.fontWeightNormal}`};
             background: ${backgroundColor || undefined};
+            --table-cell-background: ${backgroundColor ||
+            theme.colorBgContainer};
             padding-left: ${column.isChildColumn
               ? `${theme.sizeUnit * 5}px`
               : `${theme.sizeUnit}px`};
@@ -1151,7 +1183,14 @@ export default function TableChart<D extends DataRecord = DataRecord>(
             </StyledCell>
           );
         },
-        Header: ({ column: col, onClick, style, onDragStart, onDrop }) => (
+        Header: ({
+          column: col,
+          onClick,
+          style,
+          onDragStart,
+          onDrop,
+          onContextMenu: onHeaderContextMenu,
+        }) => (
           <th
             id={`header-${headerId}`}
             title={
@@ -1170,6 +1209,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
             }}
             role="columnheader button"
             onClick={onClick}
+            onContextMenu={onHeaderContextMenu}
             data-column-name={col.id}
             {...(allowRearrangeColumns && {
               draggable: 'true',
@@ -1479,7 +1519,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         onColumnOrderChange={() => setColumnOrderToggle(!columnOrderToggle)}
         initialSearchText={serverPaginationData?.searchText || ''}
         sortByFromParent={serverPaginationData?.sortBy || []}
-        searchInputId={`${slice_id}-search`}
+        searchInputId={`${sliceId}-search`}
         // 9 page items in > 340px works well even for 100+ pages
         maxPageItemCount={width > 340 ? 9 : 7}
         noResults={getNoResultsMessage}
@@ -1487,6 +1527,11 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         selectPageSize={pageSize !== null && SelectPageSize}
         // not in use in Superset, but needed for unit tests
         sticky={sticky}
+        frozenColumnCount={frozenColumns}
+        onFrozenColumnsChange={count => {
+          setFrozenColumns(count);
+          props.onFrozenColumnsChange?.(count);
+        }}
         renderGroupingHeaders={
           !isEmpty(groupHeaderColumns) ? renderGroupingHeaders : undefined
         }

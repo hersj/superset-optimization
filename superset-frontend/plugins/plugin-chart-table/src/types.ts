@@ -82,6 +82,8 @@ export interface TableChartProps extends ChartProps {
 }
 
 export interface TableChartTransformedProps<D extends DataRecord = DataRecord> {
+  frozenColumns?: number;
+  onFrozenColumnsChange?: (count: number) => void;
   timeGrain?: TimeGranularity;
   height: number;
   width: number;

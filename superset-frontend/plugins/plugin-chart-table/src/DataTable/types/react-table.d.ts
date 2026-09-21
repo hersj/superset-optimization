@@ -85,6 +85,7 @@ declare module 'react-table' {
 
   // Typing from @types/react-table is incomplete
   interface TableSortByToggleProps {
+    onContextMenu?: MouseEventHandler;
     style?: CSSProperties;
     title?: string;
     onClick?: MouseEventHandler;
