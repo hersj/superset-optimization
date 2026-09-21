@@ -1510,6 +1510,89 @@ def test_get_time_filter(
         assert cache.applied_filters == applied_filters
 
 
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (["2026-01-01 : 2026-02-01", "2026-03-01 : 2026-04-01"], [(10, 30), (20, 30)]),
+        ([], []),
+        ("2026-01-01 : 2026-04-01", [(10, 1030), (1000, 1030), (20, 1030)]),
+    ],
+)
+def test_time_predicate_filters_before_window_aggregation(value, expected):
+    """市场分母必须在窗口聚合前排除未选月份，空集不得退回全历史。"""
+    from sqlalchemy import text
+
+    database = Database(database_name="isolated", sqlalchemy_uri="sqlite://")
+    table = SqlaTable(
+        table_name="market",
+        database=database,
+        columns=[TableColumn(column_name="dt", type="DATETIME", is_dttm=True)],
+    )
+    with current_app.test_request_context(
+        json={
+            "queries": [
+                {"filters": [{"col": "dt", "op": "TEMPORAL_RANGE", "val": value}]}
+            ]
+        }
+    ):
+        cache = ExtraCache(database=database, table=table)
+        predicate = cache.get_time_filter("dt", remove_filter=True, as_predicate=True)
+        with database.get_sqla_engine() as engine, engine.begin() as connection:
+            connection.execute(text("CREATE TABLE market (dt DATETIME, sales INTEGER)"))
+            connection.execute(
+                text(
+                    "INSERT INTO market VALUES "
+                    "('2026-01-01 00:00:00',10), ('2026-02-01 00:00:00',1000), "
+                    "('2026-03-01 00:00:00',20)"
+                )
+            )
+            rows = connection.execute(
+                text(
+                    "SELECT sales, SUM(sales) OVER () FROM market "  # noqa: S608
+                    f"WHERE {predicate} ORDER BY dt"
+                )
+            ).fetchall()
+        assert rows == expected
+        # 点选外层约束始终保留，模板误用也不能扩大范围。
+        assert cache.removed_filters == ([] if isinstance(value, list) else ["dt"])
+
+
+@pytest.mark.parametrize("value", [[], ["2026-01-01 : 2026-02-01"], {}, ["bad"]])
+def test_legacy_time_macro_rejects_non_scalar_without_consuming(value):
+    with current_app.test_request_context(
+        json={
+            "queries": [
+                {"filters": [{"col": "dt", "op": "TEMPORAL_RANGE", "val": value}]}
+            ]
+        }
+    ):
+        cache = ExtraCache()
+        with pytest.raises(SupersetTemplateException):
+            cache.get_time_filter("dt", remove_filter=True)
+        assert cache.removed_filters == []
+
+
+@pytest.mark.parametrize("value", [["bad"], [None], {}, ["2026-02-01 : 2026-01-01"]])
+def test_time_predicate_rejects_invalid_without_consuming(value):
+    database = Database(database_name="isolated", sqlalchemy_uri="sqlite://")
+    table = SqlaTable(
+        table_name="market",
+        database=database,
+        columns=[TableColumn(column_name="dt", type="DATETIME", is_dttm=True)],
+    )
+    with current_app.test_request_context(
+        json={
+            "queries": [
+                {"filters": [{"col": "dt", "op": "TEMPORAL_RANGE", "val": value}]}
+            ]
+        }
+    ):
+        cache = ExtraCache(database=database, table=table)
+        with pytest.raises(SupersetTemplateException):
+            cache.get_time_filter("dt", remove_filter=True, as_predicate=True)
+        assert cache.removed_filters == cache.applied_filters == []
+
+
 def test_jinja2_template_syntax_error_handling(mocker: MockerFixture) -> None:
     """Test TemplateSyntaxError handling with proper error message and 422 status"""
     from superset.errors import SupersetErrorType

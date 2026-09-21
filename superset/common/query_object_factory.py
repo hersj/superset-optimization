@@ -22,6 +22,7 @@ from superset.common.chart_data import ChartDataResultType
 from superset.common.query_object import QueryObject
 from superset.common.utils.time_range_utils import get_since_until_from_time_range
 from superset.constants import NO_TIME_RANGE
+from superset.exceptions import QueryObjectValidationError
 from superset.superset_typing import Column
 from superset.utils.core import (
     apply_max_row_limit,
@@ -31,6 +32,7 @@ from superset.utils.core import (
     get_x_axis_label,
     QueryObjectFilterClause,
 )
+from superset.utils.selected_time_ranges import parse_selected_time_ranges
 
 if TYPE_CHECKING:
     from superset.connectors.sqla.models import BaseDatasource
@@ -74,6 +76,13 @@ class QueryObjectFactory:  # pylint: disable=too-few-public-methods
         processed_time_range = self._process_time_range(
             time_range, kwargs.get("filters"), kwargs.get("columns")
         )
+        # 无顶层包络的点选请求仍须支持比较；实际区间数组留给 SQL 精确过滤。
+        if time_range is None and any(
+            flt.get("op") == FilterOperator.TEMPORAL_RANGE
+            and isinstance(flt.get("val"), list)
+            for flt in kwargs.get("filters") or []
+        ):
+            time_range = processed_time_range
         from_dttm, to_dttm = get_since_until_from_time_range(
             processed_time_range, time_shift, processed_extras
         )
@@ -149,6 +158,17 @@ class QueryObjectFactory:  # pylint: disable=too-few-public-methods
                     time_range = cast(str, match_flt[0].get("val"))
                 else:
                     time_range = cast(str, temporal_flt[0].get("val"))
+        if isinstance(time_range, list):
+            try:
+                ranges = parse_selected_time_ranges(time_range)
+            except ValueError as ex:
+                raise QueryObjectValidationError(str(ex)) from ex
+            # 仅用于时间轴/比较边界；不可替换 filters 中的精确并集，空集保留恒假条件。
+            return (
+                f"{ranges[0][0]:%Y-%m-%d} : {ranges[-1][1]:%Y-%m-%d}"
+                if ranges
+                else NO_TIME_RANGE
+            )
         return time_range
 
     # light version of the view.utils.core

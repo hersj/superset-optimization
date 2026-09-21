@@ -32,7 +32,7 @@ from jinja2 import DebugUndefined, Environment, TemplateSyntaxError, UndefinedEr
 from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy.engine.interfaces import Dialect
-from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql.expression import bindparam, false, or_
 from sqlalchemy.types import String
 
 from superset import security_manager
@@ -57,6 +57,7 @@ from superset.utils.core import (
     get_username,
     merge_extra_filters,
 )
+from superset.utils.selected_time_ranges import parse_selected_time_ranges
 
 if TYPE_CHECKING:
     from superset.connectors.sqla.models import SqlaTable
@@ -447,14 +448,15 @@ class ExtraCache:
         return filters
 
     # pylint: disable=too-many-arguments
-    def get_time_filter(
+    def get_time_filter(  # noqa: C901
         self,
         column: str | None = None,
         default: str | None = None,
         target_type: str | None = None,
         strftime: str | None = None,
         remove_filter: bool = False,
-    ) -> TimeFilter:
+        as_predicate: bool = False,
+    ) -> TimeFilter | str:
         """Get the time filter with appropriate formatting,
         either for a specific column, or whichever time range is being emitted
         from a dashboard.
@@ -474,6 +476,12 @@ class ExtraCache:
             removing it from the outer query. Useful when a filter should
             only apply to the inner query.
         :return: The corresponding time filter.
+
+        点选必须使用 as_predicate=True 返回完整 SQL 条件，在内层聚合前应用；
+        单一 from/to 无法表达区间并集，旧式调用遇到数组明确拒绝，禁止取包络。
+        谓词模式只接受数据集真实时间列，沿用 SQLAlchemy 引用和日期字面量；
+        空数组恒假，非法输入失败。点选即使 remove_filter=True 也保留外层
+        精确约束作为安全兜底，不允许模板误用扩大结果。连续模式保持原有语义。
         """
         # pylint: disable=import-outside-toplevel
         from superset.views.utils import get_form_data
@@ -482,6 +490,7 @@ class ExtraCache:
         convert_legacy_filters_into_adhoc(form_data)
         merge_extra_filters(form_data)
         time_range = form_data.get("time_range")
+        flt = None
         if column:
             flt: AdhocFilterClause | None = next(
                 (
@@ -493,20 +502,90 @@ class ExtraCache:
                 None,
             )
             if flt:
-                if remove_filter:
-                    if column not in self.removed_filters:
-                        self.removed_filters.append(column)
-                if column not in self.applied_filters:
-                    self.applied_filters.append(column)
-
-                time_range = cast(str, flt["comparator"])
+                time_range = flt["comparator"]
                 if not target_type and self.table:
                     target_type = self.table.columns_types.get(column)
 
-        time_range = time_range or NO_TIME_RANGE
+        is_point_range = isinstance(time_range, list)
+        if is_point_range and not as_predicate:
+            raise SupersetTemplateException(
+                "Selected time ranges require get_time_filter(..., as_predicate=True)"
+            )
+        if (
+            not is_point_range
+            and time_range is not None
+            and not isinstance(time_range, str)
+        ):
+            raise SupersetTemplateException(
+                "Time range must be a string or selected ranges"
+            )
+        if not is_point_range:
+            time_range = time_range or NO_TIME_RANGE
         if time_range == NO_TIME_RANGE and default:
             time_range = default
+        if as_predicate:
+            time_col = (
+                next(
+                    (
+                        col
+                        for col in self.table.columns
+                        if col.column_name == column and col.is_dttm
+                    ),
+                    None,
+                )
+                if self.table
+                else None
+            )
+            if (
+                time_col is None
+                or self.database is None
+                or strftime
+                or target_type not in (None, self.table.columns_types.get(column))
+            ):
+                raise SupersetTemplateException(
+                    "Time predicate requires a dataset time column "
+                    "without format/type overrides"
+                )
+            try:
+                ranges = (
+                    parse_selected_time_ranges(time_range)
+                    if is_point_range
+                    else [get_since_until_from_time_range(time_range)]
+                )
+            except ValueError as ex:
+                raise SupersetTemplateException(str(ex)) from ex
+            predicate = or_(
+                false(),
+                *(
+                    self.table.get_time_filter(time_col, start, end)
+                    for start, end in ranges
+                ),
+            )
+            dialect = self.dialect or self.database.get_dialect()
+            sql = str(
+                predicate.compile(
+                    dialect=dialect, compile_kwargs={"literal_binds": True}
+                )
+            )
+            if dialect.identifier_preparer._double_percents:
+                sql = sql.replace("%%", "%")
+            if flt:
+                if column not in self.applied_filters:
+                    self.applied_filters.append(column)
+                if (
+                    remove_filter
+                    and not is_point_range
+                    and column not in self.removed_filters
+                ):
+                    self.removed_filters.append(column)
+            return f"({sql})"
+
         from_expr, to_expr = get_since_until_from_time_range(time_range)
+        if flt:
+            if remove_filter and column not in self.removed_filters:
+                self.removed_filters.append(column)
+            if column not in self.applied_filters:
+                self.applied_filters.append(column)
 
         def _format_dttm(dttm: datetime | None) -> str | None:
             if strftime and dttm:

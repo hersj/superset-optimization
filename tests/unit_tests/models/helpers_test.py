@@ -204,6 +204,7 @@ def test_point_union_executes_without_gaps_and_keeps_rls(database: Database):
 
 
 @pytest.mark.parametrize("legacy_granularity", [None, "event_date"])
+@pytest.mark.parametrize("envelope", [None, "2026-09-01 : 2026-09-04"])
 @pytest.mark.parametrize(
     "selected",
     [
@@ -212,7 +213,7 @@ def test_point_union_executes_without_gaps_and_keeps_rls(database: Database):
     ],
 )
 def test_point_ranges_survive_query_context_factory(
-    database, legacy_granularity, selected
+    database, legacy_granularity, envelope, selected
 ):
     """复现线上入口：工厂处理后执行 SQL，不得混入中间日期或越过 RLS。"""
     from sqlalchemy import text
@@ -251,7 +252,7 @@ def test_point_ranges_survive_query_context_factory(
             {"expressionType": "SQL", "sqlExpression": "SUM(profit)", "label": "profit"}
         ],
         granularity=legacy_granularity,
-        time_range="2026-09-01 : 2026-09-04",
+        time_range=envelope,
         filters=[{"col": "event_date", "op": "TEMPORAL_RANGE", "val": selected}],
     )
     with (
