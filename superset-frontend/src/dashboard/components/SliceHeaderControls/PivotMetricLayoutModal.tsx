@@ -269,6 +269,8 @@ export default function PivotMetricLayoutModal({
   const [orderedMetricIds, setOrderedMetricIds] = useState<string[]>([]);
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
   const [frozenColumnCount, setFrozenColumnCount] = useState(0);
+  const [customFreeze, setCustomFreeze] = useState(false);
+  const [syncDashboard, setSyncDashboard] = useState(false);
   const [search, setSearch] = useState('');
   const [saveSlot, setSaveSlot] = useState<1 | 2 | 3 | null>(null);
   const [templateName, setTemplateName] = useState('');
@@ -284,6 +286,8 @@ export default function PivotMetricLayoutModal({
     setOrderedMetricIds(reconciled.orderedMetricIds);
     setHiddenMetricIds(reconciled.hiddenMetricIds);
     setFrozenColumnCount(initialLayout?.frozen_column_count || 0);
+    setCustomFreeze((initialLayout?.frozen_column_count || 0) > 3);
+    setSyncDashboard(Boolean(dashboardSharedLayout));
     setSearch('');
     const selected = templates.find(template => template.slot === activeSlot);
     const nextSlot =
@@ -388,6 +392,14 @@ export default function PivotMetricLayoutModal({
   };
 
   const handleSave = async () => {
+    if (syncDashboard) {
+      await handleSaveDashboardLayout();
+      return;
+    }
+    if (dashboardSharedLayout) {
+      await handleDisableDashboardLayout();
+      return;
+    }
     if (!saveSlot || !canPersistTemplate) {
       return;
     }
@@ -483,16 +495,20 @@ export default function PivotMetricLayoutModal({
           <Button onClick={handleDiscard} disabled={isSaving}>
             {t('Cancel')}
           </Button>
-          {!dashboardSharedLayout && (
-            <Button
-              buttonStyle="primary"
-              onClick={handleSave}
-              loading={isSaving}
-              disabled={!saveSlot || !canPersistTemplate}
-            >
-              {t('Save')}
-            </Button>
-          )}
+          <Button
+            buttonStyle="primary"
+            onClick={handleSave}
+            loading={isSaving}
+            disabled={
+              syncDashboard
+                ? !canPersistTemplate || !onSaveDashboardLayout
+                : dashboardSharedLayout
+                  ? !onDisableDashboardLayout
+                  : !saveSlot || !canPersistTemplate
+            }
+          >
+            {t('Save')}
+          </Button>
         </>
       }
     >
@@ -501,24 +517,55 @@ export default function PivotMetricLayoutModal({
           '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿，保存个人模板或应用到本看板后才会生效。',
         )}
       </Description>
-      <label>
+      <div>
         {t('冻结左侧列数')}
-        <Input
-          type="number"
-          min={0}
-          max={2000}
-          value={frozenColumnCount}
-          onChange={event =>
-            setFrozenColumnCount(
-              Math.max(
-                0,
-                Math.min(2000, Math.floor(Number(event.target.value) || 0)),
-              ),
-            )
-          }
-          aria-label={t('冻结左侧列数')}
-        />
-      </label>
+        <div role="group" aria-label={t('冻结快捷选择')}>
+          {[0, 1, 2, 3].map(count => (
+            <Button
+              key={count}
+              buttonStyle={
+                !customFreeze && frozenColumnCount === count
+                  ? 'primary'
+                  : 'tertiary'
+              }
+              aria-pressed={!customFreeze && frozenColumnCount === count}
+              disabled={isSaving}
+              onClick={() => {
+                setFrozenColumnCount(count);
+                setCustomFreeze(false);
+              }}
+            >
+              {count === 0 ? t('不冻结') : t('%(count)s列', { count })}
+            </Button>
+          ))}
+          <Button
+            buttonStyle={customFreeze ? 'primary' : 'tertiary'}
+            aria-pressed={customFreeze}
+            disabled={isSaving}
+            onClick={() => setCustomFreeze(true)}
+          >
+            {t('自定义')}
+          </Button>
+        </div>
+        {customFreeze && (
+          <Input
+            type="number"
+            min={0}
+            max={2000}
+            value={frozenColumnCount}
+            onChange={event =>
+              setFrozenColumnCount(
+                Math.max(
+                  0,
+                  Math.min(2000, Math.floor(Number(event.target.value) || 0)),
+                ),
+              )
+            }
+            aria-label={t('冻结左侧列数')}
+            disabled={isSaving}
+          />
+        )}
+      </div>
       <Description>
         {t('从最左侧开始冻结，0 表示不冻结；包含日期、部门等行维度列。')}
       </Description>
@@ -531,25 +578,23 @@ export default function PivotMetricLayoutModal({
       )}
       <TemplateSection>
         <Description>
-          <strong>{t('本看板个人共享布局')}</strong>
+          <Checkbox
+            checked={syncDashboard}
+            disabled={isSaving}
+            onChange={event => setSyncDashboard(event.target.checked)}
+          >
+            {t('同步本看板透视图')}
+          </Checkbox>
           <br />
           {t(
-            '只对你生效，应用到本看板的所有透视图；其他图表独有的指标列仍显示。',
+            '开启后，修改任意透视图并保存，自动同步本看板其他透视图；仅对你生效，各图独有指标保留。',
+          )}
+          {dashboardSharedLayout && !syncDashboard && (
+            <div>{t('保存后恢复各图原来的个人布局，不删除模板。')}</div>
           )}
         </Description>
-        <Button
-          onClick={handleSaveDashboardLayout}
-          disabled={isSaving || !canPersistTemplate || !onSaveDashboardLayout}
-        >
-          {dashboardSharedLayout ? t('更新看板共享布局') : t('应用到本看板')}
-        </Button>
-        {dashboardSharedLayout && (
-          <Button onClick={handleDisableDashboardLayout} disabled={isSaving}>
-            {t('停用共享，恢复各图表布局')}
-          </Button>
-        )}
       </TemplateSection>
-      {!dashboardSharedLayout && (
+      {!syncDashboard && !dashboardSharedLayout && (
         <TemplateSection>
           <Description>
             <strong>{t('个人模板')}</strong>
