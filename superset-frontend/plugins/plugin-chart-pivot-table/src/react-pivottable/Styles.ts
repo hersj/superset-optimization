@@ -37,6 +37,8 @@ export const Styles = styled.div<{ isDashboardEditMode: boolean }>`
       background-color: ${theme.colorBgBase};
       position: ${isDashboardEditMode ? 'inherit' : 'sticky'};
       top: 0;
+      /* The entire sticky header must paint above frozen body cells (z=2). */
+      z-index: 3;
     }
 
     table tbody tr {
