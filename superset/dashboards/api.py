@@ -263,6 +263,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "get_chart_layouts",
         "put_chart_layout",
         "delete_chart_layout",
+        "pivot_layout",
         "get_chart_templates",
         "put_chart_template",
         "rename_chart_template",

@@ -50,6 +50,7 @@ def test_dashboard_pivot_layout_validates_freeze_count_and_read_permission():
     from superset.dashboards.api import DashboardRestApi
     from superset.dashboards.schemas import DashboardChartLayoutSchema
 
+    assert "pivot_layout" in DashboardRestApi.include_route_methods
     assert DashboardRestApi.pivot_layout._permission_name == "read"
     with pytest.raises(ValidationError):
         DashboardChartLayoutSchema().load(
