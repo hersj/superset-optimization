@@ -44,6 +44,8 @@ import { getUrlParam } from 'src/utils/urlUtils';
 import { setDatasetsStatus } from 'src/dashboard/actions/dashboardState';
 import {
   getDashboardChartTemplates,
+  getDashboardPivotLayout,
+  setDashboardPivotLayout,
   setPersonalChartTemplates,
 } from 'src/dashboard/actions/personalChartLayout';
 import {
@@ -225,12 +227,21 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
 
     if (!id || !userId) {
       dispatch(setPersonalChartTemplates({}));
+      dispatch(setDashboardPivotLayout(null));
       return () => {
         isMounted = false;
       };
     }
 
     dispatch(setPersonalChartTemplates({}));
+    dispatch(setDashboardPivotLayout(null));
+    getDashboardPivotLayout(id)
+      .then(layout => {
+        if (isMounted) dispatch(setDashboardPivotLayout(layout));
+      })
+      .catch(() => {
+        if (isMounted) dispatch(setDashboardPivotLayout(null));
+      });
     getDashboardChartTemplates(id)
       .then(templates => {
         if (isMounted) {

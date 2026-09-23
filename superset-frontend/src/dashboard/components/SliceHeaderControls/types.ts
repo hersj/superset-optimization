@@ -65,6 +65,7 @@ export interface SliceHeaderControlsProps {
 
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
+  dashboardPivotLayout?: PersonalChartLayout | null;
   personalChartTemplates?: PersonalChartTemplate[];
   personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
   onApplyPersonalChartLayout?: (
@@ -77,6 +78,10 @@ export interface SliceHeaderControlsProps {
     layout: PersonalChartLayout,
   ) => Promise<void> | void;
   onSetPersonalChartTemplateDefault?: (slot: 1 | 2 | 3) => Promise<void> | void;
+  onSaveDashboardPivotLayout?: (
+    layout: PersonalChartLayout,
+  ) => Promise<void> | void;
+  onDisableDashboardPivotLayout?: () => Promise<void> | void;
   onDeletePersonalChartTemplate?: (slot: 1 | 2 | 3) => Promise<void> | void;
   isSavingPersonalChartLayout?: boolean;
 }

@@ -67,13 +67,17 @@ import {
   updateChartState,
 } from '../../../actions/dashboardState';
 import {
+  deleteDashboardPivotLayout,
+  mergeDashboardPivotLayout,
   deleteDashboardChartTemplate,
   removePersonalChartTemplate,
   removePersonalChartLayout,
   setPersonalChartTemplateActiveSlot,
+  setDashboardPivotLayout,
   type PersonalChartLayout,
   type PersonalChartTemplate,
   putDashboardChartTemplate,
+  putDashboardPivotLayout,
   setDashboardChartTemplateDefault,
   upsertPersonalChartLayout,
   upsertPersonalChartTemplate,
@@ -491,6 +495,9 @@ const Chart = (props: ChartProps) => {
   const personalChartLayout = useSelector(
     (state: RootState) => state.dashboardState.personalChartLayouts?.[props.id],
   ) as PersonalChartLayout | undefined;
+  const dashboardPivotLayout = useSelector(
+    (state: RootState) => state.dashboardState.dashboardPivotLayout,
+  ) as PersonalChartLayout | null | undefined;
   const personalChartTemplates = useSelector(
     (state: RootState) =>
       state.dashboardState.personalChartTemplates?.[props.id],
@@ -663,15 +670,20 @@ const Chart = (props: ChartProps) => {
       slice.viz_type,
     );
 
-    return personalChartLayout
+    const activeLayout = dashboardPivotLayout || personalChartLayout;
+    return activeLayout && slice.viz_type === 'pivot_table_v2'
       ? {
           ...ownStateWithChartState,
-          pivot_table_metric_layout: personalChartLayout,
+          pivot_table_metric_layout: activeLayout,
+          pivot_table_metric_layout_scope: dashboardPivotLayout
+            ? 'dashboard'
+            : 'chart',
         }
       : ownStateWithChartState;
   }, [
     chartState,
     dataMask,
+    dashboardPivotLayout,
     formData,
     personalChartLayout,
     props.id,
@@ -820,6 +832,7 @@ const Chart = (props: ChartProps) => {
       return {
         ordered_metric_ids: reconciled.orderedMetricIds,
         hidden_metric_ids: reconciled.hiddenMetricIds,
+        frozen_column_count: layout.frozen_column_count || 0,
         version: PIVOT_METRIC_LAYOUT_VERSION,
       };
     },
@@ -870,6 +883,47 @@ const Chart = (props: ChartProps) => {
       props.id,
     ],
   );
+
+  const saveDashboardSharedLayout = useCallback(
+    async (layout: PersonalChartLayout) => {
+      setIsSavingPersonalChartLayout(true);
+      try {
+        const normalized = mergeDashboardPivotLayout(
+          dashboardPivotLayout,
+          normalizeTemplateLayout(layout),
+        );
+        await putDashboardPivotLayout(props.dashboardId, normalized);
+        dispatch(setDashboardPivotLayout(normalized));
+        boundActionCreators.addSuccessToast(t('本看板个人列布局已启用'));
+      } catch {
+        boundActionCreators.addDangerToast(t('本看板个人列布局保存失败'));
+        throw new Error('本看板个人列布局保存失败');
+      } finally {
+        setIsSavingPersonalChartLayout(false);
+      }
+    },
+    [
+      boundActionCreators,
+      dashboardPivotLayout,
+      dispatch,
+      normalizeTemplateLayout,
+      props.dashboardId,
+    ],
+  );
+
+  const disableDashboardSharedLayout = useCallback(async () => {
+    setIsSavingPersonalChartLayout(true);
+    try {
+      await deleteDashboardPivotLayout(props.dashboardId);
+      dispatch(setDashboardPivotLayout(null));
+      boundActionCreators.addSuccessToast(t('已恢复各图表的个人列布局'));
+    } catch {
+      boundActionCreators.addDangerToast(t('停用本看板个人列布局失败'));
+      throw new Error('停用本看板个人列布局失败');
+    } finally {
+      setIsSavingPersonalChartLayout(false);
+    }
+  }, [boundActionCreators, dispatch, props.dashboardId]);
 
   const setPersonalChartTemplateDefault = useCallback(
     async (slot: 1 | 2 | 3) => {
@@ -979,11 +1033,14 @@ const Chart = (props: ChartProps) => {
         width={width}
         height={getHeaderHeight()}
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
-        personalChartLayout={personalChartLayout}
+        personalChartLayout={dashboardPivotLayout || personalChartLayout}
+        dashboardPivotLayout={dashboardPivotLayout}
         personalChartTemplates={personalChartTemplates}
         personalChartTemplateActiveSlot={personalChartTemplateActiveSlot}
         onApplyPersonalChartLayout={applyPersonalChartLayout}
         onSavePersonalChartTemplate={savePersonalChartTemplate}
+        onSaveDashboardPivotLayout={saveDashboardSharedLayout}
+        onDisableDashboardPivotLayout={disableDashboardSharedLayout}
         onSetPersonalChartTemplateDefault={setPersonalChartTemplateDefault}
         onDeletePersonalChartTemplate={deletePersonalChartTemplate}
         isSavingPersonalChartLayout={isSavingPersonalChartLayout}

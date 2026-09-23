@@ -21,6 +21,7 @@ import { SupersetClient } from '@superset-ui/core';
 export interface PersonalChartLayout {
   ordered_metric_ids: string[];
   hidden_metric_ids: string[];
+  frozen_column_count?: number;
   version: number;
 }
 
@@ -46,6 +47,26 @@ export function isNotFoundError(error: unknown): boolean {
 export type PersonalChartLayoutsMap = Record<string, PersonalChartLayout>;
 export type PersonalChartTemplatesMap = Record<string, PersonalChartTemplate[]>;
 
+/** Editing shared columns from one pivot must preserve columns belonging only to another. */
+export function mergeDashboardPivotLayout(
+  current: PersonalChartLayout | null | undefined,
+  edited: PersonalChartLayout,
+): PersonalChartLayout {
+  if (!current) return edited;
+  const present = new Set(edited.ordered_metric_ids);
+  return {
+    ...edited,
+    ordered_metric_ids: [
+      ...edited.ordered_metric_ids,
+      ...current.ordered_metric_ids.filter(id => !present.has(id)),
+    ],
+    hidden_metric_ids: [
+      ...edited.hidden_metric_ids,
+      ...current.hidden_metric_ids.filter(id => !present.has(id)),
+    ],
+  };
+}
+
 export const SET_PERSONAL_CHART_LAYOUTS = 'SET_PERSONAL_CHART_LAYOUTS';
 export const UPSERT_PERSONAL_CHART_LAYOUT = 'UPSERT_PERSONAL_CHART_LAYOUT';
 export const REMOVE_PERSONAL_CHART_LAYOUT = 'REMOVE_PERSONAL_CHART_LAYOUT';
@@ -54,6 +75,38 @@ export const UPSERT_PERSONAL_CHART_TEMPLATE = 'UPSERT_PERSONAL_CHART_TEMPLATE';
 export const REMOVE_PERSONAL_CHART_TEMPLATE = 'REMOVE_PERSONAL_CHART_TEMPLATE';
 export const SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT =
   'SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT';
+export const SET_DASHBOARD_PIVOT_LAYOUT = 'SET_DASHBOARD_PIVOT_LAYOUT';
+
+export function setDashboardPivotLayout(layout: PersonalChartLayout | null) {
+  return { type: SET_DASHBOARD_PIVOT_LAYOUT, layout };
+}
+
+export async function getDashboardPivotLayout(
+  dashboardId: number,
+): Promise<PersonalChartLayout | null> {
+  const { json } = await SupersetClient.get({
+    endpoint: `/api/v1/dashboard/${dashboardId}/pivot_layout`,
+  });
+  return (json?.result as PersonalChartLayout) || null;
+}
+
+export async function putDashboardPivotLayout(
+  dashboardId: number,
+  layout: PersonalChartLayout,
+): Promise<void> {
+  await SupersetClient.put({
+    endpoint: `/api/v1/dashboard/${dashboardId}/pivot_layout`,
+    jsonPayload: layout,
+  });
+}
+
+export async function deleteDashboardPivotLayout(
+  dashboardId: number,
+): Promise<void> {
+  await SupersetClient.delete({
+    endpoint: `/api/v1/dashboard/${dashboardId}/pivot_layout`,
+  });
+}
 
 export function setPersonalChartLayouts(layouts: PersonalChartLayoutsMap) {
   return {

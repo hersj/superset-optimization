@@ -20,11 +20,64 @@
 import { SupersetClient } from '@superset-ui/core';
 
 import {
+  deleteDashboardPivotLayout,
+  getDashboardPivotLayout,
   getDashboardChartTemplates,
   isNotFoundError,
+  mergeDashboardPivotLayout,
   putDashboardChartTemplate,
+  putDashboardPivotLayout,
   setDashboardChartTemplateDefault,
 } from './personalChartLayout';
+
+test("editing a dashboard layout preserves another pivot chart's hidden metrics", () => {
+  expect(
+    mergeDashboardPivotLayout(
+      {
+        version: 1,
+        ordered_metric_ids: ['sales', 'profit'],
+        hidden_metric_ids: ['profit'],
+      },
+      {
+        version: 1,
+        ordered_metric_ids: ['sales', 'cost'],
+        hidden_metric_ids: ['cost'],
+        frozen_column_count: 2,
+      },
+    ),
+  ).toEqual({
+    version: 1,
+    ordered_metric_ids: ['sales', 'cost', 'profit'],
+    hidden_metric_ids: ['cost', 'profit'],
+    frozen_column_count: 2,
+  });
+});
+
+test('dashboard pivot layout uses one user-scoped dashboard endpoint', async () => {
+  const layout = {
+    ordered_metric_ids: ['sales'],
+    hidden_metric_ids: [],
+    frozen_column_count: 2,
+    version: 1,
+  };
+  const get = jest
+    .spyOn(SupersetClient, 'get')
+    .mockResolvedValue({ json: { result: layout } } as never);
+  const put = jest
+    .spyOn(SupersetClient, 'put')
+    .mockResolvedValue({ json: { result: layout } } as never);
+  const remove = jest
+    .spyOn(SupersetClient, 'delete')
+    .mockResolvedValue({ json: { result: null } } as never);
+
+  await expect(getDashboardPivotLayout(88)).resolves.toEqual(layout);
+  await putDashboardPivotLayout(88, layout);
+  await deleteDashboardPivotLayout(88);
+  const endpoint = '/api/v1/dashboard/88/pivot_layout';
+  expect(get).toHaveBeenCalledWith({ endpoint });
+  expect(put).toHaveBeenCalledWith({ endpoint, jsonPayload: layout });
+  expect(remove).toHaveBeenCalledWith({ endpoint });
+});
 
 test('recognizes SupersetClient not-found errors', () => {
   expect(isNotFoundError({ status: 404 })).toBe(true);

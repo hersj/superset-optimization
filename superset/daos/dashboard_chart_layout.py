@@ -6,7 +6,7 @@ from sqlalchemy.orm import lazyload
 
 from superset.daos.base import BaseDAO
 from superset.extensions import db
-from superset.models.dashboard_chart_layout import DashboardChartLayout
+from superset.models.dashboard_chart_layout import DashboardChartLayout, DashboardPivotLayout
 from superset.utils import json
 
 
@@ -178,3 +178,29 @@ class DashboardChartLayoutDAO(BaseDAO[DashboardChartLayout]):
         target.is_default = True
         db.session.flush()
         return target
+
+
+class DashboardPivotLayoutDAO(BaseDAO[DashboardPivotLayout]):
+    @staticmethod
+    def find(user_id: int, dashboard_id: int) -> DashboardPivotLayout | None:
+        return (
+            db.session.query(DashboardPivotLayout)
+            .filter_by(user_id=user_id, dashboard_id=dashboard_id)
+            .one_or_none()
+        )
+
+    @staticmethod
+    def upsert(user_id: int, dashboard_id: int, layout: dict[str, Any]) -> None:
+        row = DashboardPivotLayoutDAO.find(user_id, dashboard_id)
+        if row is None:
+            row = DashboardPivotLayout(user_id=user_id, dashboard_id=dashboard_id)
+            db.session.add(row)
+        row.layout_json = json.dumps(layout)
+        db.session.flush()
+
+    @staticmethod
+    def delete(user_id: int, dashboard_id: int) -> None:
+        row = DashboardPivotLayoutDAO.find(user_id, dashboard_id)
+        if row is not None:
+            db.session.delete(row)
+            db.session.flush()

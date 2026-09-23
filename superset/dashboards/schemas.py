@@ -18,7 +18,7 @@ import re
 from typing import Any, Mapping, Union
 
 from marshmallow import fields, post_dump, post_load, pre_load, Schema, validates_schema
-from marshmallow.validate import Length, ValidationError
+from marshmallow.validate import Length, Range, ValidationError
 
 from superset import security_manager
 from superset.tags.models import TagType
@@ -474,6 +474,9 @@ class DashboardChartLayoutSchema(Schema):
     )
     hidden_metric_ids = fields.List(
         fields.String(validate=Length(min=1, max=255)), allow_none=False, required=True
+    )
+    frozen_column_count = fields.Integer(
+        validate=Range(min=0, max=2000), allow_none=False, load_default=0
     )
     version = fields.Integer(allow_none=False, required=True)
 

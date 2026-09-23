@@ -7,9 +7,42 @@ from superset.utils import json
 from superset.commands.base import BaseCommand
 from superset.commands.dashboard.exceptions import DashboardAccessDeniedError
 from superset.daos.dashboard import DashboardDAO
-from superset.daos.dashboard_chart_layout import DashboardChartLayoutDAO
+from superset.daos.dashboard_chart_layout import DashboardChartLayoutDAO, DashboardPivotLayoutDAO
 from superset.utils.core import get_user_id
 from superset.utils.decorators import transaction
+
+
+class DashboardPivotLayoutCommand(BaseCommand):
+    """Read or change only the current user's shared layout for an accessible dashboard."""
+
+    def __init__(self, dashboard_id: int):
+        self.dashboard_id = dashboard_id
+
+    def validate(self) -> None:
+        pass
+
+    def scope(self) -> tuple[int, int]:
+        dashboard = DashboardDAO.get_by_id_or_slug(self.dashboard_id)
+        user_id = get_user_id()
+        if user_id is None:
+            raise DashboardAccessDeniedError()
+        return user_id, dashboard.id
+
+    def run(self) -> dict[str, Any] | None:
+        user_id, dashboard_id = self.scope()
+        row = DashboardPivotLayoutDAO.find(user_id, dashboard_id)
+        return json.loads(row.layout_json) if row else None
+
+    @transaction()
+    def put(self, layout: dict[str, Any]) -> dict[str, Any]:
+        user_id, dashboard_id = self.scope()
+        DashboardPivotLayoutDAO.upsert(user_id, dashboard_id, layout)
+        return layout
+
+    @transaction()
+    def delete(self) -> None:
+        user_id, dashboard_id = self.scope()
+        DashboardPivotLayoutDAO.delete(user_id, dashboard_id)
 
 
 class GetDashboardChartLayoutsCommand(BaseCommand):

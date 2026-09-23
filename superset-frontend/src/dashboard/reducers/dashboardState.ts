@@ -71,6 +71,7 @@ import {
   REMOVE_PERSONAL_CHART_LAYOUT,
   REMOVE_PERSONAL_CHART_TEMPLATE,
   SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT,
+  SET_DASHBOARD_PIVOT_LAYOUT,
   SET_PERSONAL_CHART_LAYOUTS,
   SET_PERSONAL_CHART_TEMPLATES,
   UPSERT_PERSONAL_CHART_LAYOUT,
@@ -126,6 +127,9 @@ interface DashboardStateShape {
     import('../actions/personalChartLayout').PersonalChartTemplate[]
   >;
   personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
+  dashboardPivotLayout?:
+    | import('../actions/personalChartLayout').PersonalChartLayout
+    | null;
   css?: string;
   preselectNativeFilters?: JsonObject;
   autoRefreshStatus?: AutoRefreshStatus;
@@ -503,6 +507,9 @@ export default function dashboardStateReducer(
         ...state,
         personalChartLayouts: action.layouts || {},
       };
+    },
+    [SET_DASHBOARD_PIVOT_LAYOUT](): DashboardStateShape {
+      return { ...state, dashboardPivotLayout: action.layout || null };
     },
     [UPSERT_PERSONAL_CHART_LAYOUT](): DashboardStateShape {
       return {

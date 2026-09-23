@@ -96,6 +96,17 @@ describe('personal column template metric identities', () => {
     expect(result.hiddenMetricIds).toEqual(['new_cost']);
   });
 
+  it("keeps another pivot chart's unmatched metrics visible for a dashboard layout", () => {
+    const result = reconcileMetricLayout(
+      buildMetricDescriptors(['sales', 'new_cost'] as any),
+      { version: 1, ordered_metric_ids: ['sales'], hidden_metric_ids: [] },
+      { includeMissingMetricsVisible: true },
+    );
+
+    expect(result.orderedMetricIds).toEqual(['sales', 'new_cost']);
+    expect(result.hiddenMetricIds).toEqual([]);
+  });
+
   test.each([
     ['first', ['sales', 'profit', 'cost'], 'cost', ['cost', 'sales', 'profit']],
     ['up', ['sales', 'profit', 'cost'], 'profit', ['profit', 'sales', 'cost']],

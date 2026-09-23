@@ -177,6 +177,7 @@ export type DashboardState = {
   personalChartLayouts?: Record<string, PersonalChartLayout>;
   personalChartTemplates?: Record<string, PersonalChartTemplate[]>;
   personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
+  dashboardPivotLayout?: PersonalChartLayout | null;
   dashboardChartControls?: DashboardChartControls;
 };
 export type DashboardInfo = {

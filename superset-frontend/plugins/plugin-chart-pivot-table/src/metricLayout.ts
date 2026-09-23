@@ -29,6 +29,7 @@ export interface PivotMetricDescriptor {
 export interface PivotMetricLayout {
   ordered_metric_ids: string[];
   hidden_metric_ids: string[];
+  frozen_column_count?: number;
   version: number;
 }
 
@@ -107,6 +108,7 @@ export interface ReconciledMetricLayout {
 
 export interface ReconcileMetricLayoutOptions {
   includeMissingMetrics?: boolean;
+  includeMissingMetricsVisible?: boolean;
 }
 
 export function buildMetricDescriptors(
@@ -185,12 +187,16 @@ export function reconcileMetricLayout(
   );
   const hiddenMetricIdSet = new Set(hiddenMetricIds);
   // 系统默认保持原始全部列；编辑历史模板时追加新增列并默认隐藏。
-  if (!layout || options.includeMissingMetrics) {
+  if (
+    !layout ||
+    options.includeMissingMetrics ||
+    options.includeMissingMetricsVisible
+  ) {
     metrics.forEach(metric => {
       if (!seenIds.has(metric.id)) {
         orderedMetrics.push(metric);
         seenIds.add(metric.id);
-        if (layout) {
+        if (layout && !options.includeMissingMetricsVisible) {
           hiddenMetricIdSet.add(metric.id);
         }
       }

@@ -126,6 +126,10 @@ export const Styles = styled.div<{ isDashboardEditMode: boolean }>`
       vertical-align: baseline;
     }
 
+    table.pvtTable [data-pivot-frozen] {
+      background-color: ${theme.colorBgBase};
+    }
+
     .pvtTotal,
     .pvtGrandTotal {
       font-weight: ${theme.fontWeightStrong};

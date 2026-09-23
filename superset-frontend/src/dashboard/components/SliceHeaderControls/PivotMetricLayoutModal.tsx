@@ -127,6 +127,7 @@ type SortableMetricRowProps = {
   isFirst: boolean;
   isLast: boolean;
   disableToggle: boolean;
+  disableReorder: boolean;
   onToggle: (id: string) => void;
   onMove: (id: string, position: MetricMovePosition) => void;
 };
@@ -138,6 +139,7 @@ const SortableMetricRow = ({
   isFirst,
   isLast,
   disableToggle,
+  disableReorder,
   onToggle,
   onMove,
 }: SortableMetricRowProps) => {
@@ -148,7 +150,7 @@ const SortableMetricRow = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: disableReorder });
 
   return (
     <Row
@@ -162,6 +164,7 @@ const SortableMetricRow = ({
       <DragHandle
         type="button"
         aria-label={t('Drag to reorder metric')}
+        disabled={disableReorder}
         {...attributes}
         {...listeners}
       >
@@ -176,7 +179,7 @@ const SortableMetricRow = ({
       <Button
         buttonStyle="link"
         aria-label={t('Move metric to first')}
-        disabled={isFirst}
+        disabled={isFirst || disableReorder}
         onClick={() => onMove(id, 'first')}
       >
         {t('置顶')}
@@ -184,7 +187,7 @@ const SortableMetricRow = ({
       <Button
         buttonStyle="link"
         aria-label={t('Move metric up')}
-        disabled={isFirst}
+        disabled={isFirst || disableReorder}
         onClick={() => onMove(id, 'up')}
       >
         {t('上移')}
@@ -192,7 +195,7 @@ const SortableMetricRow = ({
       <Button
         buttonStyle="link"
         aria-label={t('Move metric down')}
-        disabled={isLast}
+        disabled={isLast || disableReorder}
         onClick={() => onMove(id, 'down')}
       >
         {t('下移')}
@@ -200,7 +203,7 @@ const SortableMetricRow = ({
       <Button
         buttonStyle="link"
         aria-label={t('Move metric to last')}
-        disabled={isLast}
+        disabled={isLast || disableReorder}
         onClick={() => onMove(id, 'last')}
       >
         {t('置底')}
@@ -213,6 +216,7 @@ interface PivotMetricLayoutModalProps {
   show: boolean;
   metrics: QueryFormMetric[];
   initialLayout?: PersonalChartLayout;
+  dashboardSharedLayout?: PersonalChartLayout | null;
   templates: PersonalChartTemplate[];
   activeSlot: 1 | 2 | 3 | null;
   isSaving?: boolean;
@@ -225,12 +229,15 @@ interface PivotMetricLayoutModalProps {
   ) => Promise<void> | void;
   onSetDefault: (slot: 1 | 2 | 3) => Promise<void> | void;
   onDeleteTemplate: (slot: 1 | 2 | 3) => Promise<void> | void;
+  onSaveDashboardLayout?: (layout: PersonalChartLayout) => Promise<void> | void;
+  onDisableDashboardLayout?: () => Promise<void> | void;
 }
 
 export default function PivotMetricLayoutModal({
   show,
   metrics,
   initialLayout,
+  dashboardSharedLayout,
   templates,
   activeSlot,
   isSaving = false,
@@ -239,6 +246,8 @@ export default function PivotMetricLayoutModal({
   onSaveTemplate,
   onSetDefault,
   onDeleteTemplate,
+  onSaveDashboardLayout,
+  onDisableDashboardLayout,
 }: PivotMetricLayoutModalProps) {
   /*
    * 功能审计（可重写规格）：透视表个人列模板编辑弹窗
@@ -259,6 +268,8 @@ export default function PivotMetricLayoutModal({
   );
   const [orderedMetricIds, setOrderedMetricIds] = useState<string[]>([]);
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
+  const [frozenColumnCount, setFrozenColumnCount] = useState(0);
+  const [search, setSearch] = useState('');
   const [saveSlot, setSaveSlot] = useState<1 | 2 | 3 | null>(null);
   const [templateName, setTemplateName] = useState('');
 
@@ -267,14 +278,33 @@ export default function PivotMetricLayoutModal({
       return;
     }
     const reconciled = reconcileMetricLayout(metricDescriptors, initialLayout, {
-      includeMissingMetrics: true,
+      includeMissingMetrics: !dashboardSharedLayout,
+      includeMissingMetricsVisible: Boolean(dashboardSharedLayout),
     });
     setOrderedMetricIds(reconciled.orderedMetricIds);
     setHiddenMetricIds(reconciled.hiddenMetricIds);
+    setFrozenColumnCount(initialLayout?.frozen_column_count || 0);
+    setSearch('');
     const selected = templates.find(template => template.slot === activeSlot);
-    setSaveSlot(activeSlot);
-    setTemplateName(selected?.name || t('模板 1'));
-  }, [show, initialLayout, metricDescriptors, templates, activeSlot]);
+    const nextSlot =
+      activeSlot ||
+      ([1, 2, 3] as const).find(slot =>
+        templates.every(template => template.slot !== slot),
+      ) ||
+      null;
+    setSaveSlot(nextSlot);
+    setTemplateName(
+      selected?.name ||
+        (nextSlot ? t('模板 %(slot)s', { slot: nextSlot }) : ''),
+    );
+  }, [
+    show,
+    initialLayout,
+    dashboardSharedLayout,
+    metricDescriptors,
+    templates,
+    activeSlot,
+  ]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -297,6 +327,19 @@ export default function PivotMetricLayoutModal({
   const visibleMetricCount = orderedMetricIds.filter(
     metricId => !hiddenMetricIds.includes(metricId),
   ).length;
+  const matchingMetrics = orderedMetrics.filter(metric =>
+    metric?.label.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const setMatchingVisibility = (visible: boolean) => {
+    const matchingIds = new Set(matchingMetrics.map(metric => metric!.id));
+    setHiddenMetricIds(current => {
+      const next = visible
+        ? current.filter(id => !matchingIds.has(id))
+        : [...new Set([...current, ...matchingIds])];
+      return next.length < orderedMetricIds.length ? next : current;
+    });
+  };
 
   const handleToggle = (metricId: string) => {
     setHiddenMetricIds(currentHiddenMetricIds => {
@@ -330,6 +373,7 @@ export default function PivotMetricLayoutModal({
   const draftLayout = (): PersonalChartLayout => ({
     ordered_metric_ids: orderedMetricIds,
     hidden_metric_ids: hiddenMetricIds,
+    frozen_column_count: frozenColumnCount,
     version: PIVOT_METRIC_LAYOUT_VERSION,
   });
 
@@ -364,6 +408,26 @@ export default function PivotMetricLayoutModal({
   const handleUseSystemDefault = () => {
     onApply(null, null);
     onHide();
+  };
+
+  const handleSaveDashboardLayout = async () => {
+    if (!canPersistTemplate || !onSaveDashboardLayout) return;
+    try {
+      await onSaveDashboardLayout(draftLayout());
+      onHide();
+    } catch {
+      // Keep the draft when persistence fails.
+    }
+  };
+
+  const handleDisableDashboardLayout = async () => {
+    if (!onDisableDashboardLayout) return;
+    try {
+      await onDisableDashboardLayout();
+      onHide();
+    } catch {
+      // Keep the existing layout and modal open.
+    }
   };
 
   const handleUseTemplate = (template: PersonalChartTemplate) => {
@@ -411,27 +475,52 @@ export default function PivotMetricLayoutModal({
       responsive
       footer={
         <>
-          <Button onClick={handleReset} disabled={isSaving}>
-            {t('恢复系统默认')}
-          </Button>
+          {!dashboardSharedLayout && (
+            <Button onClick={handleReset} disabled={isSaving}>
+              {t('恢复系统默认')}
+            </Button>
+          )}
           <Button onClick={handleDiscard} disabled={isSaving}>
             {t('Cancel')}
           </Button>
-          <Button
-            buttonStyle="primary"
-            onClick={handleSave}
-            loading={isSaving}
-            disabled={!saveSlot || !canPersistTemplate}
-          >
-            {t('Save')}
-          </Button>
+          {!dashboardSharedLayout && (
+            <Button
+              buttonStyle="primary"
+              onClick={handleSave}
+              loading={isSaving}
+              disabled={!saveSlot || !canPersistTemplate}
+            >
+              {t('Save')}
+            </Button>
+          )}
         </>
       }
     >
       <Description>
         {t(
-          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿，保存到模板后才会生效。',
+          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿，保存个人模板或应用到本看板后才会生效。',
         )}
+      </Description>
+      <label>
+        {t('冻结左侧列数')}
+        <Input
+          type="number"
+          min={0}
+          max={2000}
+          value={frozenColumnCount}
+          onChange={event =>
+            setFrozenColumnCount(
+              Math.max(
+                0,
+                Math.min(2000, Math.floor(Number(event.target.value) || 0)),
+              ),
+            )
+          }
+          aria-label={t('冻结左侧列数')}
+        />
+      </label>
+      <Description>
+        {t('从最左侧开始冻结，0 表示不冻结；包含日期、部门等行维度列。')}
       </Description>
       {!canPersistTemplate && (
         <Description>
@@ -442,78 +531,119 @@ export default function PivotMetricLayoutModal({
       )}
       <TemplateSection>
         <Description>
-          <strong>{t('个人模板')}</strong>
+          <strong>{t('本看板个人共享布局')}</strong>
           <br />
-          {t('使用模板只影响当前会话；可将当前草稿保存到三个个人模板之一。')}
+          {t(
+            '只对你生效，应用到本看板的所有透视图；其他图表独有的指标列仍显示。',
+          )}
         </Description>
-        {([1, 2, 3] as const).map(slot => {
-          const template = templates.find(item => item.slot === slot);
-          return (
-            <TemplateRow key={slot}>
-              <Input
-                aria-label={t('模板 %(slot)s 名称', { slot })}
-                value={
-                  saveSlot === slot
-                    ? templateName
-                    : template?.name || t('模板 %(slot)s', { slot })
-                }
-                onFocus={() => chooseSlot(slot)}
-                onChange={event => {
-                  chooseSlot(slot);
-                  setTemplateName(event.target.value);
-                }}
-                disabled={isSaving}
-              />
-              {template && (
-                <Button
-                  onClick={() => handleUseTemplate(template)}
-                  disabled={isSaving}
-                >
-                  {t('使用')}
-                </Button>
-              )}
-              {template && (
-                <Button
-                  onClick={() => handleSetDefault(template)}
-                  disabled={isSaving}
-                >
-                  {template.is_default ? t('默认') : t('设为默认')}
-                </Button>
-              )}
-              {template && (
-                <Button
-                  onClick={() => handleDelete(template)}
-                  disabled={isSaving}
-                >
-                  {t('Delete')}
-                </Button>
-              )}
-            </TemplateRow>
-          );
-        })}
+        <Button
+          onClick={handleSaveDashboardLayout}
+          disabled={isSaving || !canPersistTemplate || !onSaveDashboardLayout}
+        >
+          {dashboardSharedLayout ? t('更新看板共享布局') : t('应用到本看板')}
+        </Button>
+        {dashboardSharedLayout && (
+          <Button onClick={handleDisableDashboardLayout} disabled={isSaving}>
+            {t('停用共享，恢复各图表布局')}
+          </Button>
+        )}
       </TemplateSection>
+      {!dashboardSharedLayout && (
+        <TemplateSection>
+          <Description>
+            <strong>{t('个人模板')}</strong>
+            <br />
+            {t('使用模板只影响当前会话；可将当前草稿保存到三个个人模板之一。')}
+          </Description>
+          {([1, 2, 3] as const).map(slot => {
+            const template = templates.find(item => item.slot === slot);
+            return (
+              <TemplateRow key={slot}>
+                <Input
+                  aria-label={t('模板 %(slot)s 名称', { slot })}
+                  value={
+                    saveSlot === slot
+                      ? templateName
+                      : template?.name || t('模板 %(slot)s', { slot })
+                  }
+                  onFocus={() => chooseSlot(slot)}
+                  onChange={event => {
+                    chooseSlot(slot);
+                    setTemplateName(event.target.value);
+                  }}
+                  disabled={isSaving}
+                />
+                {template && (
+                  <Button
+                    onClick={() => handleUseTemplate(template)}
+                    disabled={isSaving}
+                  >
+                    {t('使用')}
+                  </Button>
+                )}
+                {template && (
+                  <Button
+                    onClick={() => handleSetDefault(template)}
+                    disabled={isSaving}
+                  >
+                    {template.is_default ? t('默认') : t('设为默认')}
+                  </Button>
+                )}
+                {template && (
+                  <Button
+                    onClick={() => handleDelete(template)}
+                    disabled={isSaving}
+                  >
+                    {t('Delete')}
+                  </Button>
+                )}
+              </TemplateRow>
+            );
+          })}
+        </TemplateSection>
+      )}
+      <Input
+        aria-label={t('搜索指标列')}
+        placeholder={t('搜索指标列')}
+        value={search}
+        onChange={event => setSearch(event.target.value)}
+      />
+      <Button onClick={() => setMatchingVisibility(true)}>
+        {t('显示匹配列')}
+      </Button>
+      <Button onClick={() => setMatchingVisibility(false)}>
+        {t('隐藏匹配列')}
+      </Button>
+      {search.trim() && (
+        <Description>{t('清空搜索后可调整列顺序。')}</Description>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={orderedMetricIds}
+          items={matchingMetrics.map(metric => metric!.id)}
           strategy={verticalListSortingStrategy}
         >
           <List>
-            {orderedMetrics.map((metric, index) => (
+            {matchingMetrics.map(metric => (
               <SortableMetricRow
                 key={metric!.id}
                 id={metric!.id}
                 label={metric!.label}
                 checked={!hiddenMetricIds.includes(metric!.id)}
-                isFirst={index === 0}
-                isLast={index === orderedMetrics.length - 1}
+                isFirst={orderedMetricIds.indexOf(metric!.id) === 0}
+                isLast={
+                  orderedMetricIds.indexOf(metric!.id) ===
+                  orderedMetrics.length - 1
+                }
                 disableToggle={
                   !hiddenMetricIds.includes(metric!.id) &&
                   visibleMetricCount <= 1
                 }
+                disableReorder={Boolean(search.trim())}
                 onToggle={handleToggle}
                 onMove={handleMove}
               />

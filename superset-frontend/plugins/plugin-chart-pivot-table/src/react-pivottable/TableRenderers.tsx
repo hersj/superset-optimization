@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Component, ReactNode, MouseEvent } from 'react';
+import { Component, ReactNode, MouseEvent, createRef } from 'react';
 import { safeHtmlSpan } from '@superset-ui/core';
 import { t } from '@apache-superset/core/translation';
 import PropTypes from 'prop-types';
@@ -26,6 +26,7 @@ import { FaSortDown as FaSortDesc } from 'react-icons/fa';
 import { FaSortUp as FaSortAsc } from 'react-icons/fa';
 import { PivotData, flatKey } from './utilities';
 import { Styles } from './Styles';
+import { freezePivotColumns } from './freezePivotColumns';
 import {
   formatPivotValueWithRules,
   type PivotNumberFormatRule,
@@ -95,6 +96,7 @@ interface TableRendererProps {
     filters?: Record<string, string>,
   ) => void;
   allowRenderHtml?: boolean;
+  frozenColumnCount?: number;
   [key: string]: unknown;
 }
 
@@ -360,6 +362,9 @@ export class TableRenderer extends Component<
   sortCache: Map<string, string[][]>;
   cachedProps: TableRendererProps | null;
   cachedBasePivotSettings: PivotSettings | null;
+  tableRef = createRef<HTMLTableElement>();
+  freezeFrame = 0;
+  lastFrozenCount = 0;
 
   static propTypes: Record<string, unknown>;
   static defaultProps: Record<string, unknown>;
@@ -1532,7 +1537,30 @@ export class TableRenderer extends Component<
     return document.contains(document.querySelector('.dashboard--editing'));
   }
 
+  componentDidMount() {
+    this.scheduleFreeze();
+  }
+
+  componentDidUpdate() {
+    this.scheduleFreeze();
+  }
+
+  scheduleFreeze() {
+    if (!this.props.frozenColumnCount && !this.lastFrozenCount) return;
+    cancelAnimationFrame(this.freezeFrame);
+    this.freezeFrame = requestAnimationFrame(() => {
+      if (this.tableRef.current) {
+        freezePivotColumns(
+          this.tableRef.current,
+          this.props.frozenColumnCount || 0,
+        );
+        this.lastFrozenCount = this.props.frozenColumnCount || 0;
+      }
+    });
+  }
+
   componentWillUnmount() {
+    cancelAnimationFrame(this.freezeFrame);
     this.sortCache.clear();
   }
 
@@ -1588,7 +1616,7 @@ export class TableRenderer extends Component<
 
     return (
       <Styles isDashboardEditMode={this.isDashboardEditMode()}>
-        <table className="pvtTable" role="grid">
+        <table className="pvtTable" role="grid" ref={this.tableRef}>
           <thead>
             {colAttrs.map((c: string, j: number) =>
               this.renderColHeaderRow(c, j, pivotSettings),

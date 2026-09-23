@@ -42,6 +42,7 @@ from werkzeug.wsgi import FileWrapper
 from superset import db
 from superset.charts.schemas import ChartEntityResponseSchema
 from superset.commands.dashboard.chart_layouts import (
+    DashboardPivotLayoutCommand,
     DeleteDashboardChartLayoutCommand,
     DeleteDashboardChartTemplateCommand,
     GetDashboardChartLayoutsCommand,
@@ -1119,6 +1120,27 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
     def get_chart_templates(self, pk: int) -> Response:
         try:
             return self.response(200, result=GetDashboardChartTemplatesCommand(pk).run())
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+
+    @expose("/<pk>/pivot_layout", methods=("GET", "PUT", "DELETE"))
+    @protect()
+    @safe
+    @permission_name("read")
+    def pivot_layout(self, pk: int) -> Response:
+        command = DashboardPivotLayoutCommand(pk)
+        try:
+            if request.method == "GET":
+                return self.response(200, result=command.run())
+            if request.method == "DELETE":
+                command.delete()
+                return self.response(200, result=None)
+            if not request.is_json:
+                return self.response_400(message="JSON body required")
+            layout = self.chart_layout_model_schema.load(request.json)
+            return self.response(200, result=command.put(layout))
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
         except (DashboardAccessDeniedError, DashboardNotFoundError):
             return self.response_404()
 

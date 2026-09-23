@@ -34,3 +34,18 @@ class DashboardChartLayout(Model, AuditMixinNullable):
         UniqueConstraint("user_id", "dashboard_id", "chart_id", "slot", name="uq_dashboard_chart_layout_scope_slot"),
         Index("uq_dashboard_chart_layout_default", "user_id", "dashboard_id", "chart_id", unique=True, postgresql_where=is_default.is_(True)),
     )
+
+
+class DashboardPivotLayout(Model, AuditMixinNullable):
+    """One optional personal pivot layout shared within a dashboard."""
+
+    __tablename__ = "dashboard_pivot_layouts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("ab_user.id", ondelete="CASCADE"), nullable=False)
+    dashboard_id = Column(Integer, ForeignKey("dashboards.id", ondelete="CASCADE"), nullable=False)
+    layout_json = Column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "dashboard_id", name="uq_dashboard_pivot_layout_scope"),
+    )

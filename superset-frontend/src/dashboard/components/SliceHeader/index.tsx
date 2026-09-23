@@ -172,10 +172,13 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
       height,
       exportPivotExcel = () => ({}),
       personalChartLayout,
+      dashboardPivotLayout,
       personalChartTemplates,
       personalChartTemplateActiveSlot,
       onApplyPersonalChartLayout,
       onSavePersonalChartTemplate,
+      onSaveDashboardPivotLayout,
+      onDisableDashboardPivotLayout,
       onSetPersonalChartTemplateDefault,
       onDeletePersonalChartTemplate,
       isSavingPersonalChartLayout,
@@ -383,12 +386,15 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
                   crossFiltersEnabled={isCrossFiltersEnabled}
                   exportPivotExcel={exportPivotExcel}
                   personalChartLayout={personalChartLayout}
+                  dashboardPivotLayout={dashboardPivotLayout}
                   personalChartTemplates={personalChartTemplates}
                   personalChartTemplateActiveSlot={
                     personalChartTemplateActiveSlot
                   }
                   onApplyPersonalChartLayout={onApplyPersonalChartLayout}
                   onSavePersonalChartTemplate={onSavePersonalChartTemplate}
+                  onSaveDashboardPivotLayout={onSaveDashboardPivotLayout}
+                  onDisableDashboardPivotLayout={onDisableDashboardPivotLayout}
                   onSetPersonalChartTemplateDefault={
                     onSetPersonalChartTemplateDefault
                   }

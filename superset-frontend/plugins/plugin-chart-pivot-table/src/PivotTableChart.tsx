@@ -278,6 +278,7 @@ export default function PivotTableChart(props: PivotTableProps) {
     allowRenderHtml,
     pivotNumberFormatRules,
     dimensionLabelOverrides = {},
+    frozenColumnCount = 0,
   } = props;
 
   const theme = useTheme();
@@ -702,6 +703,7 @@ export default function PivotTableChart(props: PivotTableProps) {
     <Styles height={height} width={width} margin={theme.sizeUnit * 4}>
       <PivotTableWrapper>
         <PivotTable
+          frozenColumnCount={frozenColumnCount}
           data={unpivotedData}
           rows={rows}
           cols={cols}

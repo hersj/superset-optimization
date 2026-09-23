@@ -385,14 +385,23 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       | { pivot_table_metric_layout?: PivotMetricLayout }
       | undefined
   )?.pivot_table_metric_layout;
+  const dashboardSharedLayout = Boolean(
+    (
+      chartProps.ownState as
+        | { pivot_table_metric_layout_scope?: string }
+        | undefined
+    )?.pivot_table_metric_layout_scope === 'dashboard',
+  );
   const reconciledMetricLayout = reconcileMetricLayout(
     buildMetricDescriptors(metrics),
     savedMetricLayout,
+    { includeMissingMetricsVisible: dashboardSharedLayout },
   );
 
   // AUTO symbol passed through - PivotTableChart handles per-cell currency detection
 
   return {
+    frozenColumnCount: savedMetricLayout?.frozen_column_count || 0,
     width,
     height,
     data,

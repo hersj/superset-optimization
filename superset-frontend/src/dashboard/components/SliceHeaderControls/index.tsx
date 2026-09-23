@@ -142,6 +142,7 @@ export interface SliceHeaderControlsProps {
 
   crossFiltersEnabled?: boolean;
   personalChartLayout?: PersonalChartLayout;
+  dashboardPivotLayout?: PersonalChartLayout | null;
   personalChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
   personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
   onApplyPersonalChartLayout?: (
@@ -154,6 +155,10 @@ export interface SliceHeaderControlsProps {
     layout: PersonalChartLayout,
   ) => Promise<void> | void;
   onSetPersonalChartTemplateDefault?: (slot: 1 | 2 | 3) => Promise<void> | void;
+  onSaveDashboardPivotLayout?: (
+    layout: PersonalChartLayout,
+  ) => Promise<void> | void;
+  onDisableDashboardPivotLayout?: () => Promise<void> | void;
   onDeletePersonalChartTemplate?: (slot: 1 | 2 | 3) => Promise<void> | void;
   isSavingPersonalChartLayout?: boolean;
 }
@@ -383,16 +388,20 @@ const SliceHeaderControls = (
   const activePersonalChartTemplate = personalChartTemplates.find(
     template => template.slot === props.personalChartTemplateActiveSlot,
   );
-  const activePersonalChartTemplateName =
-    activePersonalChartTemplate?.name || t('系统默认');
-  const personalTemplateMenuItems: MenuItem[] = [
-    { key: 'system-default', label: t('系统默认') },
-    ...personalChartTemplates.map(template => ({
-      key: ['personal-template', template.slot].join('-'),
-      label: template.name,
-    })),
-  ];
+  const activePersonalChartTemplateName = props.dashboardPivotLayout
+    ? t('本看板共享')
+    : activePersonalChartTemplate?.name || t('系统默认');
+  const personalTemplateMenuItems: MenuItem[] = props.dashboardPivotLayout
+    ? [{ key: 'dashboard-shared', label: t('本看板共享（在自定义列中停用）') }]
+    : [
+        { key: 'system-default', label: t('系统默认') },
+        ...personalChartTemplates.map(template => ({
+          key: ['personal-template', template.slot].join('-'),
+          label: template.name,
+        })),
+      ];
   const applyPersonalTemplate = (key: Key) => {
+    if (props.dashboardPivotLayout) return;
     if (key === 'system-default') {
       props.onApplyPersonalChartLayout?.(null, null);
       return;
@@ -668,12 +677,14 @@ const SliceHeaderControls = (
             <Menu
               selectable
               selectedKeys={[
-                activePersonalChartTemplate
-                  ? [
-                      'personal-template',
-                      activePersonalChartTemplate.slot,
-                    ].join('-')
-                  : 'system-default',
+                props.dashboardPivotLayout
+                  ? 'dashboard-shared'
+                  : activePersonalChartTemplate
+                    ? [
+                        'personal-template',
+                        activePersonalChartTemplate.slot,
+                      ].join('-')
+                    : 'system-default',
               ]}
               onClick={({ key }) => applyPersonalTemplate(key)}
               items={personalTemplateMenuItems}
@@ -741,6 +752,7 @@ const SliceHeaderControls = (
           show={showPivotMetricLayoutModal}
           metrics={props.formData.metrics || []}
           initialLayout={props.personalChartLayout}
+          dashboardSharedLayout={props.dashboardPivotLayout}
           templates={props.personalChartTemplates || []}
           activeSlot={props.personalChartTemplateActiveSlot || null}
           isSaving={props.isSavingPersonalChartLayout}
@@ -750,6 +762,12 @@ const SliceHeaderControls = (
           }
           onSaveTemplate={(slot, name, layout) =>
             props.onSavePersonalChartTemplate?.(slot, name, layout)
+          }
+          onSaveDashboardLayout={layout =>
+            props.onSaveDashboardPivotLayout?.(layout)
+          }
+          onDisableDashboardLayout={() =>
+            props.onDisableDashboardPivotLayout?.()
           }
           onSetDefault={slot => props.onSetPersonalChartTemplateDefault?.(slot)}
           onDeleteTemplate={slot => props.onDeletePersonalChartTemplate?.(slot)}

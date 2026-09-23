@@ -10,11 +10,33 @@
  *   http://www.apache.org/licenses/LICENSE-2.0
  */
 import dashboardStateReducer from './dashboardState';
+import type { PersonalChartTemplate } from '../actions/personalChartLayout';
 import {
+  setDashboardPivotLayout,
   setPersonalChartTemplateActiveSlot,
   upsertPersonalChartTemplate,
 } from '../actions/personalChartLayout';
-import type { PersonalChartTemplate } from '../actions/personalChartLayout';
+
+test('dashboard-shared layout can be enabled and cleared without deleting chart templates', () => {
+  const template = {
+    version: 1,
+    ordered_metric_ids: ['sales'],
+    hidden_metric_ids: [],
+    frozen_column_count: 2,
+  };
+  const original = { personalChartLayouts: { '611': template } };
+  const enabled = dashboardStateReducer(
+    original,
+    setDashboardPivotLayout(template),
+  );
+  const disabled = dashboardStateReducer(
+    enabled,
+    setDashboardPivotLayout(null),
+  );
+  expect(enabled.dashboardPivotLayout).toEqual(template);
+  expect(disabled.dashboardPivotLayout).toBeNull();
+  expect(disabled.personalChartLayouts?.['611']).toEqual(template);
+});
 
 test('default-template upsert does not mutate the previous template objects', () => {
   const existing: PersonalChartTemplate = {

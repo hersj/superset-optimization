@@ -98,6 +98,7 @@ interface PivotTableCustomizeProps {
   allowRenderHtml?: boolean;
   pivotNumberFormatRules?: PivotNumberFormatRule[];
   dimensionLabelOverrides?: Record<string, string>;
+  frozenColumnCount?: number;
 }
 
 export type PivotTableQueryFormData = QueryFormData &
