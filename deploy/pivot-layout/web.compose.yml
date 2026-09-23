@@ -1,0 +1,3 @@
+services:
+  superset:
+    image: ${PIVOT_RELEASE_IMAGE:?}
