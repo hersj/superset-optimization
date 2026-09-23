@@ -8,6 +8,7 @@ COPY superset/dashboards/api.py /app/superset/dashboards/api.py
 COPY superset/dashboards/schemas.py /app/superset/dashboards/schemas.py
 COPY superset/models/dashboard_chart_layout.py /app/superset/models/dashboard_chart_layout.py
 COPY superset/migrations/versions/2026-09-23_08-00_a5b6c7d8e9f0_add_dashboard_pivot_layouts.py /app/superset/migrations/versions/2026-09-23_08-00_a5b6c7d8e9f0_add_dashboard_pivot_layouts.py
+COPY superset/migrations/versions/2026-09-23_08-00_a5b6c7d8e9f0_add_dashboard_pivot_layouts.py /app/.venv/lib/python3.11/site-packages/superset/migrations/versions/2026-09-23_08-00_a5b6c7d8e9f0_add_dashboard_pivot_layouts.py
 COPY superset/static/assets/ /app/superset/static/assets/
 COPY superset/static/service-worker.js /app/superset/static/service-worker.js
 
