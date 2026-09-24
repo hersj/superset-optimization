@@ -99,6 +99,8 @@ interface PivotTableCustomizeProps {
   pivotNumberFormatRules?: PivotNumberFormatRule[];
   dimensionLabelOverrides?: Record<string, string>;
   frozenColumnCount?: number;
+  frozenColumnKey?: string | null;
+  freezeMetricIds?: Record<string, string>;
 }
 
 export type PivotTableQueryFormData = QueryFormData &

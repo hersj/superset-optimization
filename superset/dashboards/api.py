@@ -265,6 +265,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "delete_chart_layout",
         "pivot_layout",
         "get_chart_templates",
+        "pivot_templates",
         "put_chart_template",
         "rename_chart_template",
         "delete_chart_template",
@@ -1126,6 +1127,34 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         except (DashboardAccessDeniedError, DashboardNotFoundError):
             return self.response_404()
 
+    @expose("/<pk>/pivot_templates", methods=("GET", "PUT"))
+    @protect()
+    @safe
+    @permission_name("read")
+    def pivot_templates(self, pk: int) -> Response:
+        command = DashboardPivotLayoutCommand(pk)
+        try:
+            if request.method == "GET":
+                return self.response(200, result=command.get_library())
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required")
+            if payload.get("action") not in ("save", "delete", "default"):
+                raise ValueError("Invalid action")
+            if type(payload.get("slot")) is not int or payload["slot"] not in (1, 2, 3):
+                raise ValueError("Slot must be 1, 2 or 3")
+            if payload["action"] == "save":
+                payload["template"] = self.chart_template_model_schema.load(payload.get("template", {}))
+            if payload["action"] == "default" and type(payload.get("chart_id")) is not int:
+                raise ValueError("Chart ID required")
+            return self.response(200, result=command.edit_library(payload))
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
+        except ValueError as error:
+            return self.response_400(message=str(error))
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+
     @expose("/<pk>/pivot_layout", methods=("GET", "PUT", "DELETE"))
     @protect()
     @safe
@@ -1133,8 +1162,11 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
     def pivot_layout(self, pk: int) -> Response:
         command = DashboardPivotLayoutCommand(pk)
         try:
+            current = command.run()
             if request.method == "GET":
-                return self.response(200, result=command.run())
+                return self.response(200, result=current.get("legacy_layout") if current and current.get("version") == 2 else current)
+            if current and current.get("version") == 2:
+                return self.response(409, message="Template library upgraded; reload the page")
             if request.method == "DELETE":
                 command.delete()
                 return self.response(200, result=None)

@@ -279,6 +279,8 @@ export default function PivotTableChart(props: PivotTableProps) {
     pivotNumberFormatRules,
     dimensionLabelOverrides = {},
     frozenColumnCount = 0,
+    frozenColumnKey,
+    freezeMetricIds = {},
   } = props;
 
   const theme = useTheme();
@@ -704,6 +706,9 @@ export default function PivotTableChart(props: PivotTableProps) {
       <PivotTableWrapper>
         <PivotTable
           frozenColumnCount={frozenColumnCount}
+          frozenColumnKey={frozenColumnKey}
+          freezeMetricIds={freezeMetricIds}
+          freezeMetricAxis={METRIC_KEY}
           data={unpivotedData}
           rows={rows}
           cols={cols}

@@ -69,6 +69,8 @@ import {
 } from '../actions/autoRefresh';
 import {
   REMOVE_PERSONAL_CHART_LAYOUT,
+  SET_PIVOT_TEMPLATE_LIBRARY,
+  type PivotTemplateLibrary,
   REMOVE_PERSONAL_CHART_TEMPLATE,
   SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT,
   SET_DASHBOARD_PIVOT_LAYOUT,
@@ -122,6 +124,7 @@ interface DashboardStateShape {
   chartStates?: Record<string, ChartStateEntry>;
   dashboardChartControls?: DashboardChartControls;
   personalChartLayouts?: Record<string, JsonObject>;
+  pivotTemplateLibrary?: PivotTemplateLibrary | null;
   personalChartTemplates?: Record<
     string,
     import('../actions/personalChartLayout').PersonalChartTemplate[]
@@ -176,6 +179,8 @@ interface DashboardStateAction {
   layouts?: Record<string, JsonObject>;
   layout?: JsonObject;
   templates?: PersonalChartTemplatesMap;
+  library?: PivotTemplateLibrary | null;
+  initialize?: boolean;
   template?: PersonalChartTemplate;
   slot?: 1 | 2 | 3 | null;
   status?: string;
@@ -510,6 +515,28 @@ export default function dashboardStateReducer(
     },
     [SET_DASHBOARD_PIVOT_LAYOUT](): DashboardStateShape {
       return { ...state, dashboardPivotLayout: action.layout || null };
+    },
+    [SET_PIVOT_TEMPLATE_LIBRARY](): DashboardStateShape {
+      return {
+        ...state,
+        pivotTemplateLibrary: action.library || null,
+        ...(action.initialize
+          ? {
+              personalChartLayouts: {
+                ...state.personalChartLayouts,
+                ...(action.library?.legacy_layout
+                  ? Object.fromEntries(
+                      (state.sliceIds || []).map(id => [
+                        id,
+                        action.library!.legacy_layout!,
+                      ]),
+                    )
+                  : {}),
+                ...(action.library?.defaults || {}),
+              },
+            }
+          : {}),
+      };
     },
     [UPSERT_PERSONAL_CHART_LAYOUT](): DashboardStateShape {
       return {

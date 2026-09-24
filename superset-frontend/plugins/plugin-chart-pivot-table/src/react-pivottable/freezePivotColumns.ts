@@ -17,11 +17,60 @@
  * under the License.
  */
 
+export interface PivotFreezeColumn {
+  key: string;
+  label: string;
+  count: number;
+  metricId?: string;
+}
+
+export function readPivotFreezeColumns(
+  table: HTMLTableElement,
+): PivotFreezeColumn[] {
+  const result: PivotFreezeColumn[] = [];
+  const occupied: number[] = [];
+  Array.from(table.tHead?.rows || []).forEach((row, rowIndex) => {
+    let column = 0;
+    Array.from(row.cells).forEach(cell => {
+      while (occupied[column] > rowIndex) column += 1;
+      const end = column + cell.colSpan;
+      for (let i = column; i < end; i += 1)
+        occupied[i] = rowIndex + cell.rowSpan;
+      if (cell.dataset.pivotFreezeKey)
+        result.push({
+          key: cell.dataset.pivotFreezeKey,
+          label: cell.dataset.pivotFreezeLabel || cell.textContent || '',
+          count: end,
+          metricId: cell.dataset.pivotMetricId,
+        });
+      column = end;
+    });
+  });
+  return result.sort((a, b) => a.count - b.count);
+}
+
+export function pivotFreezeKey(
+  attrs: string[],
+  values: string[],
+  metricAxis: string,
+  metricIds: Record<string, string>,
+): string {
+  return JSON.stringify([
+    'column',
+    values.map((value, i) =>
+      attrs[i] === metricAxis
+        ? ['metric', metricIds[value] || value]
+        : [attrs[i], value],
+    ),
+  ]);
+}
+
 /** Keep the leftmost physical columns fixed without changing pivot data or sorting. */
 export function freezePivotColumns(
   table: HTMLTableElement,
   requestedCount: number,
-): void {
+  boundary?: string | null,
+): boolean {
   table.querySelectorAll<HTMLElement>('[data-pivot-frozen]').forEach(cell => {
     cell.style.position = '';
     cell.style.left = '';
@@ -29,8 +78,18 @@ export function freezePivotColumns(
     delete cell.dataset.pivotFrozen;
   });
 
-  const count = Math.max(0, Math.floor(requestedCount) || 0);
-  if (!count) return;
+  const targets = boundary
+    ? readPivotFreezeColumns(table).filter(column => column.key === boundary)
+    : [];
+  // Explicit null disables freezing. Only historical layouts fall back to a count.
+  const count =
+    boundary === undefined
+      ? Math.max(0, Math.floor(requestedCount) || 0)
+      : targets.length === 1
+        ? targets[0].count
+        : 0;
+  const missing = Boolean(boundary) && targets.length !== 1;
+  if (!count) return missing;
   const tableLeft = table.getBoundingClientRect().left;
   const frozen: Array<{
     cell: HTMLTableCellElement;
@@ -72,4 +131,5 @@ export function freezePivotColumns(
     cell.style.left = `${left}px`;
     cell.style.zIndex = header ? '4' : '2';
   });
+  return missing;
 }

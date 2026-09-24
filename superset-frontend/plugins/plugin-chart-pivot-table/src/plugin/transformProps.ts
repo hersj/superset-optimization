@@ -402,6 +402,10 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
 
   return {
     frozenColumnCount: savedMetricLayout?.frozen_column_count || 0,
+    frozenColumnKey: savedMetricLayout?.frozen_column_key,
+    freezeMetricIds: Object.fromEntries(
+      buildMetricDescriptors(metrics).map(metric => [metric.label, metric.id]),
+    ),
     width,
     height,
     data,

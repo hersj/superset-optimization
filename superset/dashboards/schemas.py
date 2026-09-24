@@ -479,6 +479,9 @@ class DashboardChartLayoutSchema(Schema):
         validate=Range(min=0, max=2000), allow_none=False, load_default=0
     )
     version = fields.Integer(allow_none=False, required=True)
+    frozen_column_key = fields.String(
+        validate=Length(min=1, max=4096), allow_none=True
+    )
 
 
 class DashboardChartTemplateSchema(Schema):

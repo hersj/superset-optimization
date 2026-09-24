@@ -144,6 +144,7 @@ export interface SliceHeaderControlsProps {
   personalChartLayout?: PersonalChartLayout;
   dashboardPivotLayout?: PersonalChartLayout | null;
   personalChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
+  legacyChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
   personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
   onApplyPersonalChartLayout?: (
     layout: PersonalChartLayout | null,
@@ -386,11 +387,15 @@ const SliceHeaderControls = (
    */
   const personalChartTemplates = props.personalChartTemplates || [];
   const activePersonalChartTemplate = personalChartTemplates.find(
-    template => template.slot === props.personalChartTemplateActiveSlot,
+    template =>
+      template.slot === props.personalChartTemplateActiveSlot &&
+      JSON.stringify(template.layout) ===
+        JSON.stringify(props.personalChartLayout),
   );
   const activePersonalChartTemplateName = props.dashboardPivotLayout
     ? t('本看板共享')
-    : activePersonalChartTemplate?.name || t('系统默认');
+    : activePersonalChartTemplate?.name ||
+      (props.personalChartLayout ? t('自定义布局') : t('系统默认'));
   const personalTemplateMenuItems: MenuItem[] = props.dashboardPivotLayout
     ? [{ key: 'dashboard-shared', label: t('本看板共享（在自定义列中停用）') }]
     : [
@@ -750,10 +755,12 @@ const SliceHeaderControls = (
       {canCustomizePivotColumns && (
         <PivotMetricLayoutModal
           show={showPivotMetricLayoutModal}
+          chartId={slice.slice_id}
           metrics={props.formData.metrics || []}
           initialLayout={props.personalChartLayout}
           dashboardSharedLayout={props.dashboardPivotLayout}
           templates={props.personalChartTemplates || []}
+          legacyTemplates={props.legacyChartTemplates || []}
           activeSlot={props.personalChartTemplateActiveSlot || null}
           isSaving={props.isSavingPersonalChartLayout}
           onHide={() => setShowPivotMetricLayoutModal(false)}

@@ -44,7 +44,8 @@ import { getUrlParam } from 'src/utils/urlUtils';
 import { setDatasetsStatus } from 'src/dashboard/actions/dashboardState';
 import {
   getDashboardChartTemplates,
-  getDashboardPivotLayout,
+  getPivotTemplateLibrary,
+  setPivotTemplateLibrary,
   setDashboardPivotLayout,
   setPersonalChartTemplates,
 } from 'src/dashboard/actions/personalChartLayout';
@@ -228,6 +229,7 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     if (!id || !userId) {
       dispatch(setPersonalChartTemplates({}));
       dispatch(setDashboardPivotLayout(null));
+      dispatch(setPivotTemplateLibrary(null));
       return () => {
         isMounted = false;
       };
@@ -235,23 +237,17 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
 
     dispatch(setPersonalChartTemplates({}));
     dispatch(setDashboardPivotLayout(null));
-    getDashboardPivotLayout(id)
-      .then(layout => {
-        if (isMounted) dispatch(setDashboardPivotLayout(layout));
-      })
-      .catch(() => {
-        if (isMounted) dispatch(setDashboardPivotLayout(null));
-      });
-    getDashboardChartTemplates(id)
-      .then(templates => {
+    dispatch(setPivotTemplateLibrary(null));
+    Promise.all([getDashboardChartTemplates(id), getPivotTemplateLibrary(id)])
+      .then(([templates, library]) => {
         if (isMounted) {
           dispatch(setPersonalChartTemplates(templates));
+          dispatch(setPivotTemplateLibrary(library, true));
         }
       })
       .catch(() => {
-        if (isMounted) {
-          dispatch(setPersonalChartTemplates({}));
-        }
+        // Keep writes disabled when the library could not be loaded.
+        if (isMounted) dispatch(setPivotTemplateLibrary(null));
       });
 
     return () => {

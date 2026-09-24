@@ -174,6 +174,7 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
       personalChartLayout,
       dashboardPivotLayout,
       personalChartTemplates,
+      legacyChartTemplates,
       personalChartTemplateActiveSlot,
       onApplyPersonalChartLayout,
       onSavePersonalChartTemplate,
@@ -388,6 +389,7 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
                   personalChartLayout={personalChartLayout}
                   dashboardPivotLayout={dashboardPivotLayout}
                   personalChartTemplates={personalChartTemplates}
+                  legacyChartTemplates={legacyChartTemplates}
                   personalChartTemplateActiveSlot={
                     personalChartTemplateActiveSlot
                   }

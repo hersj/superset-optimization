@@ -30,6 +30,7 @@ export interface PivotMetricLayout {
   ordered_metric_ids: string[];
   hidden_metric_ids: string[];
   frozen_column_count?: number;
+  frozen_column_key?: string | null;
   version: number;
 }
 

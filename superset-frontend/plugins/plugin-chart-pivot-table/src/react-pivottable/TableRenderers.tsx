@@ -26,7 +26,7 @@ import { FaSortDown as FaSortDesc } from 'react-icons/fa';
 import { FaSortUp as FaSortAsc } from 'react-icons/fa';
 import { PivotData, flatKey } from './utilities';
 import { Styles } from './Styles';
-import { freezePivotColumns } from './freezePivotColumns';
+import { freezePivotColumns, pivotFreezeKey } from './freezePivotColumns';
 import {
   formatPivotValueWithRules,
   type PivotNumberFormatRule,
@@ -97,10 +97,14 @@ interface TableRendererProps {
   ) => void;
   allowRenderHtml?: boolean;
   frozenColumnCount?: number;
+  frozenColumnKey?: string | null;
+  freezeMetricIds?: Record<string, string>;
+  freezeMetricAxis?: string;
   [key: string]: unknown;
 }
 
 interface TableRendererState {
+  freezeMissing?: boolean;
   collapsedRows: Record<string, boolean>;
   collapsedCols: Record<string, boolean>;
   sortingOrder: string[];
@@ -966,6 +970,29 @@ export class TableRenderer extends Component<
         attrValueCells.push(
           <th
             className={colLabelClass}
+            data-pivot-freeze-key={
+              colSpan === 1 && attrIdx === colKey.length - 1
+                ? pivotFreezeKey(
+                    colAttrs,
+                    colKey,
+                    this.props.freezeMetricAxis || '',
+                    this.props.freezeMetricIds || {},
+                  )
+                : undefined
+            }
+            data-pivot-freeze-label={colKey
+              .map(
+                (value, index) =>
+                  namesMapping[value] ||
+                  dateFormatters?.[colAttrs[index]]?.(value) ||
+                  value,
+              )
+              .join(' / ')}
+            data-pivot-metric-id={
+              this.props.freezeMetricIds?.[
+                colKey[colAttrs.indexOf(this.props.freezeMetricAxis || '')]
+              ]
+            }
             key={`colKey-${flatColKey}`}
             style={style}
             colSpan={colSpan}
@@ -1099,7 +1126,12 @@ export class TableRenderer extends Component<
               ? FaSortAsc
               : FaSortDesc;
           return (
-            <th className="pvtAxisLabel" key={`rowAttr-${i}`}>
+            <th
+              className="pvtAxisLabel"
+              key={`rowAttr-${i}`}
+              data-pivot-freeze-key={JSON.stringify(['dimension', r])}
+              data-pivot-freeze-label={rowDimensionLabel}
+            >
               {displayHeaderCell(
                 needLabelToggle,
                 subArrow,
@@ -1546,15 +1578,26 @@ export class TableRenderer extends Component<
   }
 
   scheduleFreeze() {
-    if (!this.props.frozenColumnCount && !this.lastFrozenCount) return;
+    if (
+      !this.props.frozenColumnKey &&
+      !this.props.frozenColumnCount &&
+      !this.lastFrozenCount &&
+      !this.state.freezeMissing
+    )
+      return;
     cancelAnimationFrame(this.freezeFrame);
     this.freezeFrame = requestAnimationFrame(() => {
       if (this.tableRef.current) {
-        freezePivotColumns(
+        const missing = freezePivotColumns(
           this.tableRef.current,
           this.props.frozenColumnCount || 0,
+          this.props.frozenColumnKey,
         );
-        this.lastFrozenCount = this.props.frozenColumnCount || 0;
+        this.lastFrozenCount = this.props.frozenColumnKey
+          ? 1
+          : this.props.frozenColumnCount || 0;
+        if (Boolean(this.state.freezeMissing) !== missing)
+          this.setState({ freezeMissing: missing });
       }
     });
   }
@@ -1616,6 +1659,11 @@ export class TableRenderer extends Component<
 
     return (
       <Styles isDashboardEditMode={this.isDashboardEditMode()}>
+        {this.state.freezeMissing && (
+          <div role="status">
+            {t('冻结边界列已隐藏或不存在，当前图表未冻结。请重新选择冻结列。')}
+          </div>
+        )}
         <table className="pvtTable" role="grid" ref={this.tableRef}>
           <thead>
             {colAttrs.map((c: string, j: number) =>

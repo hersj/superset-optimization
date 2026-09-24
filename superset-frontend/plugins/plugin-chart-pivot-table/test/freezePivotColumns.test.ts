@@ -17,7 +17,11 @@
  * under the License.
  */
 
-import { freezePivotColumns } from '../src/react-pivottable/freezePivotColumns';
+import {
+  freezePivotColumns,
+  readPivotFreezeColumns,
+  pivotFreezeKey,
+} from '../src/react-pivottable/freezePivotColumns';
 
 test('freezes the requested physical columns across merged pivot rows', () => {
   const table = document.createElement('table');
@@ -56,4 +60,52 @@ test('does not pin a merged header that crosses the freeze boundary', () => {
     table.querySelector('thead th')?.getAttribute('data-pivot-frozen'),
   ).toBeNull();
   expect(table.querySelectorAll('tbody [data-pivot-frozen]')).toHaveLength(2);
+});
+
+test('named boundary follows reordered columns and fails closed when missing or ambiguous', () => {
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr><th data-pivot-freeze-key="date">Date</th>
+    <th data-pivot-freeze-key="profit">Profit</th><th data-pivot-freeze-key="sales">Sales</th>
+    </tr></thead><tbody><tr><td>Date</td><td>2</td><td>3</td></tr></tbody>`;
+  expect(freezePivotColumns(table, 9, 'profit')).toBe(false);
+  expect(table.querySelectorAll('tbody [data-pivot-frozen]')).toHaveLength(2);
+  const row = table.tHead!.rows[0];
+  row.appendChild(row.cells[1]);
+  expect(freezePivotColumns(table, 9, 'profit')).toBe(false);
+  expect(table.querySelectorAll('tbody [data-pivot-frozen]')).toHaveLength(3);
+  row.cells[2].remove();
+  expect(freezePivotColumns(table, 9, 'profit')).toBe(true);
+  expect(table.querySelectorAll('[data-pivot-frozen]')).toHaveLength(0);
+  row.cells[1].dataset.pivotFreezeKey = 'date';
+  expect(freezePivotColumns(table, 9, 'date')).toBe(true);
+  expect(table.querySelectorAll('[data-pivot-frozen]')).toHaveLength(0);
+  expect(freezePivotColumns(table, 9, null)).toBe(false);
+  expect(table.querySelectorAll('[data-pivot-frozen]')).toHaveLength(0);
+});
+
+test('physical header boundaries account for row spans and grouped metrics', () => {
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr><th rowspan="2" data-pivot-freeze-key="date">Date</th>
+    <th colspan="2">Group</th></tr><tr><th data-pivot-freeze-key="sales">Sales</th>
+    <th data-pivot-freeze-key="profit">Profit</th></tr></thead>`;
+  expect(
+    readPivotFreezeColumns(table).map(column => [column.key, column.count]),
+  ).toEqual([
+    ['date', 1],
+    ['sales', 2],
+    ['profit', 3],
+  ]);
+  const first = pivotFreezeKey(['country', '指标'], ['US', 'Sales'], '指标', {
+    Sales: 'metric-1',
+  });
+  expect(first).toBe(
+    pivotFreezeKey(['country', 'Metric'], ['US', 'Sales renamed'], 'Metric', {
+      'Sales renamed': 'metric-1',
+    }),
+  );
+  expect(first).not.toBe(
+    pivotFreezeKey(['country', 'Metric'], ['CA', 'Sales'], 'Metric', {
+      Sales: 'metric-1',
+    }),
+  );
 });

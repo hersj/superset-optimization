@@ -21,6 +21,10 @@ import type { QueryFormMetric } from '@superset-ui/core';
 import { t } from '@apache-superset/core/translation';
 import { css, styled } from '@apache-superset/core/theme';
 import {
+  readPivotFreezeColumns,
+  type PivotFreezeColumn,
+} from '../../../../plugins/plugin-chart-pivot-table/src/react-pivottable/freezePivotColumns';
+import {
   Button,
   Checkbox,
   Icons,
@@ -214,10 +218,12 @@ const SortableMetricRow = ({
 
 interface PivotMetricLayoutModalProps {
   show: boolean;
+  chartId?: number;
   metrics: QueryFormMetric[];
   initialLayout?: PersonalChartLayout;
   dashboardSharedLayout?: PersonalChartLayout | null;
   templates: PersonalChartTemplate[];
+  legacyTemplates?: PersonalChartTemplate[];
   activeSlot: 1 | 2 | 3 | null;
   isSaving?: boolean;
   onHide: () => void;
@@ -235,10 +241,12 @@ interface PivotMetricLayoutModalProps {
 
 export default function PivotMetricLayoutModal({
   show,
+  chartId,
   metrics,
   initialLayout,
   dashboardSharedLayout,
   templates,
+  legacyTemplates = [],
   activeSlot,
   isSaving = false,
   onHide,
@@ -246,21 +254,12 @@ export default function PivotMetricLayoutModal({
   onSaveTemplate,
   onSetDefault,
   onDeleteTemplate,
-  onSaveDashboardLayout,
-  onDisableDashboardLayout,
 }: PivotMetricLayoutModalProps) {
   /*
-   * 功能审计（可重写规格）：透视表个人列模板编辑弹窗
-   * - 功能目的与触发方式：用户从透视表“自定义列”打开后调整列顺序/显隐，并选择使用、保存、设默认或删除三格个人模板。
-   * - 输入契约：metrics 是当前图表指标；templates 是当前用户、dashboard、chart 的已持久化 slot；initialLayout 是当前会话布局。
-   * - 输出契约：使用系统默认或模板只回调 onApply；保存、设默认、删除通过父组件回调发起服务端写入；关闭不产生草稿写入。
-   * - 处理流程：模板区固定显示在指标列表之前，打开时由 initialLayout 生成内存草稿；拖动、置顶/上移/下移/置底和勾选仅更新草稿；保存到选定 slot 成功后应用草稿；使用模板立即应用后关闭。
-   * - 业务规则：系统默认不删除模板也不清除 is_default；非默认模板使用不修改默认；删除默认后不补选；失败保留当前草稿和会话视图。
-   * - 状态与副作用：组件 state 仅保存打开期间草稿、目标 slot 和名称；网络/Redux 副作用由父图表处理。
-   * - 外部依赖：metricLayout 的 identity/reconcile 规则、父组件模板 API 回调、dnd-kit。
-   * - 异常与边界：至少保留一个可见指标；空 slot 可新建；关闭、取消和离开图表均丢弃未保存草稿。
-   * - 不变量与约束：不将草稿写入服务端；应用历史模板时不自动展示新增指标，编辑并保存时必须将新增指标追加到排序且保持隐藏；不以点击模板改变默认。
-   * - 验证方式：metricLayout.test.ts 覆盖四种精确移动；服务器实机验收三 slot 保存、跨刷新恢复、默认和系统默认语义。
+   * 同一用户、同一看板共用三个模板；保存只更新库，使用才应用当前图表。
+   * 默认布局保存独立快照，更新/删除源模板不覆盖已应用布局。
+   * 草稿仅在弹窗内；取消不写入，保存失败保留草稿。旧图表模板只读保留。
+   * 冻结保存稳定列标识，旧数字配置仅在能解析实际表头时转换。
    */
   const metricDescriptors = useMemo(
     () => buildMetricDescriptors(metrics),
@@ -268,9 +267,10 @@ export default function PivotMetricLayoutModal({
   );
   const [orderedMetricIds, setOrderedMetricIds] = useState<string[]>([]);
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
-  const [frozenColumnCount, setFrozenColumnCount] = useState(0);
-  const [customFreeze, setCustomFreeze] = useState(false);
-  const [syncDashboard, setSyncDashboard] = useState(false);
+  const [frozenColumnKey, setFrozenColumnKey] = useState<
+    string | null | undefined
+  >(null);
+  const [freezeColumns, setFreezeColumns] = useState<PivotFreezeColumn[]>([]);
   const [search, setSearch] = useState('');
   const [saveSlot, setSaveSlot] = useState<1 | 2 | 3 | null>(null);
   const [templateName, setTemplateName] = useState('');
@@ -280,14 +280,23 @@ export default function PivotMetricLayoutModal({
       return;
     }
     const reconciled = reconcileMetricLayout(metricDescriptors, initialLayout, {
-      includeMissingMetrics: !dashboardSharedLayout,
-      includeMissingMetricsVisible: Boolean(dashboardSharedLayout),
+      includeMissingMetrics: true,
+      includeMissingMetricsVisible: true,
     });
     setOrderedMetricIds(reconciled.orderedMetricIds);
     setHiddenMetricIds(reconciled.hiddenMetricIds);
-    setFrozenColumnCount(initialLayout?.frozen_column_count || 0);
-    setCustomFreeze((initialLayout?.frozen_column_count || 0) > 3);
-    setSyncDashboard(Boolean(dashboardSharedLayout));
+    const table = document.querySelector<HTMLTableElement>(
+      `#chart-id-${chartId} .pvtTable`,
+    );
+    const columns = table ? readPivotFreezeColumns(table) : [];
+    setFreezeColumns(columns);
+    setFrozenColumnKey(
+      initialLayout?.frozen_column_key !== undefined
+        ? initialLayout.frozen_column_key
+        : columns.find(
+            column => column.count === initialLayout?.frozen_column_count,
+          )?.key || (initialLayout?.frozen_column_count ? undefined : null),
+    );
     setSearch('');
     const selected = templates.find(template => template.slot === activeSlot);
     const nextSlot =
@@ -303,6 +312,7 @@ export default function PivotMetricLayoutModal({
     );
   }, [
     show,
+    chartId,
     initialLayout,
     dashboardSharedLayout,
     metricDescriptors,
@@ -333,6 +343,12 @@ export default function PivotMetricLayoutModal({
   ).length;
   const matchingMetrics = orderedMetrics.filter(metric =>
     metric?.label.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const availableFreezeColumns = freezeColumns.filter(
+    column =>
+      (!column.metricId || !hiddenMetricIds.includes(column.metricId)) &&
+      freezeColumns.filter(other => other.key === column.key).length === 1,
   );
 
   const setMatchingVisibility = (visible: boolean) => {
@@ -377,7 +393,13 @@ export default function PivotMetricLayoutModal({
   const draftLayout = (): PersonalChartLayout => ({
     ordered_metric_ids: orderedMetricIds,
     hidden_metric_ids: hiddenMetricIds,
-    frozen_column_count: frozenColumnCount,
+    frozen_column_count:
+      frozenColumnKey === undefined
+        ? initialLayout?.frozen_column_count || 0
+        : 0,
+    ...(frozenColumnKey !== undefined
+      ? { frozen_column_key: frozenColumnKey }
+      : {}),
     version: PIVOT_METRIC_LAYOUT_VERSION,
   });
 
@@ -392,14 +414,6 @@ export default function PivotMetricLayoutModal({
   };
 
   const handleSave = async () => {
-    if (syncDashboard) {
-      await handleSaveDashboardLayout();
-      return;
-    }
-    if (dashboardSharedLayout) {
-      await handleDisableDashboardLayout();
-      return;
-    }
     if (!saveSlot || !canPersistTemplate) {
       return;
     }
@@ -410,8 +424,6 @@ export default function PivotMetricLayoutModal({
         templateName.trim() || t('模板 %(slot)s', { slot: saveSlot }),
         nextLayout,
       );
-      onApply(nextLayout, saveSlot);
-      onHide();
     } catch {
       // The owning chart displays the server error; preserve this local draft.
     }
@@ -420,26 +432,6 @@ export default function PivotMetricLayoutModal({
   const handleUseSystemDefault = () => {
     onApply(null, null);
     onHide();
-  };
-
-  const handleSaveDashboardLayout = async () => {
-    if (!canPersistTemplate || !onSaveDashboardLayout) return;
-    try {
-      await onSaveDashboardLayout(draftLayout());
-      onHide();
-    } catch {
-      // Keep the draft when persistence fails.
-    }
-  };
-
-  const handleDisableDashboardLayout = async () => {
-    if (!onDisableDashboardLayout) return;
-    try {
-      await onDisableDashboardLayout();
-      onHide();
-    } catch {
-      // Keep the existing layout and modal open.
-    }
   };
 
   const handleUseTemplate = (template: PersonalChartTemplate) => {
@@ -460,9 +452,6 @@ export default function PivotMetricLayoutModal({
       await onDeleteTemplate(template.slot);
       if (template.slot === saveSlot) {
         setTemplateName(t('模板 %(slot)s', { slot: saveSlot }));
-      }
-      if (template.slot === activeSlot) {
-        onApply(null, null);
       }
     } catch {
       // The owning chart displays the server error; do not alter the session view.
@@ -499,13 +488,7 @@ export default function PivotMetricLayoutModal({
             buttonStyle="primary"
             onClick={handleSave}
             loading={isSaving}
-            disabled={
-              syncDashboard
-                ? !canPersistTemplate || !onSaveDashboardLayout
-                : dashboardSharedLayout
-                  ? !onDisableDashboardLayout
-                  : !saveSlot || !canPersistTemplate
-            }
+            disabled={!saveSlot || !canPersistTemplate}
           >
             {t('Save')}
           </Button>
@@ -514,60 +497,44 @@ export default function PivotMetricLayoutModal({
     >
       <Description>
         {t(
-          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿，保存个人模板或应用到本看板后才会生效。',
+          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿；保存更新模板库，点击使用才应用到当前图表。',
         )}
       </Description>
-      <div>
-        {t('冻结左侧列数')}
-        <div role="group" aria-label={t('冻结快捷选择')}>
-          {[0, 1, 2, 3].map(count => (
-            <Button
-              key={count}
-              buttonStyle={
-                !customFreeze && frozenColumnCount === count
-                  ? 'primary'
-                  : 'tertiary'
-              }
-              aria-pressed={!customFreeze && frozenColumnCount === count}
-              disabled={isSaving}
-              onClick={() => {
-                setFrozenColumnCount(count);
-                setCustomFreeze(false);
-              }}
-            >
-              {count === 0 ? t('不冻结') : t('%(count)s列', { count })}
-            </Button>
+      <label>
+        {t('冻结到哪一列')}
+        <select
+          aria-label={t('冻结到哪一列')}
+          value={
+            frozenColumnKey === undefined ? '__legacy__' : frozenColumnKey || ''
+          }
+          disabled={isSaving}
+          onChange={event => setFrozenColumnKey(event.target.value || null)}
+        >
+          <option value="">{t('不冻结')}</option>
+          {frozenColumnKey === undefined && (
+            <option value="__legacy__" disabled>
+              {t('保留原冻结设置（请选择列名以更新）')}
+            </option>
+          )}
+          {availableFreezeColumns.map(column => (
+            <option key={column.key} value={column.key}>
+              {column.label}
+            </option>
           ))}
-          <Button
-            buttonStyle={customFreeze ? 'primary' : 'tertiary'}
-            aria-pressed={customFreeze}
-            disabled={isSaving}
-            onClick={() => setCustomFreeze(true)}
-          >
-            {t('自定义')}
-          </Button>
-        </div>
-        {customFreeze && (
-          <Input
-            type="number"
-            min={0}
-            max={2000}
-            value={frozenColumnCount}
-            onChange={event =>
-              setFrozenColumnCount(
-                Math.max(
-                  0,
-                  Math.min(2000, Math.floor(Number(event.target.value) || 0)),
-                ),
-              )
-            }
-            aria-label={t('冻结左侧列数')}
-            disabled={isSaving}
-          />
-        )}
-      </div>
+          {frozenColumnKey &&
+            !availableFreezeColumns.some(
+              column => column.key === frozenColumnKey,
+            ) && (
+              <option value={frozenColumnKey}>
+                {t('原冻结边界列当前不存在（不冻结）')}
+              </option>
+            )}
+        </select>
+      </label>
       <Description>
-        {t('从最左侧开始冻结，0 表示不冻结；包含日期、部门等行维度列。')}
+        {t(
+          '冻结所选列及其左侧可见列；排序和模板切换后跟随该列。隐藏或缺少边界列时不冻结。',
+        )}
       </Description>
       {!canPersistTemplate && (
         <Description>
@@ -576,30 +543,14 @@ export default function PivotMetricLayoutModal({
           )}
         </Description>
       )}
-      <TemplateSection>
-        <Description>
-          <Checkbox
-            checked={syncDashboard}
-            disabled={isSaving}
-            onChange={event => setSyncDashboard(event.target.checked)}
-          >
-            {t('同步本看板透视图')}
-          </Checkbox>
-          <br />
-          {t(
-            '开启后，修改任意透视图并保存，自动同步本看板其他透视图；仅对你生效，各图独有指标保留。',
-          )}
-          {dashboardSharedLayout && !syncDashboard && (
-            <div>{t('保存后恢复各图原来的个人布局，不删除模板。')}</div>
-          )}
-        </Description>
-      </TemplateSection>
-      {!syncDashboard && !dashboardSharedLayout && (
+      {
         <TemplateSection>
           <Description>
-            <strong>{t('个人模板')}</strong>
+            <strong>{t('本看板个人模板库（最多3个）')}</strong>
             <br />
-            {t('使用模板只影响当前会话；可将当前草稿保存到三个个人模板之一。')}
+            {t(
+              '同看板透视图共用，仅本人可见。保存只更新模板库；点击使用才应用到当前图表，设为默认也只影响当前图表。',
+            )}
           </Description>
           {([1, 2, 3] as const).map(slot => {
             const template = templates.find(item => item.slot === slot);
@@ -647,6 +598,28 @@ export default function PivotMetricLayoutModal({
             );
           })}
         </TemplateSection>
+      }
+      {legacyTemplates.length > 0 && (
+        <details>
+          <summary>{t('旧图表模板（保留）')}</summary>
+          {legacyTemplates.map(template => (
+            <div key={template.slot}>
+              {template.name}
+              <Button
+                onClick={() => {
+                  onApply(template.layout, null);
+                  onHide();
+                }}
+                disabled={isSaving}
+              >
+                {t('使用旧模板')}
+              </Button>
+            </div>
+          ))}
+          <Description>
+            {t('旧模板不会删除；使用后可重新打开，将布局保存到共享模板库。')}
+          </Description>
+        </details>
       )}
       <Input
         aria-label={t('搜索指标列')}

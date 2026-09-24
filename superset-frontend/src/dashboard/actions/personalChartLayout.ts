@@ -22,6 +22,7 @@ export interface PersonalChartLayout {
   ordered_metric_ids: string[];
   hidden_metric_ids: string[];
   frozen_column_count?: number;
+  frozen_column_key?: string | null;
   version: number;
 }
 
@@ -31,6 +32,43 @@ export interface PersonalChartTemplate {
   name: string;
   is_default: boolean;
   layout: PersonalChartLayout;
+}
+
+export interface PivotTemplateLibrary {
+  version: 2;
+  templates: PersonalChartTemplate[];
+  defaults: Record<string, PersonalChartLayout>;
+  legacy_layout: PersonalChartLayout | null;
+}
+export const SET_PIVOT_TEMPLATE_LIBRARY = 'SET_PIVOT_TEMPLATE_LIBRARY';
+export function setPivotTemplateLibrary(
+  library: PivotTemplateLibrary | null,
+  initialize = false,
+) {
+  return { type: SET_PIVOT_TEMPLATE_LIBRARY, library, initialize };
+}
+export async function getPivotTemplateLibrary(
+  dashboardId: number,
+): Promise<PivotTemplateLibrary> {
+  const { json } = await SupersetClient.get({
+    endpoint: `/api/v1/dashboard/${dashboardId}/pivot_templates`,
+  });
+  return json.result;
+}
+export async function editPivotTemplateLibrary(
+  dashboardId: number,
+  payload: {
+    action: 'save' | 'delete' | 'default';
+    slot: 1 | 2 | 3;
+    chart_id?: number;
+    template?: { name: string; layout: PersonalChartLayout };
+  },
+): Promise<PivotTemplateLibrary> {
+  const { json } = await SupersetClient.put({
+    endpoint: `/api/v1/dashboard/${dashboardId}/pivot_templates`,
+    jsonPayload: payload,
+  });
+  return json.result;
 }
 
 export function isNotFoundError(error: unknown): boolean {
