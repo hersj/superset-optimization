@@ -22,7 +22,7 @@ import {
   BarSeriesOption,
   XAXisComponentOption,
 } from 'echarts';
-import { alignWeeklyAxis } from '../../src/utils/weeklyAxis';
+import { alignPeriodAxis } from '../../src/utils/periodAxis';
 import type GlobalModel from 'echarts/types/src/model/Global';
 import { getXAxisFormatter } from '../../src/utils/formatters';
 
@@ -49,7 +49,7 @@ const original: EChartsOption = {
 };
 
 test('weekly ticks follow the actual sorted dates; original tooltip/drill values survive and zoom works', () => {
-  const output = alignWeeklyAxis(original, 'P1W_SUN') as EChartsOption;
+  const output = alignPeriodAxis(original, 'P1W_SUN') as EChartsOption;
   expect(output).toMatchObject({ xAxis: { data: dates.map(String) } });
   expect(
     (output.series as BarSeriesOption[])[0].data?.map(row =>
@@ -103,18 +103,18 @@ test('disjoint or unsorted query dates use the chronological union without mergi
       { type: 'line', data: [data[1]] },
     ],
   };
-  const output = alignWeeklyAxis(options, 'P1W_SUN');
+  const output = alignPeriodAxis(options, 'P1W_SUN');
   expect(output).toMatchObject({
     xAxis: { data: dates.slice(0, 3).map(String) },
   });
-  expect(alignWeeklyAxis(original, 'P1D')).toBe(original);
-  expect(alignWeeklyAxis(original, 'P1M')).toBe(original);
-  expect(alignWeeklyAxis(original)).toBe(original);
+  expect(alignPeriodAxis(original, 'P1D')).toBe(original);
+  expect(alignPeriodAxis(original, 'P1M')).toBe(original);
+  expect(alignPeriodAxis(original)).toBe(original);
   const annotated = {
     ...original,
     series: [{ type: 'line', data, markLine: { data: [] } }],
   };
-  expect(alignWeeklyAxis(annotated, 'P1W_SUN')).toBe(annotated);
+  expect(alignPeriodAxis(annotated, 'P1W_SUN')).toBe(annotated);
 });
 
 test('horizontal and negative-value data-item styles keep their original metric and timestamp', () => {
@@ -125,7 +125,7 @@ test('horizontal and negative-value data-item styles keep their original metric 
     yAxis: original.xAxis,
     series: [{ type: 'bar', data: [item] }],
   };
-  const result = alignWeeklyAxis(horizontal, 'P1W_SUN', true);
+  const result = alignPeriodAxis(horizontal, 'P1W_SUN', true);
   expect(result).toMatchObject({
     yAxis: { data: [String(dates[0])] },
     series: [
@@ -136,4 +136,111 @@ test('horizontal and negative-value data-item styles keep their original metric 
     ],
   });
   expect(item.value).toEqual([-5, dates[0]]);
+});
+
+test('fiscal-year ticks use April buckets and remain centered on mixed bar and line data', () => {
+  const fiscalDates = [2024, 2025, 2026].map(year => Date.UTC(year, 3, 1));
+  const fiscalData = fiscalDates.map((date, i) => [date, i + 1]);
+  const options: EChartsOption = {
+    animation: false,
+    useUTC: true,
+    xAxis: {
+      type: 'time',
+      min: 'dataMin',
+      max: 'dataMax',
+      minInterval: 3600 * 1000 * 24 * 31 * 12,
+      axisLabel: {
+        formatter: getXAxisFormatter('smart_date', 'P1Y_FISCAL'),
+        rotate: 45,
+      },
+    },
+    yAxis: [{ type: 'value' }, { type: 'value' }],
+    dataZoom: [{ type: 'slider', start: 0, end: 100 }],
+    series: [
+      { type: 'bar', stack: 'total', data: fiscalData },
+      { type: 'bar', stack: 'total', data: fiscalData },
+      { type: 'line', yAxisIndex: 1, data: fiscalData.slice(1) },
+    ],
+  };
+  const output = alignPeriodAxis(options, 'P1Y_FISCAL') as EChartsOption;
+  expect(output).toMatchObject({
+    xAxis: { type: 'category', data: fiscalDates.map(String) },
+  });
+  expect(
+    (output.series as BarSeriesOption[])[0].data?.map(row =>
+      (row as number[]).slice(0, 2),
+    ),
+  ).toEqual(fiscalData);
+  expect((options.series as BarSeriesOption[])[0].data).toBe(fiscalData);
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 1600,
+    height: 700,
+  });
+  try {
+    chart.setOption(output);
+    const svg = chart.renderToSVGString();
+    expect(svg).not.toContain('2023财年');
+    for (const year of [2024, 2025, 2026]) {
+      expect(svg.match(new RegExp(`>${year}财年</text>`, 'g'))).toHaveLength(1);
+    }
+    const model = (chart as unknown as { getModel(): GlobalModel }).getModel();
+    const linePoints = model.getSeriesByIndex(2).getData().getLayout('points');
+    fiscalDates.forEach((date, i) => {
+      const pixel = chart.convertToPixel(
+        { xAxisIndex: 0 },
+        String(date),
+      ) as number;
+      for (const seriesIndex of [0, 1]) {
+        const bar = model
+          .getSeriesByIndex(seriesIndex)
+          .getData()
+          .getItemLayout(i);
+        expect(bar.x + bar.width / 2).toBeCloseTo(pixel, 3);
+      }
+    });
+    fiscalDates.slice(1).forEach((date, i) => {
+      const pixel = chart.convertToPixel(
+        { xAxisIndex: 0 },
+        String(date),
+      ) as number;
+      expect(linePoints[i * 2]).toBeCloseTo(pixel, 3);
+    });
+    chart.dispatchAction({ type: 'dataZoom', start: 55, end: 100 });
+    const zoomed = chart.renderToSVGString();
+    expect(zoomed).not.toContain('2024财年');
+    expect(zoomed).toContain('2026财年');
+  } finally {
+    chart.dispose();
+  }
+});
+
+test('one fiscal year and missing fiscal buckets preserve actual query dates', () => {
+  const first = Date.UTC(2024, 3, 1);
+  const last = Date.UTC(2026, 3, 1);
+  const single = {
+    ...original,
+    series: [{ type: 'bar', data: [[first, 1]] }],
+  };
+  expect(alignPeriodAxis(single, 'P1Y_FISCAL')).toMatchObject({
+    xAxis: { type: 'category', data: [String(first)] },
+  });
+  const sparse = {
+    ...original,
+    series: [
+      {
+        type: 'bar',
+        data: [
+          [last, 2],
+          [first, 1],
+        ],
+      },
+      { type: 'line', data: [[last, 3]] },
+    ],
+  };
+  expect(alignPeriodAxis(sparse, 'P1Y_FISCAL')).toMatchObject({
+    xAxis: { data: [String(first), String(last)] },
+  });
+  expect(alignPeriodAxis(sparse, 'P1Y')).toBe(sparse);
 });

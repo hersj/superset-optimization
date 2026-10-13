@@ -125,7 +125,7 @@ class CategoricalColorScale extends ExtensibleFunction {
     appliedColorScheme?: string,
   ): string {
     const cleanedValue = stringifyAndTrim(value);
-    // priority: forced color (aka custom label colors) > shared color > scale color
+    // priority: forced color > assigned chart color > shared color > scale color
     const forcedColor = this.forcedColors?.[cleanedValue];
     const { source } = this.labelsColorMapInstance;
     const currentColorMap =
@@ -133,15 +133,20 @@ class CategoricalColorScale extends ExtensibleFunction {
         ? this.labelsColorMapInstance.getColorMap()
         : this.chartLabelsColorMap;
     const isExistingLabel = currentColorMap.has(cleanedValue);
+    const assignedColor = this.chartLabelsColorMap.get(cleanedValue);
     let color =
       forcedColor ||
+      assignedColor ||
       (isExistingLabel
         ? (currentColorMap.get(cleanedValue) as string)
         : this.scale(cleanedValue));
 
     // a forced color will always be used independently of the usage count
-    if (!forcedColor && !isExistingLabel) {
-      if (isFeatureEnabled(FeatureFlag.UseAnalogousColors)) {
+    if (!forcedColor && !assignedColor) {
+      if (
+        !isExistingLabel &&
+        isFeatureEnabled(FeatureFlag.UseAnalogousColors)
+      ) {
         this.incrementColorRange();
       }
       if (

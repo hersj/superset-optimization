@@ -23,6 +23,13 @@ import {
   FormulaAnnotationLayer,
   VizType,
   ChartDataResponseResult,
+  CategoricalColorScale,
+  CategoricalColorNamespace,
+  CategoricalScheme,
+  FeatureFlag,
+  getCategoricalSchemeRegistry,
+  getLabelsColorMap,
+  LabelsColorMapSource,
 } from '@superset-ui/core';
 import {
   LegendOrientation,
@@ -36,7 +43,7 @@ import {
 } from '../../src/MixedTimeseries/types';
 import { DEFAULT_FORM_DATA } from '../../src/MixedTimeseries/types';
 import { createEchartsTimeseriesTestChartProps } from '../helpers';
-import type { SeriesOption } from 'echarts';
+import type { BarSeriesOption, SeriesOption } from 'echarts';
 import { GenericDataType } from '@apache-superset/core/common';
 
 /**
@@ -182,6 +189,57 @@ test('dashboard weekly grain aligns mixed bars and lines without changing tempor
   expect(output.xAxis.type).toBe('time');
   expect(output.echartOptions.xAxis.type).toBe('category');
   expect(output.echartOptions.xAxis.data).toEqual(dates.map(String));
+  for (const series of output.echartOptions.series) {
+    expect(series.data.map(row => row[0])).toEqual(dates);
+    expect(series.encode).toEqual({ x: 2, y: 1 });
+    expect(
+      series.label.formatter({
+        value: series.data[0],
+        dataIndex: 0,
+        seriesIndex: 0,
+        seriesName: series.name,
+      }),
+    ).not.toContain('1780');
+  }
+});
+
+test('dashboard fiscal grain aligns actual April buckets and preserves temporal drill values', () => {
+  const dates = [2024, 2025, 2026].map(year => Date.UTC(year, 3, 1));
+  const rows = dates.map((ds, i) => ({ ds, boy: i + 1, girl: i + 2 }));
+  const query = createTestQueryData(rows, {
+    colnames: ['ds', 'boy', 'girl'],
+    coltypes: [
+      GenericDataType.Temporal,
+      GenericDataType.Numeric,
+      GenericDataType.Numeric,
+    ],
+    label_map: defaultLabelMap,
+  });
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      seriesTypeB: EchartsTimeseriesSeriesType.Smooth,
+      stack: true,
+      stackB: false,
+      showValue: true,
+      showValueB: true,
+      time_grain_sqla: 'P1D',
+      extra_form_data: { time_grain_sqla: 'P1Y_FISCAL' },
+    },
+    queriesData: [query, query],
+  });
+  const output = transformProps(props);
+  expect(output.xAxis.type).toBe('time');
+  expect(output.echartOptions.xAxis.type).toBe('category');
+  expect(output.echartOptions.xAxis.data).toEqual(dates.map(String));
+  expect(
+    output.echartOptions.xAxis.axisLabel.formatter(String(dates[0]), 0),
+  ).toBe('2024财年');
   for (const series of output.echartOptions.series) {
     expect(series.data.map(row => row[0])).toEqual(dates);
     expect(series.encode).toEqual({ x: 2, y: 1 });
@@ -855,3 +913,78 @@ test('keeps manual secondary y-axis bounds when automatic mode is disabled', () 
   expect(secondaryAxis.min).toBe(0);
   expect(secondaryAxis.max).toBe(0.3);
 });
+
+test.each([
+  [757, 761],
+  [761, 757],
+])(
+  'mixed legend series keep distinct colors after singleton charts %s then %s',
+  (first, second) => {
+    window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+    const shared = getLabelsColorMap();
+    const registry = getCategoricalSchemeRegistry();
+    const palette = ['#1FA8C9', '#454E7C', '#5AC189'];
+    const schemeId = 'legendCollisionRegression';
+    registry.registerValue(
+      schemeId,
+      new CategoricalScheme({ id: schemeId, colors: palette }),
+    );
+    shared.reset();
+    shared.source = LabelsColorMapSource.Dashboard;
+    CategoricalColorNamespace.getNamespace().resetColors();
+    try {
+      [first, second].forEach(sliceId => {
+        const scale = new CategoricalColorScale(palette);
+        scale.getColor(sliceId === 757 ? '配送销售额' : '毛利润', sliceId);
+      });
+      const chartProps = createEchartsTimeseriesTestChartProps<
+        EchartsMixedTimeseriesFormData,
+        EchartsMixedTimeseriesProps
+      >({
+        ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+        formData: {
+          ...formData,
+          sliceId: 598,
+          colorScheme: schemeId,
+          metrics: ['配送销售额', '毛利润'],
+          metricsB: ['毛利率'],
+          groupby: [],
+          groupbyB: [],
+          seriesType: EchartsTimeseriesSeriesType.Bar,
+          seriesTypeB: EchartsTimeseriesSeriesType.Smooth,
+          showLegend: true,
+        },
+        queriesData: [
+          createTestQueryData(
+            [{ ds: 599616000000, 配送销售额: 100, 毛利润: 25 }],
+            {
+              label_map: {
+                ds: ['ds'],
+                配送销售额: ['配送销售额'],
+                毛利润: ['毛利润'],
+              },
+            },
+          ),
+          createTestQueryData([{ ds: 599616000000, 毛利率: 0.25 }], {
+            label_map: { ds: ['ds'], 毛利率: ['毛利率'] },
+          }),
+        ],
+      });
+      const series = transformProps(chartProps).echartOptions
+        .series as BarSeriesOption[];
+      const colors = series.map(item => item.itemStyle?.color);
+      expect(series.map(item => item.name).sort()).toEqual(
+        ['配送销售额', '毛利润', '毛利率'].sort(),
+      );
+      expect(colors.every(color => palette.includes(color as string))).toBe(
+        true,
+      );
+      expect(new Set(colors).size).toBe(3);
+    } finally {
+      shared.reset();
+      CategoricalColorNamespace.getNamespace().resetColors();
+      registry.remove(schemeId);
+      window.featureFlags = {};
+    }
+  },
+);

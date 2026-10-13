@@ -58,7 +58,7 @@ import {
   Refs,
 } from '../types';
 import { parseAxisBound } from '../utils/controls';
-import { alignWeeklyAxis } from '../utils/weeklyAxis';
+import { alignPeriodAxis } from '../utils/periodAxis';
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import {
   dedupSeries,
@@ -966,7 +966,7 @@ export default function transformProps(
     customEchartOptions = undefined;
   }
 
-  const alignedEchartOptions = alignWeeklyAxis(echartOptions, timeGrainSqla);
+  const alignedEchartOptions = alignPeriodAxis(echartOptions, timeGrainSqla);
   const mergedEchartOptions = customEchartOptions
     ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)
     : alignedEchartOptions;

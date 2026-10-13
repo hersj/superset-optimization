@@ -95,7 +95,8 @@ function formatByGrain(date: Date, timeGrain: string): string {
     return `${y}年`;
   }
   if (timeGrain === TimeGranularity.FISCAL_YEAR || timeGrain === 'P1Y_FISCAL') {
-    return `${date.getMonth() < 3 ? y - 1 : y}财年`;
+    // 与核心财年口径共用 UTC+8，避免浏览器时区把 4 月 1 日移到 3 月。
+    return getTimeFormatter(undefined, TimeGranularity.FISCAL_YEAR)(date);
   }
   if (isQuarterGrain(timeGrain)) {
     const q = getFiscalQuarter(date.getMonth());

@@ -29,6 +29,7 @@ import {
   TimeseriesAnnotationLayer,
   ChartDataResponseResult,
 } from '@superset-ui/core';
+import { GenericDataType } from '@apache-superset/core/common';
 import { EchartsTimeseriesChartProps } from '../../src/types';
 import type { SeriesOption } from 'echarts';
 import transformProps from '../../src/Timeseries/transformProps';
@@ -1489,4 +1490,35 @@ test('should not apply axis bounds calculation when seriesType is not Bar for ho
   const xAxisRaw = transformedProps.echartOptions.xAxis as any;
   // Should not have explicit max set when seriesType is not Bar
   expect(xAxisRaw.max).toBeUndefined();
+});
+
+test('dashboard fiscal grain aligns the standard timeseries axis with actual April buckets', () => {
+  const fiscalDates = [2024, 2025, 2026].map(year => Date.UTC(year, 3, 1));
+  const rows = fiscalDates.map((ds, i) => ({ ds, sales: i + 1 }));
+  const props = createTestChartProps({
+    formData: {
+      x_axis: 'ds',
+      metrics: ['sales'],
+      time_grain_sqla: 'P1D',
+      extra_form_data: { time_grain_sqla: 'P1Y_FISCAL' },
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+    },
+    queriesData: [
+      createTestQueryData(rows, {
+        colnames: ['ds', 'sales'],
+        coltypes: [GenericDataType.Temporal, GenericDataType.Numeric],
+        label_map: { ds: ['ds'], sales: ['sales'] },
+      }),
+    ],
+  });
+  const output = transformProps(props);
+  expect(output.echartOptions).toMatchObject({
+    xAxis: { type: 'category', data: fiscalDates.map(String) },
+    series: [
+      {
+        encode: { x: 2, y: 1 },
+        data: fiscalDates.map((date, i) => [date, i + 1, String(date)]),
+      },
+    ],
+  });
 });

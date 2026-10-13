@@ -18,7 +18,7 @@
  */
 /* eslint-disable camelcase */
 import { invert } from 'lodash';
-import { alignWeeklyAxis } from '../utils/weeklyAxis';
+import { alignPeriodAxis } from '../utils/periodAxis';
 import { t } from '@apache-superset/core/translation';
 import {
   AnnotationLayer,
@@ -1186,7 +1186,7 @@ export default function transformProps(
     customEchartOptions = undefined;
   }
 
-  const alignedEchartOptions = alignWeeklyAxis(
+  const alignedEchartOptions = alignPeriodAxis(
     echartOptions,
     timeGrainSqla,
     isHorizontal,

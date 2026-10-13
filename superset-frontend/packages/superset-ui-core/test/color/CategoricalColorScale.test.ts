@@ -22,6 +22,7 @@ import {
   CategoricalColorScale,
   FeatureFlag,
   LabelsColorMapSource,
+  getLabelsColorMap,
 } from '@superset-ui/core';
 
 describe('CategoricalColorScale', () => {
@@ -486,4 +487,67 @@ describe('CategoricalColorScale', () => {
       expect(scale('pig')).toBe('blue');
     });
   });
+});
+
+test.each([
+  { singles: [757, 761], labels: ['配送销售额', '毛利润', '毛利率'] },
+  { singles: [761, 757], labels: ['毛利润', '配送销售额', '毛利率'] },
+])(
+  'avoids inherited dashboard collisions after charts $singles',
+  ({ singles, labels }) => {
+    window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+    const shared = getLabelsColorMap();
+    shared.reset();
+    shared.source = LabelsColorMapSource.Dashboard;
+    try {
+      singles.forEach(sliceId => {
+        const scale = new CategoricalColorScale(['blue', 'red', 'green']);
+        scale.getColor(sliceId === 757 ? '配送销售额' : '毛利润', sliceId);
+      });
+      const combined = new CategoricalColorScale(['blue', 'red', 'green']);
+      const colors = labels.map(label => combined.getColor(label, 598));
+      expect(new Set(colors).size).toBe(labels.length);
+      expect(labels.map(label => combined.getColor(label, 598))).toEqual(
+        colors,
+      );
+    } finally {
+      shared.reset();
+    }
+  },
+);
+
+test('repairs collisions in an existing shared map and keeps chart colors stable', () => {
+  window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+  const shared = getLabelsColorMap();
+  shared.reset();
+  shared.source = LabelsColorMapSource.Dashboard;
+  try {
+    shared.colorMap.set('配送销售额', 'blue');
+    shared.colorMap.set('毛利润', 'blue');
+    const scale = new CategoricalColorScale(['blue', 'red', 'green']);
+    expect(scale.getColor('配送销售额', 598)).toBe('blue');
+    expect(scale.getColor('毛利润', 598)).toBe('red');
+    shared.colorMap.set('配送销售额', 'red');
+    expect(scale.getColor('配送销售额', 598)).toBe('blue');
+    expect(scale.getColor('毛利润', 598)).toBe('red');
+  } finally {
+    shared.reset();
+  }
+});
+
+test('preserves explicit same-color overrides with collision avoidance enabled', () => {
+  window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+  const shared = getLabelsColorMap();
+  shared.reset();
+  shared.source = LabelsColorMapSource.Dashboard;
+  try {
+    const scale = new CategoricalColorScale(['blue', 'red', 'green'], {
+      配送销售额: 'red',
+      毛利润: 'red',
+    });
+    expect(scale.getColor('配送销售额', 598)).toBe('red');
+    expect(scale.getColor('毛利润', 598)).toBe('red');
+  } finally {
+    shared.reset();
+  }
 });

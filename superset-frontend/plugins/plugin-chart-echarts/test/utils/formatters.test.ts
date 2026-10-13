@@ -24,6 +24,7 @@ import {
 } from '@superset-ui/core';
 import {
   getPercentFormatter,
+  getTooltipTimeFormatter,
   getXAxisFormatter,
 } from '../../src/utils/formatters';
 
@@ -203,4 +204,21 @@ test('getXAxisFormatter uses the Sellerfox Sunday-to-Saturday business week', ()
   expect(
     (formatter as TimeFormatter).format(new Date('2026-06-21T00:00:00+08:00')),
   ).toBe('2026年第26周');
+});
+
+test('fiscal labels use the business timezone at the April boundary for axes and tooltips', () => {
+  const axisFormatter = getXAxisFormatter(
+    SMART_DATE_ID,
+    TimeGranularity.FISCAL_YEAR,
+  ) as TimeFormatter;
+  const tooltipFormatter = getTooltipTimeFormatter(
+    SMART_DATE_ID,
+    TimeGranularity.FISCAL_YEAR,
+  ) as TimeFormatter;
+  for (const formatter of [axisFormatter, tooltipFormatter]) {
+    expect(formatter(Date.UTC(2024, 3, 1))).toBe('2024财年');
+    expect(formatter(Date.UTC(2024, 2, 31, 15, 59, 59))).toBe('2023财年');
+    expect(formatter(Date.UTC(2024, 2, 31, 16))).toBe('2024财年');
+    expect(formatter(Date.UTC(2025, 3, 1))).toBe('2025财年');
+  }
 });
