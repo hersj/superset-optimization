@@ -222,3 +222,131 @@ test('does not expose internal ratio helpers in post-processed JSON downloads', 
 
   expect(query.metrics).toEqual(['metric1', 'metric2']);
 });
+
+test('custom period builds two full-range queries without a time shift', () => {
+  const context = buildQuery({
+    ...formData,
+    time_range: '2026-10-01 : 2026-10-14',
+    row_limit: 1000,
+    time_compare: ['1 month ago'],
+    extra_form_data: {
+      custom_form_data: {
+        custom_period_comparison: {
+          currentTimeRange: '2026-10-01 : 2026-10-14',
+          comparisonTimeRange: '2026-08-05 : 2026-08-18',
+          timeColumn: 'col1',
+        },
+      },
+    },
+  } as PivotTableQueryFormData);
+  expect(context.queries).toHaveLength(2);
+  expect(context.queries[0].time_range).toBe('2026-10-01 : 2026-10-14');
+  expect(context.queries[1].time_range).toBe('2026-08-05 : 2026-08-18');
+  expect(context.queries[1].columns).toEqual(context.queries[0].columns);
+  expect(context.queries[1].metrics).toEqual(context.queries[0].metrics);
+  expect(context.queries.every(query => !query.time_offsets?.length)).toBe(
+    true,
+  );
+});
+
+test('custom period refuses a legacy server export which cannot merge two queries', () => {
+  expect(() =>
+    buildQuery({
+      ...formData,
+      result_format: 'csv',
+      extra_form_data: {
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-10-01 : 2026-10-14',
+            comparisonTimeRange: '2026-08-05 : 2026-08-18',
+          },
+        },
+      },
+    } as PivotTableQueryFormData),
+  ).toThrow(/导出/);
+});
+
+test('custom current and comparison queries replace every bound time range and clear legacy comparison', () => {
+  const period = {
+    currentTimeRange: '2026-10-01 : 2026-10-14',
+    comparisonTimeRange: '2026-08-05 : 2026-08-18',
+    timeColumn: 'col1',
+  };
+  const businessFilter = { col: 'shop', op: 'IN', val: ['A'] };
+  const independentDateFilter = {
+    col: 'other_date',
+    op: 'TEMPORAL_RANGE',
+    val: '2026-01-01 : 2027-01-01',
+  };
+  const context = buildQuery({
+    ...formData,
+    time_range: '2025-01-01 : 2025-02-01',
+    row_limit: 1000,
+    since: '2025-01-01',
+    until: '2025-02-01',
+    extra_form_data: {
+      time_compare: ['1 month ago'],
+      filters: [
+        { col: 'col1', op: 'TEMPORAL_RANGE', val: '2025-01-01 : 2025-02-01' },
+        businessFilter,
+        independentDateFilter,
+      ],
+      custom_form_data: { custom_period_comparison: period },
+    },
+  } as PivotTableQueryFormData);
+  expect(context.queries).toHaveLength(2);
+  context.queries.forEach((query, index) => {
+    const expectedRange =
+      index === 0 ? period.currentTimeRange : period.comparisonTimeRange;
+    expect(query.time_range).toBe(expectedRange);
+    expect(query.filters).toContainEqual({
+      col: 'col1',
+      op: 'TEMPORAL_RANGE',
+      val: expectedRange,
+    });
+    expect(query.filters).toContainEqual(businessFilter);
+    expect(query.filters).toContainEqual(independentDateFilter);
+    expect(query.since).toBeUndefined();
+    expect(query.until).toBeUndefined();
+    expect(query.time_shift).toBeUndefined();
+    expect(query.time_offsets).toEqual([]);
+    expect(query.time_compare).toEqual([]);
+    expect(query.extras?.time_compare).toEqual([]);
+  });
+});
+
+const customPeriodFormData = {
+  ...formData,
+  row_limit: 5,
+  extra_form_data: {
+    custom_form_data: {
+      custom_period_comparison: {
+        currentTimeRange: '2026-10-01 : 2026-10-14',
+        comparisonTimeRange: '2026-08-05 : 2026-08-18',
+      },
+    },
+  },
+} as PivotTableQueryFormData;
+
+test('custom queries request one extra row to detect truncation on either period', () => {
+  const { queries } = buildQuery(customPeriodFormData);
+  expect(queries.map(query => query.row_limit)).toEqual([6, 6]);
+});
+
+test.each([undefined, 0, -1, 1.5])(
+  'custom comparison rejects a non-positive integer row limit: %s',
+  row_limit => {
+    expect(() => buildQuery({ ...customPeriodFormData, row_limit })).toThrow(
+      /行数/,
+    );
+  },
+);
+
+test.each([{ row_offset: 1 }, { series_limit: 2 }, { limit: 2 }])(
+  'custom comparison rejects actual pagination/ranking limits: %s',
+  overrides => {
+    expect(() => buildQuery({ ...customPeriodFormData, ...overrides })).toThrow(
+      /分页|排名/,
+    );
+  },
+);

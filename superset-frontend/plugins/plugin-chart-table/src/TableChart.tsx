@@ -41,6 +41,7 @@ import { FaSortUp as FaSortAsc } from 'react-icons/fa';
 import cx from 'classnames';
 import {
   DataRecord,
+  formatCustomPeriodComparisonLabel,
   DataRecordValue,
   DTTM_ALIAS,
   ensureIsArray,
@@ -92,6 +93,7 @@ import DataTable, {
 } from './DataTable';
 import Styles from './Styles';
 import { formatColumnValue } from './utils/formatValue';
+import { sortCustomPeriodStrings } from './DataTable/utils/sortAlphanumericCaseInsensitive';
 import { PAGE_SIZE_OPTIONS, SERVER_PAGE_SIZE_OPTIONS } from './consts';
 import { updateTableOwnState } from './DataTable/utils/externalAPIs';
 import getScrollBarSize from './DataTable/utils/getScrollBarSize';
@@ -337,6 +339,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     onContextMenu,
     emitCrossFilters,
     isUsingTimeComparison,
+    customPeriodComparison,
     basicColorFormatters,
     basicColorColumnFormatters,
     hasServerPageLengthChanged,
@@ -658,70 +661,79 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     };
 
     return (
-      <Dropdown
-        placement="bottomRight"
-        open={showComparisonDropdown}
-        onOpenChange={(flag: boolean) => {
-          setShowComparisonDropdown(flag);
-        }}
-        menu={{
-          multiple: true,
-          onClick: handleOnClick,
-          onBlur: handleOnBlur,
-          selectedKeys: selectedComparisonColumns,
-          items: [
-            {
-              key: 'all',
-              label: (
-                <div
-                  css={css`
-                    max-width: 242px;
-                    padding: 0 ${theme.sizeUnit * 2}px;
-                    color: ${theme.colorText};
-                    font-size: ${theme.fontSizeSM}px;
-                  `}
-                >
-                  {t(
-                    'Select columns that will be displayed in the table. You can multiselect columns.',
-                  )}
-                </div>
-              ),
-              type: 'group',
-              children: comparisonColumns.map(
-                (column: { key: string; label: string }) => ({
-                  key: column.key,
-                  label: (
-                    <>
-                      <span
-                        css={css`
-                          color: ${theme.colorText};
-                        `}
-                      >
-                        {column.label}
-                      </span>
-                      <span
-                        css={css`
-                          float: right;
-                          font-size: ${theme.fontSizeSM}px;
-                        `}
-                      >
-                        {selectedComparisonColumns.includes(column.key) && (
-                          <CheckOutlined />
-                        )}
-                      </span>
-                    </>
-                  ),
-                }),
-              ),
-            },
-          ],
-        }}
-        trigger={['click']}
-      >
-        <span>
-          <TableOutlined /> <DownOutlined />
-        </span>
-      </Dropdown>
+      <>
+        {customPeriodComparison && (
+          <span role="status">
+            {formatCustomPeriodComparisonLabel(customPeriodComparison)}
+            {totals &&
+              ` · ${t('Totals cover the complete filtered periods, including during table search.')}`}
+          </span>
+        )}
+        <Dropdown
+          placement="bottomRight"
+          open={showComparisonDropdown}
+          onOpenChange={(flag: boolean) => {
+            setShowComparisonDropdown(flag);
+          }}
+          menu={{
+            multiple: true,
+            onClick: handleOnClick,
+            onBlur: handleOnBlur,
+            selectedKeys: selectedComparisonColumns,
+            items: [
+              {
+                key: 'all',
+                label: (
+                  <div
+                    css={css`
+                      max-width: 242px;
+                      padding: 0 ${theme.sizeUnit * 2}px;
+                      color: ${theme.colorText};
+                      font-size: ${theme.fontSizeSM}px;
+                    `}
+                  >
+                    {t(
+                      'Select columns that will be displayed in the table. You can multiselect columns.',
+                    )}
+                  </div>
+                ),
+                type: 'group',
+                children: comparisonColumns.map(
+                  (column: { key: string; label: string }) => ({
+                    key: column.key,
+                    label: (
+                      <>
+                        <span
+                          css={css`
+                            color: ${theme.colorText};
+                          `}
+                        >
+                          {column.label}
+                        </span>
+                        <span
+                          css={css`
+                            float: right;
+                            font-size: ${theme.fontSizeSM}px;
+                          `}
+                        >
+                          {selectedComparisonColumns.includes(column.key) && (
+                            <CheckOutlined />
+                          )}
+                        </span>
+                      </>
+                    ),
+                  }),
+                ),
+              },
+            ],
+          }}
+          trigger={['click']}
+        >
+          <span>
+            <TableOutlined /> <DownOutlined />
+          </span>
+        </Dropdown>
+      </>
     );
   };
 
@@ -946,7 +958,13 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         columnKey: key,
         accessor: ((datum: D) => datum[key]) as never,
         Cell: ({ value, row }: { value: DataRecordValue; row: Row<D> }) => {
-          const [isHtml, text] = formatColumnValue(column, value, row.original);
+          const [isHtml, formattedText] = formatColumnValue(
+            column,
+            value,
+            row.original,
+          );
+          const text =
+            customPeriodComparison && value == null ? '—' : formattedText;
           const html = isHtml && allowRenderHtml ? { __html: text } : undefined;
 
           let backgroundColor;
@@ -954,7 +972,13 @@ export default function TableChart<D extends DataRecord = DataRecord>(
           let backgroundColorCellBar;
           let valueRangeFlag = true;
           let arrow = '';
-          const originKey = column.key.substring(column.label.length).trim();
+          const originKey = column.key
+            .substring(
+              customPeriodComparison
+                ? column.key.indexOf(' ') + 1
+                : column.label.length,
+            )
+            .trim();
           if (!hasColumnColorFormatters && hasBasicColorFormatters) {
             backgroundColor =
               basicColorFormatters[row.index][originKey]?.backgroundColor;
@@ -1244,7 +1268,8 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         ),
 
         Footer: displayedTotals ? (
-          i === 0 ? (
+          i === 0 &&
+          (!customPeriodComparison || (!isMetric && !isPercentMetric)) ? (
             <th key={`footer-summary-${i}`}>
               <div
                 css={css`
@@ -1269,13 +1294,18 @@ export default function TableChart<D extends DataRecord = DataRecord>(
           ) : (
             <td key={`footer-total-${i}`} style={sharedStyle}>
               <strong>
-                {formatColumnValue(column, displayedTotals[key])[1]}
+                {customPeriodComparison && displayedTotals[key] == null
+                  ? '—'
+                  : formatColumnValue(column, displayedTotals[key])[1]}
               </strong>
             </td>
           )
         ) : undefined,
         sortDescFirst: sortDesc,
-        sortType: getSortTypeByDataType(dataType),
+        sortType:
+          customPeriodComparison && dataType === GenericDataType.String
+            ? sortCustomPeriodStrings
+            : getSortTypeByDataType(dataType),
       };
     },
     [
@@ -1284,6 +1314,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       defaultColorPN,
       columnColorFormatters,
       isUsingTimeComparison,
+      customPeriodComparison,
       basicColorFormatters,
       showCellBars,
       isRawRecords,
@@ -1312,7 +1343,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
 
   const handleFilteredDataChange = useCallback(
     (rows: Row<D>[], searchText?: string) => {
-      if (!totals || serverPagination) {
+      if (!totals || serverPagination || customPeriodComparison) {
         return;
       }
 
@@ -1337,7 +1368,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
 
       setDisplayedTotals(updatedTotals as D);
     },
-    [filteredColumnsMeta, serverPagination, totals],
+    [filteredColumnsMeta, serverPagination, totals, customPeriodComparison],
   );
 
   useEffect(() => {
@@ -1345,10 +1376,14 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       columns as unknown as ColumnWithLooseAccessor &
         {
           columnKey: string;
-          sortType?: string;
+          sortType?: string | typeof sortCustomPeriodStrings;
         }[]
     )
-      .filter(col => col?.sortType === 'alphanumeric')
+      .filter(
+        col =>
+          col?.sortType === 'alphanumeric' ||
+          col?.sortType === sortCustomPeriodStrings,
+      )
       .map(column => ({
         value: column.columnKey,
         label: column.columnKey,
@@ -1465,9 +1500,12 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     () =>
       visibleColumnsMeta.map(col => ({
         key: col.key,
-        label: col.config?.customColumnName || col.originalLabel || col.key,
+        label:
+          customPeriodComparison && col.originalLabel
+            ? `${col.originalLabel} · ${col.config?.customColumnName || col.label}`
+            : col.config?.customColumnName || col.originalLabel || col.key,
       })),
-    [visibleColumnsMeta],
+    [visibleColumnsMeta, customPeriodComparison],
   );
 
   // Use a ref to store previous clientViewRows and exportColumns for robust change detection

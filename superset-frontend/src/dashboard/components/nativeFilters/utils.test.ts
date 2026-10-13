@@ -19,7 +19,11 @@
 import { Behavior } from '@superset-ui/core';
 import { DashboardLayout } from 'src/dashboard/types';
 import { CHART_TYPE } from 'src/dashboard/util/componentTypes';
-import { nativeFilterGate, findTabsWithChartsInScope } from './utils';
+import {
+  nativeFilterGate,
+  findTabsWithChartsInScope,
+  mergeExtraFormData,
+} from './utils';
 
 // eslint-disable-next-line no-restricted-globals -- TODO: Migrate from describe blocks
 describe('nativeFilterGate', () => {
@@ -80,4 +84,23 @@ test('findTabsWithChartsInScope should handle a recursive layout structure', () 
   expect(Array.from(findTabsWithChartsInScope(chartLayoutItems, []))).toEqual(
     [],
   );
+});
+
+test('custom form objects preserve other keys and allow an explicit comparison clear', () => {
+  const previous = {
+    custom_form_data: {
+      unrelated: 'kept',
+      custom_period_comparison: { currentTimeRange: 'old' },
+    },
+  };
+  expect(
+    mergeExtraFormData(previous, {
+      custom_form_data: { custom_period_comparison: null },
+    }).custom_form_data,
+  ).toEqual({ unrelated: 'kept', custom_period_comparison: null });
+  expect(
+    mergeExtraFormData(previous, {
+      filters: [{ col: 'shop', op: 'IN', val: ['A'] }],
+    }).custom_form_data,
+  ).toEqual(previous.custom_form_data);
 });

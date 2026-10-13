@@ -1708,3 +1708,57 @@ describe('plugin-chart-table', () => {
     });
   });
 });
+
+test('custom period date header sorts period positions numerically', () => {
+  const source = cloneDeep(testData.basic);
+  const period = {
+    currentTimeRange: '2026-10-01 : 2026-10-20',
+    comparisonTimeRange: '2026-08-05 : 2026-08-24',
+    timeColumn: 'date',
+  };
+  source.rawFormData = {
+    ...source.rawFormData,
+    order_desc: false,
+    query_mode: QueryMode.Aggregate,
+    metrics: ['sales'],
+    groupby: ['date'],
+    time_grain_sqla: TimeGranularity.DAY,
+    temporal_columns_lookup: { date: true },
+    row_limit: 20,
+    show_totals: false,
+    extra_form_data: { custom_form_data: { custom_period_comparison: period } },
+  };
+  const [result] = source.queriesData;
+  source.queriesData = [
+    {
+      ...result,
+      colnames: ['date', 'sales'],
+      coltypes: [GenericDataType.Temporal, GenericDataType.Numeric],
+      data: [
+        { date: '2026-10-14', sales: 14 },
+        { date: '2026-10-02', sales: 2 },
+      ],
+    },
+    {
+      ...result,
+      colnames: ['date', 'sales'],
+      coltypes: [GenericDataType.Temporal, GenericDataType.Numeric],
+      data: [
+        { date: '2026-08-18', sales: 1 },
+        { date: '2026-08-06', sales: 1 },
+      ],
+    },
+  ];
+  const { container } = render(
+    <ProviderWrapper>
+      <TableChart {...transformProps(source)} />
+    </ProviderWrapper>,
+  );
+  fireEvent.click(screen.getByText('date'));
+  const labels = Array.from(
+    container.querySelectorAll('tbody tr td:first-child'),
+  ).map(cell => cell.textContent);
+  expect(labels).toHaveLength(2);
+  expect(labels[0]).toContain('第2天');
+  expect(labels[1]).toContain('第14天');
+});

@@ -22,8 +22,6 @@ import {
   SetDataMaskHook,
   DataRecordValue,
   JsonObject,
-  TimeFormatter,
-  NumberFormatter,
   QueryFormMetric,
   QueryFormColumn,
   TimeGranularity,
@@ -43,10 +41,7 @@ export interface PivotTableStylesProps {
 export type FilterType = Record<string, DataRecordValue>;
 export type SelectedFiltersType = Record<string, DataRecordValue[]>;
 
-export type DateFormatter =
-  | TimeFormatter
-  | NumberFormatter
-  | ((value: DataRecordValue) => string);
+export type DateFormatter = (value: unknown) => string;
 export enum MetricsLayoutEnum {
   ROWS = 'ROWS',
   COLUMNS = 'COLUMNS',
@@ -82,6 +77,9 @@ interface PivotTableCustomizeProps {
   currencyFormats: Record<string, Currency>;
   metricAggregateFunctions: Record<string, string>;
   metricRatioComponents?: Record<string, PivotRatioComponentLabels>;
+  customPeriodComparison?: boolean;
+  customPeriodComparisonLabel?: string;
+  customPeriodTemporalDimensions?: string[];
   metricsLayout?: MetricsLayoutEnum;
   metricColorFormatters: ColorFormatters;
   dateFormatters: Record<string, DateFormatter | undefined>;

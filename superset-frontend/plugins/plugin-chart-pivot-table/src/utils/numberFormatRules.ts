@@ -18,6 +18,7 @@
  */
 import { DataRecordValue, getNumberFormatter } from '@superset-ui/core';
 import type { DateFormatter } from '../types';
+import { getPeriodOperation } from '../plugin/customPeriodComparison';
 
 export type PivotNumberFormatRuleAxis = 'row' | 'column';
 
@@ -38,6 +39,7 @@ export interface FormatPivotValueWithRulesArgs {
   rules?: PivotNumberFormatRule[];
   dateFormatters?: Record<string, DateFormatter | undefined>;
   defaultFormatter: (value: unknown) => string;
+  customPeriodComparison?: boolean;
 }
 
 function normalizeComparableValue(value: unknown): string {
@@ -116,7 +118,16 @@ export function formatPivotValueWithRules({
   rules = [],
   dateFormatters,
   defaultFormatter,
+  customPeriodComparison = false,
 }: FormatPivotValueWithRulesArgs): string {
+  if (
+    customPeriodComparison &&
+    ['差额', '变化率'].includes(
+      getPeriodOperation(rowAttrs, rowKey, colAttrs, colKey),
+    )
+  ) {
+    return defaultFormatter(value);
+  }
   const columnRule = findMatchingRule(
     'column',
     colAttrs,

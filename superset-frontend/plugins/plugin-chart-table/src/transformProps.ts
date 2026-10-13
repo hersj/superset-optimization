@@ -20,6 +20,10 @@ import memoizeOne from 'memoize-one';
 import { t } from '@apache-superset/core/translation';
 import {
   ComparisonType,
+  getCustomPeriodComparison,
+  mergeCustomPeriodComparisonRows,
+  calculatePeriodDifference,
+  CUSTOM_PERIOD_SUFFIX,
   CurrencyFormatter,
   Currency,
   DataRecord,
@@ -155,6 +159,7 @@ const processComparisonDataRecords = memoizeOne(
     originalData: DataRecord[] | undefined,
     originalColumns: DataColumnMeta[],
     comparisonSuffix: string,
+    customPeriod = false,
   ) {
     // Transform data
     return originalData?.map(originalItem => {
@@ -165,16 +170,18 @@ const processComparisonDataRecords = memoizeOne(
           !origCol.key.includes(comparisonSuffix) &&
           origCol.isNumeric
         ) {
-          const originalValue = originalItem[origCol.key] || 0;
-          const comparisonValue = origCol.isMetric
-            ? originalItem?.[`${origCol.key}__${comparisonSuffix}`] || 0
-            : originalItem[`%${origCol.key.slice(1)}__${comparisonSuffix}`] ||
-              0;
-          const { valueDifference, percentDifferenceNum } =
-            calculateDifferences(
-              originalValue as number,
-              comparisonValue as number,
-            );
+          const originalValue = customPeriod
+            ? (originalItem[origCol.key] ?? null)
+            : originalItem[origCol.key] || 0;
+          const comparisonValue = customPeriod
+            ? (originalItem[`${origCol.key}__${comparisonSuffix}`] ?? null)
+            : origCol.isMetric
+              ? originalItem?.[`${origCol.key}__${comparisonSuffix}`] || 0
+              : originalItem[`%${origCol.key.slice(1)}__${comparisonSuffix}`] ||
+                0;
+          const { valueDifference, percentDifferenceNum } = (
+            customPeriod ? calculatePeriodDifference : calculateDifferences
+          )(originalValue as number, comparisonValue as number);
 
           transformedItem[`Main ${origCol.key}`] = originalValue;
           transformedItem[`# ${origCol.key}`] = comparisonValue;
@@ -496,6 +503,136 @@ const defaultColorFormatters = [] as ColorFormatters;
 const transformProps = (
   chartProps: TableChartProps,
 ): TableChartTransformedProps => {
+  const customPeriod = getCustomPeriodComparison(chartProps.rawFormData);
+  let customTotals: DataRecord | undefined;
+  if (customPeriod) {
+    const { rawFormData, queriesData } = chartProps;
+    const queryCount = queriesData.length / 2;
+    if (!Number.isInteger(queryCount) || !queriesData[queryCount]) {
+      throw new Error('Custom period comparison is missing a query result.');
+    }
+    const [current] = queriesData;
+    const comparison = queriesData[queryCount];
+    if (
+      [current, comparison].some(
+        query => query.data.length > Number(rawFormData.row_limit),
+      )
+    ) {
+      throw new Error(
+        'Custom period comparison exceeded the row limit; increase the limit or narrow filters.',
+      );
+    }
+    const temporalDimensions = current.colnames.filter(
+      (_, index) => current.coltypes[index] === GenericDataType.Temporal,
+    );
+    const metricNames = [
+      ...(rawFormData.metrics ?? []).map(getMetricLabel),
+      ...(rawFormData.percent_metrics ?? []).map(
+        metric => `%${getMetricLabel(metric)}`,
+      ),
+    ];
+    if (
+      [...current.data, ...comparison.data].some(row =>
+        metricNames.some(
+          metric =>
+            row[metric] != null &&
+            (typeof row[metric] !== 'number' || !Number.isFinite(row[metric])),
+        ),
+      )
+    ) {
+      throw new Error('Custom period comparison requires numeric metrics.');
+    }
+    const dimensions = current.colnames.filter(
+      name =>
+        !metricNames.includes(name) &&
+        !(rawFormData.percent_metrics ?? []).map(getMetricLabel).includes(name),
+    );
+    const allRecordsContribution =
+      rawFormData.percent_metric_calculation === 'all_records' &&
+      !!rawFormData.percent_metrics?.length;
+    const contributionData = (
+      records: DataRecord[],
+      denominator?: DataRecord,
+    ) =>
+      records.map(row => {
+        const result = { ...row };
+        (rawFormData.percent_metrics ?? []).forEach(metric => {
+          const name = getMetricLabel(metric);
+          const value = row[name];
+          const total = denominator?.[name];
+          if (denominator) {
+            result[`%${name}`] =
+              typeof value === 'number' &&
+              typeof total === 'number' &&
+              total !== 0
+                ? value / total
+                : null;
+          }
+        });
+        return result;
+      });
+    const data = mergeCustomPeriodComparisonRows(
+      allRecordsContribution
+        ? contributionData(current.data, queriesData[1]?.data[0])
+        : current.data,
+      allRecordsContribution
+        ? contributionData(
+            comparison.data,
+            queriesData[queryCount + 1]?.data[0],
+          )
+        : comparison.data,
+      dimensions,
+      metricNames,
+      customPeriod,
+      extractTimegrain(rawFormData),
+      temporalDimensions,
+    );
+    const totalIndex = allRecordsContribution ? 2 : 1;
+    if (rawFormData.show_totals && queryCount <= totalIndex) {
+      throw new Error('Custom period comparison is missing aggregate totals.');
+    }
+    if (
+      rawFormData.show_totals &&
+      queriesData[totalIndex] &&
+      queriesData[queryCount + totalIndex]
+    ) {
+      const mergedTotals = mergeCustomPeriodComparisonRows(
+        contributionData(
+          queriesData[totalIndex].data,
+          queriesData[totalIndex].data[0],
+        ),
+        contributionData(
+          queriesData[queryCount + totalIndex].data,
+          queriesData[queryCount + totalIndex].data[0],
+        ),
+        [],
+        metricNames,
+        customPeriod,
+      );
+      [customTotals] = mergedTotals;
+    }
+    const columnConfig = { ...rawFormData.column_config };
+    temporalDimensions.forEach(name => {
+      columnConfig[name] = { ...columnConfig[name], d3TimeFormat: undefined };
+    });
+    chartProps = {
+      ...chartProps,
+      rawFormData: { ...rawFormData, column_config: columnConfig },
+      queriesData: [
+        {
+          ...current,
+          data,
+          rowcount: data.length,
+          coltypes: current.coltypes.map((type, index) =>
+            temporalDimensions.includes(current.colnames[index])
+              ? GenericDataType.String
+              : type,
+          ),
+        },
+        ...queriesData.slice(1),
+      ],
+    };
+  }
   const {
     height,
     width,
@@ -540,9 +677,10 @@ const transformProps = (
     slice_id,
   } = formData;
   const isUsingTimeComparison =
-    !isEmpty(time_compare) &&
-    queryMode === QueryMode.Aggregate &&
-    comparison_type === ComparisonType.Values;
+    !!customPeriod ||
+    (!isEmpty(time_compare) &&
+      queryMode === QueryMode.Aggregate &&
+      comparison_type === ComparisonType.Values);
 
   const calculateBasicStyle = (
     percentDifferenceNum: number,
@@ -614,21 +752,28 @@ const transformProps = (
       relevantColumns.forEach(origCol => {
         if (
           (origCol.isMetric || origCol.isPercentMetric) &&
-          !origCol.key.includes(ensureIsArray(timeOffsets)[0]) &&
+          !origCol.key.includes(
+            customPeriod ? CUSTOM_PERIOD_SUFFIX : ensureIsArray(timeOffsets)[0],
+          ) &&
           origCol.isNumeric
         ) {
-          const originalValue = originalItem[origCol.key] || 0;
-          const comparisonValue = origCol.isMetric
-            ? originalItem?.[
-                `${origCol.key}__${ensureIsArray(timeOffsets)[0]}`
-              ] || 0
-            : originalItem[
-                `%${origCol.key.slice(1)}__${ensureIsArray(timeOffsets)[0]}`
-              ] || 0;
-          const { percentDifferenceNum } = calculateDifferences(
-            originalValue as number,
-            comparisonValue as number,
-          );
+          const originalValue = customPeriod
+            ? (originalItem[origCol.key] ?? null)
+            : originalItem[origCol.key] || 0;
+          const comparisonValue = customPeriod
+            ? (originalItem[`${origCol.key}__${CUSTOM_PERIOD_SUFFIX}`] ?? null)
+            : origCol.isMetric
+              ? originalItem?.[
+                  `${origCol.key}__${customPeriod ? CUSTOM_PERIOD_SUFFIX : ensureIsArray(timeOffsets)[0]}`
+                ] || 0
+              : originalItem[
+                  `%${origCol.key.slice(1)}__${customPeriod ? CUSTOM_PERIOD_SUFFIX : ensureIsArray(timeOffsets)[0]}`
+                ] || 0;
+          const { percentDifferenceNum } = (
+            customPeriod ? calculatePeriodDifference : calculateDifferences
+          )(originalValue as number, comparisonValue as number);
+
+          if (percentDifferenceNum === null) return;
 
           if (selectedColumns) {
             selectedColumns.forEach(col => {
@@ -681,9 +826,11 @@ const transformProps = (
 
   const timeGrain = extractTimegrain(formData);
 
-  const comparisonSuffix = isUsingTimeComparison
-    ? ensureIsArray(timeOffsets)[0]
-    : '';
+  const comparisonSuffix = customPeriod
+    ? CUSTOM_PERIOD_SUFFIX
+    : isUsingTimeComparison
+      ? ensureIsArray(timeOffsets)[0]
+      : '';
 
   const [metrics, percentMetrics, columns] = processColumns(chartProps);
   let comparisonColumns: DataColumnMeta[] = [];
@@ -693,6 +840,52 @@ const transformProps = (
       chartProps,
       comparisonSuffix,
     );
+    if (customPeriod) {
+      const labels: Record<string, string> = {
+        Main: t('Current'),
+        '#': t('Comparison'),
+        '△': t('Difference'),
+        '%': t('Percent change'),
+      };
+      comparisonColumns = comparisonColumns.map(column => {
+        const [prefix] = column.key.split(' ');
+        if (!labels[prefix] || (!column.isMetric && !column.isPercentMetric))
+          return column;
+        const parent = columns.find(
+          item => column.key === `${prefix} ${item.key}`,
+        );
+        const format =
+          parent?.config?.d3NumberFormat ||
+          chartProps.datasource.columnFormats?.[parent?.key || ''];
+        return {
+          ...column,
+          config: {
+            ...column.config,
+            visible: true,
+            customColumnName: labels[prefix],
+            displayTypeIcon: false,
+          },
+          description:
+            prefix === 'Main'
+              ? customPeriod.currentTimeRange
+              : prefix === '#'
+                ? customPeriod.comparisonTimeRange
+                : column.description,
+          formatter:
+            prefix === '%'
+              ? getNumberFormatter(
+                  column.config?.d3NumberFormat?.includes('%')
+                    ? column.config.d3NumberFormat
+                    : PERCENT_3_POINT,
+                )
+              : prefix === '△' &&
+                  (parent?.isPercentMetric || format?.includes('%'))
+                ? (value: number) =>
+                    `${getNumberFormatter('.1f')(Number(value) * 100)} pp`
+                : column.formatter,
+        };
+      });
+    }
   }
 
   let baseQuery;
@@ -711,11 +904,19 @@ const transformProps = (
     baseQuery?.data,
     columns,
     comparisonSuffix,
+    !!customPeriod,
   );
   const totals =
     showTotals && queryMode === QueryMode.Aggregate
       ? isUsingTimeComparison
-        ? processComparisonTotals(comparisonSuffix, totalQuery?.data)
+        ? customPeriod
+          ? processComparisonDataRecords(
+              customTotals ? [customTotals] : [],
+              columns,
+              comparisonSuffix,
+              true,
+            )?.[0]
+          : processComparisonTotals(comparisonSuffix, totalQuery?.data)
         : totalQuery?.data[0]
       : undefined;
 
@@ -797,14 +998,15 @@ const transformProps = (
         : serverPageLength
       : getPageSize(pageLength, data.length, columns.length),
     filters: filterState.filters,
-    emitCrossFilters,
+    emitCrossFilters: customPeriod ? false : emitCrossFilters,
     onChangeFilter,
     columnColorFormatters,
     timeGrain,
     allowRearrangeColumns,
     allowRenderHtml,
-    onContextMenu,
+    onContextMenu: customPeriod ? undefined : onContextMenu,
     isUsingTimeComparison,
+    customPeriodComparison: customPeriod,
     basicColorFormatters,
     startDateOffset,
     basicColorColumnFormatters,

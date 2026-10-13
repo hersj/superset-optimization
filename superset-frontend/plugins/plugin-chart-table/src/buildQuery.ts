@@ -24,6 +24,8 @@ import {
   QueryMode,
   QueryObject,
   buildQueryContext,
+  getCustomPeriodComparison,
+  buildCustomPeriodComparisonQuery,
   ensureIsArray,
   getMetricLabel,
   isPhysicalColumn,
@@ -71,6 +73,75 @@ const buildQuery: BuildQuery<TableChartFormData> = (
   formData: TableChartFormData,
   options,
 ) => {
+  const customPeriod = getCustomPeriodComparison(formData);
+  if (customPeriod) {
+    if (getQueryMode(formData) !== QueryMode.Aggregate) {
+      throw new Error(
+        'Custom period comparison requires aggregate table mode.',
+      );
+    }
+    if (formData.server_pagination) {
+      throw new Error(
+        'Custom period comparison does not support server pagination.',
+      );
+    }
+    if (
+      ['csv', 'xlsx'].includes(formData.result_format || '') ||
+      (formData.result_format === 'json' && formData.result_type === 'results')
+    ) {
+      throw new Error(
+        'Custom period comparison requires the rendered-table download.',
+      );
+    }
+    const rowLimit = Number(formData.row_limit);
+    if (!Number.isInteger(rowLimit) || rowLimit <= 0) {
+      throw new Error(
+        'Custom period comparison requires a positive row limit.',
+      );
+    }
+    const context = buildQuery(
+      {
+        ...formData,
+        time_compare: [],
+        row_limit: rowLimit + 1,
+        extra_form_data: {
+          ...formData.extra_form_data,
+          time_compare: [],
+          custom_form_data: {
+            ...formData.extra_form_data?.custom_form_data,
+            custom_period_comparison: undefined,
+          },
+        },
+      },
+      options,
+    );
+    const currentQueries = context.queries.map(query =>
+      buildCustomPeriodComparisonQuery(query, {
+        ...customPeriod,
+        comparisonTimeRange: customPeriod.currentTimeRange,
+      }),
+    );
+    if (
+      currentQueries.some(
+        query =>
+          Number(query.row_offset ?? 0) !== 0 ||
+          Number(query.series_limit ?? 0) !== 0,
+      )
+    ) {
+      throw new Error(
+        'Custom period comparison does not support row offsets or series limits.',
+      );
+    }
+    return {
+      ...context,
+      queries: [
+        ...currentQueries,
+        ...currentQueries.map(query =>
+          buildCustomPeriodComparisonQuery(query, customPeriod),
+        ),
+      ],
+    };
+  }
   const {
     percent_metrics: percentMetrics,
     order_desc: orderDesc = false,

@@ -112,6 +112,7 @@ export function mergeExtraFormData(
 ): ExtraFormData {
   const mergedExtra: Record<string, unknown> = {};
   EXTRA_FORM_DATA_APPEND_KEYS.forEach((key: string) => {
+    if (key === 'custom_form_data') return;
     const originalExtraData = originalExtra[key as keyof ExtraFormDataAppend];
     const newExtraData = newExtra[key as keyof ExtraFormDataAppend];
     const mergedValues = [
@@ -132,6 +133,12 @@ export function mergeExtraFormData(
       mergedExtra[key] = newValue;
     }
   });
+  if (originalExtra.custom_form_data || newExtra.custom_form_data) {
+    mergedExtra.custom_form_data = {
+      ...originalExtra.custom_form_data,
+      ...newExtra.custom_form_data,
+    };
+  }
   return mergedExtra as ExtraFormData;
 }
 

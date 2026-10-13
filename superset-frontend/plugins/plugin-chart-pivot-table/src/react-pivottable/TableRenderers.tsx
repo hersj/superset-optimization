@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { getPeriodOperation } from '../plugin/customPeriodComparison';
 
 import { Component, ReactNode, MouseEvent, createRef } from 'react';
 import { safeHtmlSpan } from '@superset-ui/core';
@@ -67,6 +68,7 @@ interface TableOptions {
   cellColorFormatters?: Record<string, CellColorFormatter[]>;
   dateFormatters?: Record<string, ((val: unknown) => string) | undefined>;
   pivotNumberFormatRules?: PivotNumberFormatRule[];
+  customPeriodComparison?: boolean;
 }
 
 interface SubtotalDisplay {
@@ -192,8 +194,12 @@ function getCellColor(
   keys: string[],
   aggValue: string | number | null,
   cellColorFormatters: Record<string, CellColorFormatter[]> | undefined,
+  periodOperation?: string,
 ): { backgroundColor: string | undefined; color: string | undefined } {
-  if (!cellColorFormatters)
+  if (
+    !cellColorFormatters ||
+    ['差额', '变化率'].includes(periodOperation || '')
+  )
     return { backgroundColor: undefined, color: undefined };
 
   const formatters: CellColorFormatter[] = [];
@@ -1218,6 +1224,7 @@ export class TableRenderer extends Component<
       cellColorFormatters,
       dateFormatters,
       pivotNumberFormatRules,
+      customPeriodComparison,
     } = this.props.tableOptions;
     const flatRowKey = flatKey(rowKey);
     const isSelectedRow = isRowSelectionActive(
@@ -1338,6 +1345,9 @@ export class TableRenderer extends Component<
         keys,
         aggValue,
         cellColorFormatters,
+        customPeriodComparison
+          ? getPeriodOperation(rowAttrs, rowKey, colAttrs, colKey)
+          : undefined,
       );
 
       const style = agg.isSubtotal
@@ -1361,6 +1371,7 @@ export class TableRenderer extends Component<
               colAttrs,
               colKey,
               rules: pivotNumberFormatRules,
+              customPeriodComparison,
               dateFormatters,
               defaultFormatter: () => agg.format(aggValue, agg),
             }),
@@ -1378,6 +1389,9 @@ export class TableRenderer extends Component<
         rowKey,
         aggValue,
         cellColorFormatters,
+        customPeriodComparison
+          ? getPeriodOperation(rowAttrs, rowKey, [], [])
+          : undefined,
       );
       totalCell = (
         <td
@@ -1396,6 +1410,7 @@ export class TableRenderer extends Component<
               colAttrs,
               colKey: [],
               rules: pivotNumberFormatRules,
+              customPeriodComparison,
               dateFormatters,
               defaultFormatter: () => agg.format(aggValue, agg),
             }),
@@ -1439,8 +1454,12 @@ export class TableRenderer extends Component<
       return null;
     }
 
-    const { cellColorFormatters, dateFormatters, pivotNumberFormatRules } =
-      this.props.tableOptions;
+    const {
+      cellColorFormatters,
+      dateFormatters,
+      pivotNumberFormatRules,
+      customPeriodComparison,
+    } = this.props.tableOptions;
 
     const totalLabelCell = (
       <th
@@ -1472,6 +1491,9 @@ export class TableRenderer extends Component<
         colKey,
         aggValue,
         cellColorFormatters,
+        customPeriodComparison
+          ? getPeriodOperation([], [], colAttrs, colKey)
+          : undefined,
       );
 
       return (
@@ -1491,6 +1513,7 @@ export class TableRenderer extends Component<
               colAttrs,
               colKey,
               rules: pivotNumberFormatRules,
+              customPeriodComparison,
               dateFormatters,
               defaultFormatter: () => agg.format(aggValue, agg),
             }),
@@ -1526,6 +1549,7 @@ export class TableRenderer extends Component<
               colAttrs,
               colKey: [],
               rules: pivotNumberFormatRules,
+              customPeriodComparison,
               dateFormatters,
               defaultFormatter: () => agg.format(aggValue, agg),
             }),

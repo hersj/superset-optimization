@@ -611,6 +611,15 @@ export default function getFormDataWithExtraFilters({
       ...(formData.extra_form_data as JsonObject | undefined),
       time_compare: extraControls.time_compare,
     };
+    if (
+      !ensureIsArray(extraControls.time_compare).length &&
+      formData.extra_form_data.custom_form_data?.custom_period_comparison
+    ) {
+      formData.extra_form_data.custom_form_data = {
+        ...formData.extra_form_data.custom_form_data,
+        custom_period_comparison: null,
+      };
+    }
   }
   const pointFilters = formData.extra_form_data?.filters?.filter(
     (filter: { op?: string; val?: unknown }) =>

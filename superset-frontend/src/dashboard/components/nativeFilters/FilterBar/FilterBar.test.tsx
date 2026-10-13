@@ -25,6 +25,7 @@ import {
   TimeFilterPlugin,
   SelectFilterPlugin,
   RangeFilterPlugin,
+  CustomTimeFilterPlugin,
 } from 'src/filters/components';
 import fetchMock from 'fetch-mock';
 import { FilterBarOrientation } from 'src/dashboard/types';
@@ -59,6 +60,7 @@ class MainPreset extends Preset {
         new TimeFilterPlugin().configure({ key: 'filter_time' }),
         new SelectFilterPlugin().configure({ key: 'filter_select' }),
         new RangeFilterPlugin().configure({ key: 'filter_range' }),
+        new CustomTimeFilterPlugin().configure({ key: 'filter_custom_time' }),
       ],
     });
   }
@@ -1003,3 +1005,51 @@ test('FilterBar Clear All only clears in-scope filters, not out-of-scope ones', 
 
   updateDataMasksSpy.mockRestore();
 });
+
+test.each([
+  ['error', '2026-08-17', '2026-08-05', true],
+  [undefined, '2026-08-05', '2026-08-17', false],
+])(
+  'pending chart customization cannot bypass CustomTime validation %s',
+  (validateStatus, comparisonStartDate, comparisonEndDate, disabled) => {
+    const filterId = 'NATIVE_FILTER-custom-period-validation';
+    const range = '2026-10-01 : 2026-10-14';
+    const dataMask = {
+      ...createDataMask(filterId, range, {
+        custom_form_data: { custom_period_comparison: null },
+      }),
+      filterState: {
+        value: range,
+        grain: 'day',
+        customComparisonMode: 'custom',
+        comparisonStartDate,
+        comparisonEndDate,
+        validateStatus,
+      },
+    };
+    const filter = createFilter({
+      id: filterId,
+      filterType: 'filter_custom_time',
+      targets: [{ datasetId: 7, column: { name: 'Column A' } }],
+      controlValues: { enableCustomComparison: true, defaultGrain: 'day' },
+      defaultDataMask: dataMask,
+    });
+    const state = createStateWithFilter(filter, dataMask, {
+      pendingChartCustomizations: {
+        pending: {
+          id: 'pending',
+          type: 'CHART_CUSTOMIZATION',
+          name: 'Pending chart control',
+          removed: false,
+        },
+      },
+    });
+    renderFilterBar(createClosedBarProps(), state);
+    const apply = screen.getByTestId(getTestId('apply-button'));
+    expect(apply).toHaveProperty('disabled', disabled);
+    const updateSpy = jest.spyOn(dataMaskActions, 'updateDataMasks');
+    if (disabled) userEvent.click(apply);
+    expect(updateSpy).not.toHaveBeenCalled();
+    updateSpy.mockRestore();
+  },
+);

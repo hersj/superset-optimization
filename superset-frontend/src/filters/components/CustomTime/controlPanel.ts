@@ -40,6 +40,19 @@ const config: ControlPanelConfig = {
       controlSetRows: [
         [
           {
+            name: 'enableCustomComparison',
+            config: {
+              type: 'CheckboxControl',
+              label: '允许自定义期间对比',
+              default: false,
+              description:
+                '在原生作用范围选择聚合表格和透视表，分别比较完整期间总量；不自动日均。',
+              renderTrigger: true,
+            },
+          },
+        ],
+        [
+          {
             name: 'enablePresets',
             config: {
               type: 'CheckboxControl',
@@ -102,7 +115,9 @@ const config: ControlPanelConfig = {
               type: 'TextControl',
               label: t('Earliest Selectable Date'),
               default: '2022-01-01',
-              description: t('Dates before this date are hidden. Use YYYY-MM-DD.'),
+              description: t(
+                'Dates before this date are hidden. Use YYYY-MM-DD.',
+              ),
               renderTrigger: true,
             },
           },

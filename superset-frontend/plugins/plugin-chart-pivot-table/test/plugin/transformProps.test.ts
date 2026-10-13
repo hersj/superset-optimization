@@ -70,6 +70,9 @@ test('should transform chart props for viz', () => {
   expect(transformProps(chartProps)).toEqual({
     width: 800,
     height: 600,
+    frozenColumnCount: 0,
+    frozenColumnKey: undefined,
+    freezeMetricIds: { metric1: 'metric1', metric2: 'metric2' },
     groupbyRows: ['row1', 'row2'],
     groupbyColumns: ['col1', 'col2'],
     metrics: ['metric1', 'metric2'],
@@ -93,10 +96,7 @@ test('should transform chart props for viz', () => {
     metricsLayout: MetricsLayoutEnum.COLUMNS,
     metricColorFormatters: [],
     metricLayoutState: {
-      ordered_metric_ids: [
-        '{"metric":"metric1","type":"saved"}',
-        '{"metric":"metric2","type":"saved"}',
-      ],
+      ordered_metric_ids: ['metric1', 'metric2'],
       hidden_metric_ids: [],
     },
     dateFormatters: {},
@@ -555,10 +555,10 @@ test('should map conditional formatting rules to metricColorFormatters with corr
   const column2Formatting = result.metricColorFormatters[1].column;
   expect(
     result.metricColorFormatters[0].getColorFromValue(column1Formatting),
-  ).toEqual('#ACE1C4FF');
+  ).toEqual('#ACE1C4');
   expect(
     result.metricColorFormatters[1].getColorFromValue(column2Formatting),
-  ).toEqual('#5ac189FF');
+  ).toEqual('#5ac189');
 });
 
 test('should format numeric-string temporal values the same as epoch numbers', () => {
@@ -710,4 +710,123 @@ test('applies personal metric layout from ownState', () => {
     ordered_metric_ids: [descriptors[1].id, descriptors[0].id],
     hidden_metric_ids: [descriptors[0].id],
   });
+});
+
+test('custom period merges both result sets and preserves metric layout identity', () => {
+  const props = new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      groupbyRows: ['shop'],
+      row_limit: 1000,
+      groupbyColumns: ['day'],
+      metrics: ['sales'],
+      extra_form_data: {
+        time_grain_sqla: 'P1D',
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-10-01 : 2026-10-03',
+            comparisonTimeRange: '2026-08-05 : 2026-08-07',
+            timeColumn: 'day',
+          },
+        },
+      },
+    },
+    width: 800,
+    height: 600,
+    filterState: { selectedFilters: {} },
+    theme: supersetTheme,
+    queriesData: [
+      {
+        data: [{ shop: 'A', day: Date.UTC(2026, 9, 1), sales: 12 }],
+        colnames: ['shop', 'day', 'sales'],
+        coltypes: [1, 2, 0],
+      },
+      {
+        data: [
+          { shop: 'A', day: Date.UTC(2026, 7, 5), sales: 10 },
+          { shop: 'B', day: Date.UTC(2026, 7, 5), sales: 20 },
+        ],
+        colnames: ['shop', 'day', 'sales'],
+        coltypes: [1, 2, 0],
+      },
+    ],
+    datasource: {
+      verboseMap: {},
+      columnFormats: {},
+      metrics: [{ metric_name: 'sales', expression: 'SUM(sales)' }],
+    },
+  });
+  const transformed = transformProps(props);
+  expect(transformed.customPeriodComparison).toBe(true);
+  expect(transformed.customPeriodComparisonLabel).toContain('2026-10-01');
+  expect(transformed.customPeriodComparisonLabel).toContain('2026-08-05');
+  expect(transformed.metrics).toEqual(['sales']);
+  expect(transformed.data).toHaveLength(2);
+  expect(transformed.data[0].sales__custom_period).toBe(10);
+  expect(transformed.data[1].sales).toBeNull();
+  expect(String(transformed.data[0].day)).toContain('2026-10-01');
+  expect(String(transformed.data[0].day)).toContain('2026-08-05');
+  expect(transformed.dateFormatters.day?.(transformed.data[0].day)).toBe(
+    transformed.data[0].day,
+  );
+});
+
+function limitedCustomPeriodProps(
+  currentCount: number,
+  comparisonCount: number,
+) {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ shop: `shop${i}`, sales: 10 }));
+  return new ChartProps<QueryFormData>({
+    formData: {
+      ...formData,
+      metrics: ['sales'],
+      groupbyRows: ['shop'],
+      groupbyColumns: [],
+      row_limit: 2,
+      extra_form_data: {
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-10-01 : 2026-10-14',
+            comparisonTimeRange: '2026-08-05 : 2026-08-18',
+          },
+        },
+      },
+    },
+    datasource: {
+      verboseMap: {},
+      columnFormats: {},
+      metrics: [{ metric_name: 'sales', expression: 'SUM(sales)' }],
+    },
+    queriesData: [
+      {
+        data: rows(currentCount),
+        colnames: ['shop', 'sales'],
+        coltypes: [1, 0],
+      },
+      {
+        data: rows(comparisonCount),
+        colnames: ['shop', 'sales'],
+        coltypes: [1, 0],
+      },
+    ],
+    filterState: { selectedFilters: {} },
+    theme: supersetTheme,
+  });
+}
+
+test.each([
+  [3, 1],
+  [1, 3],
+])(
+  'refuses a truncated period before constructing totals: %s/%s',
+  (currentCount, comparisonCount) => {
+    expect(() =>
+      transformProps(limitedCustomPeriodProps(currentCount, comparisonCount)),
+    ).toThrow(/行数/);
+  },
+);
+
+test('accepts a complete result exactly at its original row limit', () => {
+  expect(transformProps(limitedCustomPeriodProps(2, 2)).data).toHaveLength(2);
 });

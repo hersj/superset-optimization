@@ -63,7 +63,11 @@ import { LOG_ACTIONS_CHANGE_DASHBOARD_FILTER } from 'src/logger/LogUtils';
 import { FilterBarOrientation, RootState } from 'src/dashboard/types';
 import { UserWithPermissionsAndRoles } from 'src/types/bootstrapTypes';
 import { isChartCustomization } from '../FiltersConfigModal/utils';
-import { checkIsApplyDisabled, getFiltersToApply } from './utils';
+import {
+  checkIsApplyDisabled,
+  checkIsValidateError,
+  getFiltersToApply,
+} from './utils';
 import { extractLabel } from '../selectors';
 import { FiltersBarProps } from './types';
 import {
@@ -595,6 +599,7 @@ const FilterBar: FC<FiltersBarProps> = ({
   );
 
   const handleApply = useCallback(() => {
+    if (!checkIsValidateError(dataMaskSelected)) return;
     autoApplyApplierRef.current?.cancel();
     dispatch(logEvent(LOG_ACTIONS_CHANGE_DASHBOARD_FILTER, {}));
     setUpdateKey(1);
@@ -782,6 +787,7 @@ const FilterBar: FC<FiltersBarProps> = ({
   );
 
   const isApplyDisabled =
+    !checkIsValidateError(dataMaskSelected) ||
     (checkResult &&
       !hasPendingChartCustomizations &&
       !hasClearedChartCustomizations) ||

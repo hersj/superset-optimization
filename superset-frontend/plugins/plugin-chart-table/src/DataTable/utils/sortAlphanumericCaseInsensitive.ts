@@ -35,3 +35,14 @@ export const sortAlphanumericCaseInsensitive = <D extends {}>(
   }
   return valueA.localeCompare(valueB);
 };
+
+export const sortCustomPeriodStrings = <D extends {}>(
+  rowA: Row<D>,
+  rowB: Row<D>,
+  columnId: string,
+) =>
+  String(rowA.values[columnId] ?? '').localeCompare(
+    String(rowB.values[columnId] ?? ''),
+    undefined,
+    { numeric: true },
+  );

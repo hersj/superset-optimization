@@ -28,3 +28,5 @@ export {
 } from './getTimeOffset';
 export { SEPARATOR, fetchTimeRange } from './fetchTimeRange';
 export { customTimeRangeDecode } from './customTimeRangeDecode';
+
+export * from './customPeriod';

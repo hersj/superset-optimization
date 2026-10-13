@@ -19,6 +19,8 @@
 import {
   AdhocColumn,
   buildQueryContext,
+  buildCustomPeriodComparisonQuery,
+  getCustomPeriodComparison,
   ensureIsArray,
   getMetricLabel,
   isPhysicalColumn,
@@ -33,11 +35,15 @@ import {
 } from './pivotRatioMetrics';
 
 export default function buildQuery(formData: PivotTableQueryFormData) {
+  const period = getCustomPeriodComparison(formData);
   const { groupbyColumns = [], groupbyRows = [], extra_form_data } = formData;
   const isDownloadQuery =
     ['csv', 'xlsx'].includes(formData.result_format || '') ||
     (formData.result_format === 'json' &&
       ['results', 'post_processed'].includes(formData.result_type || ''));
+  if (period && isDownloadQuery) {
+    throw new Error('自定义期间对比暂不支持服务端导出；请切回原有对比后导出。');
+  }
   const time_grain_sqla =
     extra_form_data?.time_grain_sqla || formData.time_grain_sqla;
   const { helperMetrics } = getPivotRatioConfiguration(
@@ -73,7 +79,10 @@ export default function buildQuery(formData: PivotTableQueryFormData) {
     return col;
   });
 
-  return buildQueryContext(formData, baseQueryObject => {
+  const queryFormData = period
+    ? { ...formData, time_compare: [], time_range: period.currentTimeRange }
+    : formData;
+  return buildQueryContext(queryFormData, baseQueryObject => {
     const { series_limit_metric, metrics, order_desc } = baseQueryObject;
     let orderBy: QueryFormOrderBy[] | undefined;
     if (series_limit_metric) {
@@ -81,17 +90,38 @@ export default function buildQuery(formData: PivotTableQueryFormData) {
     } else if (Array.isArray(metrics) && metrics[0]) {
       orderBy = [[metrics[0], !order_desc]];
     }
-    return [
+    const query = {
+      ...baseQueryObject,
+      // 率指标分子分母与可见指标共用一次查询，避免额外网络与数据库往返。
+      metrics:
+        !isDownloadQuery && helperMetrics.length
+          ? [...ensureIsArray<QueryFormMetric>(metrics), ...helperMetrics]
+          : metrics,
+      orderby: orderBy,
+      columns,
+    };
+    if (!period) return [query];
+    const rowLimit = Number(query.row_limit);
+    if (
+      !Number.isSafeInteger(rowLimit) ||
+      rowLimit <= 0 ||
+      rowLimit >= Number.MAX_SAFE_INTEGER
+    ) {
+      throw new Error('自定义期间对比需要设置正整数行数限制。');
+    }
+    if (
+      Number(query.row_offset ?? 0) !== 0 ||
+      Number(query.series_limit ?? 0) !== 0
+    ) {
+      throw new Error('自定义期间对比不支持分页偏移或排名限制，请关闭后重试。');
+    }
+    const current = buildCustomPeriodComparisonQuery(
+      { ...query, row_limit: rowLimit + 1 },
       {
-        ...baseQueryObject,
-        // 率指标分子分母与可见指标共用一次查询，避免额外网络与数据库往返。
-        metrics:
-          !isDownloadQuery && helperMetrics.length
-            ? [...ensureIsArray<QueryFormMetric>(metrics), ...helperMetrics]
-            : metrics,
-        orderby: orderBy,
-        columns,
+        ...period,
+        comparisonTimeRange: period.currentTimeRange,
       },
-    ];
+    );
+    return [current, buildCustomPeriodComparisonQuery(current, period)];
   });
 }

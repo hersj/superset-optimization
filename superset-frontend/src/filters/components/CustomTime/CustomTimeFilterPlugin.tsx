@@ -1,7 +1,28 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
+import {
+  createCustomPeriodComparison,
+  formatCustomPeriodComparisonLabel,
+} from '@superset-ui/core';
 import { useTheme } from '@apache-superset/core/theme';
-import { DEFAULT_PRESETS, TIME_GRAIN_OPTIONS, TimePreset, TimeGrainOption } from './types';
-import { normalizeSelectedRanges, selectedRangeEnvelope, selectedRangesHaveGaps, toggleSelectedRange, SelectionMode } from './selectedTimeRanges';
+import {
+  DEFAULT_PRESETS,
+  TIME_GRAIN_OPTIONS,
+  TimePreset,
+  TimeGrainOption,
+} from './types';
+import {
+  normalizeSelectedRanges,
+  selectedRangeEnvelope,
+  selectedRangesHaveGaps,
+  toggleSelectedRange,
+  SelectionMode,
+} from './selectedTimeRanges';
 import {
   getProfitComparisonRanges,
   getProfitDataEndDate,
@@ -41,28 +62,175 @@ function createStyles(theme: any) {
       primaryBg,
       selectedText: token(theme, 'colorTextLightSolid', '#fff'),
     },
-    container: { padding: 0, width: '100%', fontSize: 13, background: bg, color: text } as React.CSSProperties,
-    shell: { display: 'flex', flexDirection: 'column' as const, minHeight: 330, border: `1px solid ${split}`, background: bg } as React.CSSProperties,
-    toolbar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', fontSize: 13, minHeight: 36, border: `1px solid ${split}`, background: bgElevated } as React.CSSProperties,
-    grainColumn: { padding: '6px 12px', borderBottom: `1px solid ${split}` } as React.CSSProperties,
-    presetColumn: { padding: '6px 12px', borderBottom: `1px solid ${split}` } as React.CSSProperties,
+    container: {
+      padding: 0,
+      width: '100%',
+      fontSize: 13,
+      background: bg,
+      color: text,
+    } as React.CSSProperties,
+    shell: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      minHeight: 330,
+      border: `1px solid ${split}`,
+      background: bg,
+    } as React.CSSProperties,
+    toolbar: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '6px 12px',
+      fontSize: 13,
+      minHeight: 36,
+      border: `1px solid ${split}`,
+      background: bgElevated,
+    } as React.CSSProperties,
+    grainColumn: {
+      padding: '6px 12px',
+      borderBottom: `1px solid ${split}`,
+    } as React.CSSProperties,
+    presetColumn: {
+      padding: '6px 12px',
+      borderBottom: `1px solid ${split}`,
+    } as React.CSSProperties,
     panel: { padding: '10px 12px', flex: 1 } as React.CSSProperties,
-    grid: { display: 'flex', flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 } as React.CSSProperties,
-    denseGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(116px, 1fr))', gap: 8 } as React.CSSProperties,
-    monthGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 } as React.CSSProperties,
-    quarterGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 } as React.CSSProperties,
-    yearGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 } as React.CSSProperties,
-    grainGrid: { display: 'flex', flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 } as React.CSSProperties,
-    btn: { padding: '2px 8px', borderRadius: 4, fontSize: 13, cursor: 'pointer', border: '1px solid transparent', background: fill, color: textSecondary, textAlign: 'center' as const, lineHeight: '22px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    btnActive: { padding: '2px 8px', borderRadius: 4, fontSize: 13, cursor: 'pointer', border: `1px solid ${primary}`, background: primaryBg, color: primary, textAlign: 'center' as const, fontWeight: 600 as const, lineHeight: '22px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    grainBtn: { padding: '2px 10px', borderRadius: 4, fontSize: 13, cursor: 'pointer', border: '1px solid transparent', background: fill, color: textSecondary, textAlign: 'center' as const, lineHeight: '22px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    grainActive: { padding: '2px 10px', borderRadius: 4, fontSize: 13, cursor: 'pointer', border: `1px solid ${primary}`, background: primaryBg, color: primary, textAlign: 'center' as const, fontWeight: 600 as const, lineHeight: '22px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    periodBtn: { padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: `1px solid ${border}`, background: bgElevated, color: text, textAlign: 'center' as const, lineHeight: '18px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    periodActive: { padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', border: `1px solid ${primary}`, background: primaryBg, color: primary, textAlign: 'center' as const, fontWeight: 600 as const, lineHeight: '18px', whiteSpace: 'nowrap' as const } as React.CSSProperties,
-    nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 } as React.CSSProperties,
-    selectInput: { fontSize: 12, padding: '1px 4px', border: `1px solid ${border}`, borderRadius: 4, background: bgElevated, color: text } as React.CSSProperties,
-    hint: { fontSize: 11, color: textTertiary, marginBottom: 8 } as React.CSSProperties,
-    status: { marginTop: 6, padding: '3px 6px', fontSize: 11, color: textTertiary, background: fill, borderRadius: 4, lineHeight: '16px' } as React.CSSProperties,
+    grid: {
+      display: 'flex',
+      flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
+      gap: 8,
+    } as React.CSSProperties,
+    denseGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(116px, 1fr))',
+      gap: 8,
+    } as React.CSSProperties,
+    monthGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gap: 8,
+    } as React.CSSProperties,
+    quarterGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 8,
+    } as React.CSSProperties,
+    yearGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gap: 8,
+    } as React.CSSProperties,
+    grainGrid: {
+      display: 'flex',
+      flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
+      gap: 8,
+    } as React.CSSProperties,
+    btn: {
+      padding: '2px 8px',
+      borderRadius: 4,
+      fontSize: 13,
+      cursor: 'pointer',
+      border: '1px solid transparent',
+      background: fill,
+      color: textSecondary,
+      textAlign: 'center' as const,
+      lineHeight: '22px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    btnActive: {
+      padding: '2px 8px',
+      borderRadius: 4,
+      fontSize: 13,
+      cursor: 'pointer',
+      border: `1px solid ${primary}`,
+      background: primaryBg,
+      color: primary,
+      textAlign: 'center' as const,
+      fontWeight: 600 as const,
+      lineHeight: '22px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    grainBtn: {
+      padding: '2px 10px',
+      borderRadius: 4,
+      fontSize: 13,
+      cursor: 'pointer',
+      border: '1px solid transparent',
+      background: fill,
+      color: textSecondary,
+      textAlign: 'center' as const,
+      lineHeight: '22px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    grainActive: {
+      padding: '2px 10px',
+      borderRadius: 4,
+      fontSize: 13,
+      cursor: 'pointer',
+      border: `1px solid ${primary}`,
+      background: primaryBg,
+      color: primary,
+      textAlign: 'center' as const,
+      fontWeight: 600 as const,
+      lineHeight: '22px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    periodBtn: {
+      padding: '5px 8px',
+      borderRadius: 4,
+      fontSize: 12,
+      cursor: 'pointer',
+      border: `1px solid ${border}`,
+      background: bgElevated,
+      color: text,
+      textAlign: 'center' as const,
+      lineHeight: '18px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    periodActive: {
+      padding: '5px 8px',
+      borderRadius: 4,
+      fontSize: 12,
+      cursor: 'pointer',
+      border: `1px solid ${primary}`,
+      background: primaryBg,
+      color: primary,
+      textAlign: 'center' as const,
+      fontWeight: 600 as const,
+      lineHeight: '18px',
+      whiteSpace: 'nowrap' as const,
+    } as React.CSSProperties,
+    nav: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+      gap: 8,
+    } as React.CSSProperties,
+    selectInput: {
+      fontSize: 12,
+      padding: '1px 4px',
+      border: `1px solid ${border}`,
+      borderRadius: 4,
+      background: bgElevated,
+      color: text,
+    } as React.CSSProperties,
+    hint: {
+      fontSize: 11,
+      color: textTertiary,
+      marginBottom: 8,
+    } as React.CSSProperties,
+    status: {
+      marginTop: 6,
+      padding: '3px 6px',
+      fontSize: 11,
+      color: textTertiary,
+      background: fill,
+      borderRadius: 4,
+      lineHeight: '16px',
+    } as React.CSSProperties,
   };
 }
 
@@ -129,7 +297,10 @@ function toSunday(dateStr: string): string {
   return fmtDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-function parseRange(timeRange?: string): { start: string; endExclusive: string } {
+function parseRange(timeRange?: string): {
+  start: string;
+  endExclusive: string;
+} {
   const [start = '', endExclusive = ''] = (timeRange || '')
     .split(':')
     .map(part => part.trim());
@@ -137,7 +308,9 @@ function parseRange(timeRange?: string): { start: string; endExclusive: string }
 }
 
 function isPresetKey(value: unknown): value is string {
-  return typeof value === 'string' && DEFAULT_PRESETS.some(p => p.key === value);
+  return (
+    typeof value === 'string' && DEFAULT_PRESETS.some(p => p.key === value)
+  );
 }
 
 type FiscalYearSelection = {
@@ -227,7 +400,11 @@ function isDateInRange(date: string, timeRange: string): boolean {
 
 function isDateRangeEndpoint(date: string, timeRange: string): boolean {
   const { start, endExclusive } = parseRange(timeRange);
-  return Boolean(start && endExclusive && (date === start || date === subtractDays(endExclusive, 1)));
+  return Boolean(
+    start &&
+    endExclusive &&
+    (date === start || date === subtractDays(endExclusive, 1)),
+  );
 }
 
 function getDataEndDate(): string {
@@ -256,7 +433,9 @@ function getFirstSelectableYear(minimumDate: string): number {
 /** 返回第一个完整落在最早日期之后的财年，避免财年范围覆盖起始日前数据。 */
 function getFirstSelectableFiscalYear(minimumDate: string): number {
   let year = fiscalYearStartFromDate(minimumDate);
-  while (getProfitFiscalYearRange(year).timeRange.substring(0, 10) < minimumDate) {
+  while (
+    getProfitFiscalYearRange(year).timeRange.substring(0, 10) < minimumDate
+  ) {
     year += 1;
   }
   return year;
@@ -277,10 +456,16 @@ function getFirstSelectableQuarterDisplayYear(minimumDate: string): number {
 
 function getFQRange(year: number, q: number): { start: string; end: string } {
   const qStart: Record<number, [number, number]> = {
-    1: [year, 4], 2: [year, 7], 3: [year, 10], 4: [year + 1, 1],
+    1: [year, 4],
+    2: [year, 7],
+    3: [year, 10],
+    4: [year + 1, 1],
   };
   const qEnd: Record<number, [number, number]> = {
-    1: [year, 7], 2: [year, 10], 3: [year + 1, 1], 4: [year + 1, 4],
+    1: [year, 7],
+    2: [year, 10],
+    3: [year + 1, 1],
+    4: [year + 1, 4],
   };
   const [sy, sm] = qStart[q];
   const [ey, em] = qEnd[q];
@@ -310,7 +495,9 @@ function quarterLabel(id: string): string {
 function compareQuarter(a: string, b: string): number {
   const qa = parseQuarterId(a);
   const qb = parseQuarterId(b);
-  return getFQRange(qa.year, qa.q).start.localeCompare(getFQRange(qb.year, qb.q).start);
+  return getFQRange(qa.year, qa.q).start.localeCompare(
+    getFQRange(qb.year, qb.q).start,
+  );
 }
 
 function normalizePair<T extends string | number>(
@@ -343,23 +530,64 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
  * - 点选交互规则：日/周/月/季/年/财年点击单位执行集合并，完整选中后再点执行集合差；跨年和乱序点击不改变日期排序。切换粒度保留精确日期集合，预设替换为预设范围；连续转点选保留范围；点选转连续有空档时用确认框明确补齐，取消不改变状态或请求。
  * - 比较与恢复：points 发“上一选中区间”，支持比较的时间轴图表按日期顺序 B/A、C/B，缺数据不能跳期，图表关闭比较优先；无时间轴图表只聚合并集。恢复以 filterState 为准，缺少 selectionMode 的历史配置默认连续，不继承本地或 ownState 的点选模式/集合；恢复当次就必须发布字符串 TEMPORAL_RANGE 和普通比较，不能先发一帧点选查询。包络相同也须恢复模式/完整集合；非法点选整体失败。
  * - 验证方式：组件测试覆盖绑定列、未绑定兼容、不过滤、默认 2022-01-01 与每个筛选器自定义起始日期、起始日期前选项隐藏、按财年单选与连续多选、本财年快捷范围、旧状态恢复、财年格式化、外部范围同步和陈旧状态清理。
-*/
+ */
+
+type CustomComparisonDraft = {
+  customComparisonMode: 'original' | 'custom';
+  comparisonStartDate: string;
+  comparisonEndDate: string;
+};
+
+function getCustomComparisonDraft(
+  range: string,
+  mode: SelectionMode,
+  state: CustomComparisonDraft,
+) {
+  if (state.customComparisonMode !== 'custom')
+    return { period: null, error: undefined };
+  if (!range || range === 'No filter')
+    return { period: null, error: '请先选择有限的当前期间。' };
+  if (mode === 'points')
+    return { period: null, error: '自定义期间总量对比请使用连续区间。' };
+  try {
+    return {
+      period: createCustomPeriodComparison(
+        range,
+        state.comparisonStartDate,
+        state.comparisonEndDate,
+      ),
+      error: undefined,
+    };
+  } catch {
+    return {
+      period: null,
+      error: '请填写有效的对比起止日期，结束日期不得早于开始日期。',
+    };
+  }
+}
 
 export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { formData, filterState, ownState = {}, setDataMask } = props;
   // 恢复配置与用户点击分开取值：历史配置没有模式字段，不能借用上一帧点选状态。
-  const restoredSelection = useMemo(() => ({
-    selectionMode: (filterState?.selectionMode === 'points' ? 'points' : 'continuous') as SelectionMode,
-    selectedRanges: filterState?.selectionMode === 'points'
-      ? normalizeSelectedRanges(filterState.selectedRanges ?? []) : [],
-  }), [filterState?.selectionMode, filterState?.selectedRanges]);
+  const restoredSelection = useMemo(
+    () => ({
+      selectionMode: (filterState?.selectionMode === 'points'
+        ? 'points'
+        : 'continuous') as SelectionMode,
+      selectedRanges:
+        filterState?.selectionMode === 'points'
+          ? normalizeSelectedRanges(filterState.selectedRanges ?? [])
+          : [],
+    }),
+    [filterState?.selectionMode, filterState?.selectedRanges],
+  );
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(
     restoredSelection.selectionMode,
   );
-  const [selectedRanges, setSelectedRanges] = useState<string[]>(() =>
-    restoredSelection.selectedRanges,
+  const [selectedRanges, setSelectedRanges] = useState<string[]>(
+    () => restoredSelection.selectedRanges,
   );
 
   const {
@@ -368,19 +596,54 @@ export default function CustomTimeFilterPlugin(props: any) {
     enablePresets = true,
     enableCustomRange = true,
     enableTimeGrain = true,
+    enableCustomComparison = false,
   } = formData || {};
   const minimumCalendarDate = getConfiguredCalendarStartDate(
     formData?.calendarStartDate,
   );
   const minimumCalendarMonth = getMonthStart(minimumCalendarDate);
   const minimumSelectableMonth = getFirstSelectableMonth(minimumCalendarDate);
-  const minimumMonthDisplayYear = Number(minimumSelectableMonth.substring(0, 4));
-  const minimumSelectableYear = getFirstSelectableYear(minimumCalendarDate);
-  const minimumQuarterDisplayYear = getFirstSelectableQuarterDisplayYear(
-    minimumCalendarDate,
+  const minimumMonthDisplayYear = Number(
+    minimumSelectableMonth.substring(0, 4),
   );
+  const minimumSelectableYear = getFirstSelectableYear(minimumCalendarDate);
+  const minimumQuarterDisplayYear =
+    getFirstSelectableQuarterDisplayYear(minimumCalendarDate);
   const minimumFiscalYear = getFirstSelectableFiscalYear(minimumCalendarDate);
   const timeColumn = getConfiguredTimeColumn(formData);
+  const restoredComparison = useMemo<CustomComparisonDraft>(
+    () => ({
+      customComparisonMode:
+        filterState?.customComparisonMode === 'custom' ? 'custom' : 'original',
+      comparisonStartDate:
+        typeof filterState?.comparisonStartDate === 'string'
+          ? filterState.comparisonStartDate
+          : '',
+      comparisonEndDate:
+        typeof filterState?.comparisonEndDate === 'string'
+          ? filterState.comparisonEndDate
+          : '',
+    }),
+    [
+      filterState?.customComparisonMode,
+      filterState?.comparisonStartDate,
+      filterState?.comparisonEndDate,
+    ],
+  );
+  const [customComparisonMode, setCustomComparisonMode] = useState(
+    restoredComparison.customComparisonMode,
+  );
+  const [comparisonStartDate, setComparisonStartDate] = useState(
+    restoredComparison.comparisonStartDate,
+  );
+  const [comparisonEndDate, setComparisonEndDate] = useState(
+    restoredComparison.comparisonEndDate,
+  );
+  useEffect(() => {
+    setCustomComparisonMode(restoredComparison.customComparisonMode);
+    setComparisonStartDate(restoredComparison.comparisonStartDate);
+    setComparisonEndDate(restoredComparison.comparisonEndDate);
+  }, [restoredComparison]);
 
   const currentYear = Number(getDataEndDate().substring(0, 4));
   const savedRange =
@@ -411,19 +674,21 @@ export default function CustomTimeFilterPlugin(props: any) {
       ? (ownState.activePreset as string | null)
       : filterState?.value === null
         ? null
-      : isPresetKey(filterState?.value)
-        ? (filterState.value as string)
-        : filterState?.value
-          ? null
-          : defaultPreset;
+        : isPresetKey(filterState?.value)
+          ? (filterState.value as string)
+          : filterState?.value
+            ? null
+            : defaultPreset;
 
-  const [activePreset, setActivePreset] = useState<string | null>(initialPreset);
+  const [activePreset, setActivePreset] = useState<string | null>(
+    initialPreset,
+  );
   const [activeFiscalYear, setActiveFiscalYear] = useState<number | null>(
     restoredFiscalYearRange?.start ?? null,
   );
   const [activeFiscalYearEnd, setActiveFiscalYearEnd] = useState<number | null>(
     restoredFiscalYearRange &&
-    restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+      restoredFiscalYearRange.end !== restoredFiscalYearRange.start
       ? restoredFiscalYearRange.end
       : null,
   );
@@ -445,7 +710,8 @@ export default function CustomTimeFilterPlugin(props: any) {
         : toSunday(getDataEndDate())),
   );
   const [startMonth, setStartMonth] = useState(
-    (ownState.startMonth as string | undefined) || monthFromDate(parsedSavedRange.start),
+    (ownState.startMonth as string | undefined) ||
+      monthFromDate(parsedSavedRange.start),
   );
   const [endMonth, setEndMonth] = useState(
     (ownState.endMonth as string | undefined) ||
@@ -473,7 +739,8 @@ export default function CustomTimeFilterPlugin(props: any) {
   const [endYear, setEndYear] = useState(
     (ownState.endYear as number | undefined) ||
       (parsedSavedRange.endExclusive
-        ? new Date(`${parsedSavedRange.endExclusive}T00:00:00`).getFullYear() - 1
+        ? new Date(`${parsedSavedRange.endExclusive}T00:00:00`).getFullYear() -
+          1
         : currentYear),
   );
   const [collapsed, setCollapsed] = useState(true);
@@ -487,7 +754,9 @@ export default function CustomTimeFilterPlugin(props: any) {
   const [pendingMonthStart, setPendingMonthStart] = useState('');
   const [pendingQuarterStart, setPendingQuarterStart] = useState('');
   const [pendingYearStart, setPendingYearStart] = useState<number | null>(null);
-  const [pendingFiscalYearStart, setPendingFiscalYearStart] = useState<number | null>(null);
+  const [pendingFiscalYearStart, setPendingFiscalYearStart] = useState<
+    number | null
+  >(null);
 
   const lastRangeRef = useRef<string>(savedRange);
 
@@ -501,12 +770,17 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const buildOwnState = useCallback(
     (overrides: Record<string, unknown> = {}) => {
-      const currentRange =
-        Object.prototype.hasOwnProperty.call(overrides, 'lastRange')
-          ? (overrides.lastRange as string)
-          : lastRangeRef.current;
+      const currentRange = Object.prototype.hasOwnProperty.call(
+        overrides,
+        'lastRange',
+      )
+        ? (overrides.lastRange as string)
+        : lastRangeRef.current;
       return {
         activePreset,
+        ...(enableCustomComparison
+          ? { customComparisonMode, comparisonStartDate, comparisonEndDate }
+          : {}),
         fiscalYear: activeFiscalYear,
         fiscalYearEnd: activeFiscalYearEnd,
         activeGrain,
@@ -530,6 +804,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     },
     [
       activePreset,
+      enableCustomComparison,
+      customComparisonMode,
+      comparisonStartDate,
+      comparisonEndDate,
       activeFiscalYear,
       activeFiscalYearEnd,
       activeGrain,
@@ -556,15 +834,23 @@ export default function CustomTimeFilterPlugin(props: any) {
       stateOverrides: Record<string, unknown> = {},
     ) => {
       // 恢复入口显式传入模式/集合；点击入口才使用本地交互状态，不按包络相等猜测恢复。
-      const mode = (stateOverrides.selectionMode as SelectionMode | undefined) ??
+      const mode =
+        (stateOverrides.selectionMode as SelectionMode | undefined) ??
         selectionMode;
       if (mode === 'points' && !timeColumn) {
         throw new Error('点选区间需要绑定时间列，不能回退全历史');
       }
-      const points = mode === 'points'
-        ? normalizeSelectedRanges(stateOverrides.selectedRanges ??
-            (timeRange !== lastRangeRef.current ? (timeRange ? [timeRange] : []) : selectedRanges))
-        : [];
+      const points =
+        mode === 'points'
+          ? normalizeSelectedRanges(
+              stateOverrides.selectedRanges ??
+                (timeRange !== lastRangeRef.current
+                  ? timeRange
+                    ? [timeRange]
+                    : []
+                  : selectedRanges),
+            )
+          : [];
       if (mode === 'points') {
         timeRange = selectedRangeEnvelope(points);
         setSelectedRanges(points);
@@ -583,47 +869,108 @@ export default function CustomTimeFilterPlugin(props: any) {
           fiscal_year: '1 year ago',
         }[grainKey] || '1 day ago';
       const nextActivePreset = presetKey ?? null;
-      const rangeLabel = mode === 'points'
-        ? (points.length ? `点选区间（${points.length}段）` : '请选择区间')
-        : !timeRange
-        ? '不过滤'
-        : (stateOverrides.rangeLabel as string | undefined) ||
-          (nextActivePreset === 'this_fiscal_year'
-            ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
-            : nextActivePreset
-              ? DEFAULT_PRESETS.find(p => p.key === nextActivePreset)?.label || timeRange
-              : '自定义范围');
+      const rangeLabel =
+        mode === 'points'
+          ? points.length
+            ? `点选区间（${points.length}段）`
+            : '请选择区间'
+          : !timeRange
+            ? '不过滤'
+            : (stateOverrides.rangeLabel as string | undefined) ||
+              (nextActivePreset === 'this_fiscal_year'
+                ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
+                : nextActivePreset
+                  ? DEFAULT_PRESETS.find(p => p.key === nextActivePreset)
+                      ?.label || timeRange
+                  : '自定义范围');
 
+      const comparisonState: CustomComparisonDraft = {
+        customComparisonMode:
+          (stateOverrides.customComparisonMode as
+            | CustomComparisonDraft['customComparisonMode']
+            | undefined) ?? customComparisonMode,
+        comparisonStartDate:
+          (stateOverrides.comparisonStartDate as string | undefined) ??
+          comparisonStartDate,
+        comparisonEndDate:
+          (stateOverrides.comparisonEndDate as string | undefined) ??
+          comparisonEndDate,
+      };
+      const comparisonDraft = getCustomComparisonDraft(
+        timeRange,
+        mode,
+        comparisonState,
+      );
+      const customPeriod = comparisonDraft.period
+        ? { ...comparisonDraft.period, ...(timeColumn ? { timeColumn } : {}) }
+        : null;
       setDataMask({
         extraFormData: {
           ...(timeColumn
             ? {
-                filters: mode === 'points'
-                  ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: points }]
-                  : timeRange ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: timeRange }] : [],
+                filters:
+                  mode === 'points'
+                    ? [{ col: timeColumn, op: 'TEMPORAL_RANGE', val: points }]
+                    : timeRange
+                      ? [
+                          {
+                            col: timeColumn,
+                            op: 'TEMPORAL_RANGE',
+                            val: timeRange,
+                          },
+                        ]
+                      : [],
                 time_range: timeRange || 'No filter',
               }
             : { time_range: timeRange }),
           time_grain_sqla: grainValue,
-          time_compare: mode === 'points' ? (points.length ? ['上一选中区间'] : []) : timeCompare,
+          time_compare:
+            mode === 'points'
+              ? points.length
+                ? ['上一选中区间']
+                : []
+              : timeCompare,
+          ...(enableCustomComparison
+            ? { custom_form_data: { custom_period_comparison: customPeriod } }
+            : {}),
         },
         filterState: {
           value: timeRange ? nextActivePreset || timeRange : null,
           grain: grainKey,
           label: rangeLabel + ' | ' + grainLabel,
-          ...(mode === 'points' || filterState?.selectionMode ? { selectionMode: mode, selectedRanges: points } : {}),
+          ...(enableCustomComparison
+            ? {
+                ...comparisonState,
+                validateStatus: comparisonDraft.error ? 'error' : undefined,
+              }
+            : {}),
+          ...(mode === 'points' || filterState?.selectionMode
+            ? { selectionMode: mode, selectedRanges: points }
+            : {}),
         },
         ownState: buildOwnState({
           activePreset: nextActivePreset,
           activeGrain: grainKey,
           lastRange: timeRange,
+          ...(enableCustomComparison ? comparisonState : {}),
           ...stateOverrides,
           selectionMode: mode,
           selectedRanges: points,
         }),
       });
     },
-    [buildOwnState, setDataMask, timeColumn, selectionMode, selectedRanges, filterState?.selectionMode],
+    [
+      buildOwnState,
+      setDataMask,
+      timeColumn,
+      selectionMode,
+      selectedRanges,
+      filterState?.selectionMode,
+      enableCustomComparison,
+      customComparisonMode,
+      comparisonStartDate,
+      comparisonEndDate,
+    ],
   );
 
   // 分享链接/外部恢复可改变点选集合，即使包络不变也必须同步高亮。
@@ -633,7 +980,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     setSelectedRanges(restoredSelection.selectedRanges);
   }, [restoredSelection]);
 
+  const initializedFilter = useRef(false);
   useEffect(() => {
+    if (initializedFilter.current) return;
+    initializedFilter.current = true;
     if (filterState?.value === null) {
       const grainKey = getEffectiveGrain(
         filterState.value,
@@ -643,6 +993,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       );
       applyFilter('', grainKey, null, {
         ...restoredSelection,
+        ...(enableCustomComparison ? restoredComparison : {}),
         activePreset: null,
         activeGrain: grainKey,
         lastRange: '',
@@ -667,18 +1018,20 @@ export default function CustomTimeFilterPlugin(props: any) {
         setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
           ...restoredSelection,
+          ...(enableCustomComparison ? restoredComparison : {}),
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
           fiscalYearEnd: null,
-          ...(fiscalYear !== null
-            ? { rangeLabel: `${fiscalYear}财年` }
-            : {}),
+          ...(fiscalYear !== null ? { rangeLabel: `${fiscalYear}财年` } : {}),
         });
       } else {
-        const restoredFiscalYearRange = getRestoredFiscalYearRange(filterState.value);
+        const restoredFiscalYearRange = getRestoredFiscalYearRange(
+          filterState.value,
+        );
         applyFilter(filterState.value as string, grainKey, null, {
           ...restoredSelection,
+          ...(enableCustomComparison ? restoredComparison : {}),
           activePreset: null,
           activeGrain: grainKey,
           lastRange: filterState.value,
@@ -711,25 +1064,43 @@ export default function CustomTimeFilterPlugin(props: any) {
         setActiveFiscalYearEnd(null);
         applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
           ...restoredSelection,
+          ...(enableCustomComparison ? restoredComparison : {}),
           activePreset: preset.key,
           activeGrain: grainKey,
           fiscalYear,
           fiscalYearEnd: null,
-          ...(fiscalYear !== null
-            ? { rangeLabel: `${fiscalYear}财年` }
-            : {}),
+          ...(fiscalYear !== null ? { rangeLabel: `${fiscalYear}财年` } : {}),
         });
       }
     }
-  }, []);
+  }, [
+    restoredSelection,
+    enableCustomComparison,
+    initialGrain,
+    restoredComparison,
+    applyFilter,
+    filterState?.grain,
+    defaultPreset,
+    filterState?.value,
+    defaultGrain,
+    getPresetTimeRange,
+    ownState.fiscalYear,
+  ]);
 
   const prevFSValue = useRef(filterState?.value);
   const prevFSGrain = useRef(filterState?.grain);
   const prevFSSelection = useRef(savedSelectionKey);
+  const savedComparisonKey = JSON.stringify(restoredComparison);
+  const prevFSComparison = useRef(savedComparisonKey);
   useEffect(() => {
-    if (filterState?.value !== prevFSValue.current || savedSelectionKey !== prevFSSelection.current) {
+    if (
+      filterState?.value !== prevFSValue.current ||
+      savedSelectionKey !== prevFSSelection.current ||
+      savedComparisonKey !== prevFSComparison.current
+    ) {
       prevFSValue.current = filterState.value;
       prevFSSelection.current = savedSelectionKey;
+      prevFSComparison.current = savedComparisonKey;
       const grainKey = getEffectiveGrain(
         filterState.value,
         (filterState.grain as string) || activeGrain,
@@ -743,6 +1114,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         setPendingFiscalYearStart(null);
         applyFilter('', grainKey, null, {
           ...restoredSelection,
+          ...(enableCustomComparison ? restoredComparison : {}),
           activePreset: null,
           activeGrain: grainKey,
           lastRange: '',
@@ -763,21 +1135,22 @@ export default function CustomTimeFilterPlugin(props: any) {
           setPendingFiscalYearStart(null);
           applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
             ...restoredSelection,
+            ...(enableCustomComparison ? restoredComparison : {}),
             activePreset: preset.key,
             activeGrain: grainKey,
             fiscalYear,
             fiscalYearEnd: null,
-            ...(fiscalYear !== null
-              ? { rangeLabel: `${fiscalYear}财年` }
-              : {}),
+            ...(fiscalYear !== null ? { rangeLabel: `${fiscalYear}财年` } : {}),
           });
         } else if (filterState.value) {
-          const restoredFiscalYearRange = getRestoredFiscalYearRange(filterState.value);
+          const restoredFiscalYearRange = getRestoredFiscalYearRange(
+            filterState.value,
+          );
           setActivePreset(null);
           setActiveFiscalYear(restoredFiscalYearRange?.start ?? null);
           setActiveFiscalYearEnd(
             restoredFiscalYearRange &&
-            restoredFiscalYearRange.end !== restoredFiscalYearRange.start
+              restoredFiscalYearRange.end !== restoredFiscalYearRange.start
               ? restoredFiscalYearRange.end
               : null,
           );
@@ -786,6 +1159,7 @@ export default function CustomTimeFilterPlugin(props: any) {
           }
           applyFilter(filterState.value as string, grainKey, null, {
             ...restoredSelection,
+            ...(enableCustomComparison ? restoredComparison : {}),
             activePreset: null,
             activeGrain: grainKey,
             lastRange: filterState.value,
@@ -809,12 +1183,17 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
     if (filterState?.grain && filterState.grain !== prevFSGrain.current) {
       prevFSGrain.current = filterState.grain;
-      setActiveGrain(getEffectiveGrain(filterState.value, filterState.grain as string));
+      setActiveGrain(
+        getEffectiveGrain(filterState.value, filterState.grain as string),
+      );
     }
   }, [
     filterState?.value,
     filterState?.grain,
     savedSelectionKey,
+    savedComparisonKey,
+    enableCustomComparison,
+    restoredComparison,
     restoredSelection,
     ownState.fiscalYear,
     activeGrain,
@@ -858,19 +1237,27 @@ export default function CustomTimeFilterPlugin(props: any) {
     if (mode === 'continuous' && selectedRangesHaveGaps(selectedRanges)) {
       // 原生确认阻止扩大日期范围；取消不修改 DataMask，也不发起查询。
       // eslint-disable-next-line no-alert
-      if (!window.confirm('切换到连续区间将包含中间所有未选日期，是否继续？')) return;
+      if (!window.confirm('切换到连续区间将包含中间所有未选日期，是否继续？'))
+        return;
     }
-    const range = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
+    const range = activePreset
+      ? getPresetTimeRange(activePreset)
+      : lastRangeRef.current;
     const points = mode === 'points' && range ? [range] : [];
-    const continuous = selectionMode === 'points' ? selectedRangeEnvelope(selectedRanges) : range;
+    const continuous =
+      selectionMode === 'points'
+        ? selectedRangeEnvelope(selectedRanges)
+        : range;
     clearPendingSelections();
     setSelectionMode(mode);
     setActivePreset(null);
     setActiveFiscalYear(null);
     setActiveFiscalYearEnd(null);
     applyFilter(continuous, activeGrain, null, {
-      selectionMode: mode, selectedRanges: points,
-      fiscalYear: null, fiscalYearEnd: null,
+      selectionMode: mode,
+      selectedRanges: points,
+      fiscalYear: null,
+      fiscalYearEnd: null,
     });
   };
 
@@ -889,14 +1276,14 @@ export default function CustomTimeFilterPlugin(props: any) {
     setActiveFiscalYear(fiscalYear);
     setActiveFiscalYearEnd(null);
     applyFilter(getPresetTimeRange(preset.key), grainKey, preset.key, {
-      ...(selectionMode === 'points' ? { selectedRanges: [getPresetTimeRange(preset.key)] } : {}),
+      ...(selectionMode === 'points'
+        ? { selectedRanges: [getPresetTimeRange(preset.key)] }
+        : {}),
       activePreset: preset.key,
       activeGrain: grainKey,
       fiscalYear,
       fiscalYearEnd: null,
-      ...(fiscalYear !== null
-        ? { rangeLabel: `${fiscalYear}财年` }
-        : {}),
+      ...(fiscalYear !== null ? { rangeLabel: `${fiscalYear}财年` } : {}),
     });
   };
 
@@ -928,7 +1315,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (selectionMode === 'points') {
-      selectPoint(getProfitFiscalYearRange(fiscalYear).timeRange, 'fiscal_year');
+      selectPoint(
+        getProfitFiscalYearRange(fiscalYear).timeRange,
+        'fiscal_year',
+      );
       return;
     }
     clearNonFiscalPendingSelections();
@@ -962,7 +1352,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
 
-    const nextPreset = activePreset === 'this_fiscal_year' ? null : activePreset;
+    const nextPreset =
+      activePreset === 'this_fiscal_year' ? null : activePreset;
     const range = activePreset
       ? getPresetTimeRange(activePreset)
       : lastRangeRef.current;
@@ -1001,10 +1392,19 @@ export default function CustomTimeFilterPlugin(props: any) {
       const m = parseInt(val.substring(5, 7), 10);
       const y = parseInt(val.substring(0, 4), 10);
       let q: number, sy: number;
-      if (m >= 4 && m <= 6) { q = 1; sy = y; }
-      else if (m >= 7 && m <= 9) { q = 2; sy = y; }
-      else if (m >= 10 && m <= 12) { q = 3; sy = y; }
-      else { q = 4; sy = y - 1; }
+      if (m >= 4 && m <= 6) {
+        q = 1;
+        sy = y;
+      } else if (m >= 7 && m <= 9) {
+        q = 2;
+        sy = y;
+      } else if (m >= 10 && m <= 12) {
+        q = 3;
+        sy = y;
+      } else {
+        q = 4;
+        sy = y - 1;
+      }
       handleQuarterClick(quarterId(sy, q));
       return;
     }
@@ -1035,7 +1435,9 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
 
-    const [rangeStart, rangeEnd] = normalizePair(pendingDayStart, val, (a, b) => a.localeCompare(b));
+    const [rangeStart, rangeEnd] = normalizePair(pendingDayStart, val, (a, b) =>
+      a.localeCompare(b),
+    );
     setPendingDayStart('');
     setStartDate(rangeStart);
     setEndDate(rangeEnd);
@@ -1076,7 +1478,11 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyWeekRange(weekStart, weekStart);
       return;
     }
-    const [rangeStart, rangeEnd] = normalizePair(pendingWeekStart, weekStart, (a, b) => a.localeCompare(b));
+    const [rangeStart, rangeEnd] = normalizePair(
+      pendingWeekStart,
+      weekStart,
+      (a, b) => a.localeCompare(b),
+    );
     setPendingWeekStart('');
     applyWeekRange(rangeStart, rangeEnd);
   };
@@ -1084,13 +1490,18 @@ export default function CustomTimeFilterPlugin(props: any) {
   const applyMonthRange = (rangeStart: string, rangeEnd: string) => {
     setStartMonth(rangeStart);
     setEndMonth(rangeEnd);
-    applyFilter(`${monthStartFromMonth(rangeStart)} : ${nextMonthStart(rangeEnd)}`, activeGrain, null, {
-      activePreset: null,
-      fiscalYear: null,
-      fiscalYearEnd: null,
-      startMonth: rangeStart,
-      endMonth: rangeEnd,
-    });
+    applyFilter(
+      `${monthStartFromMonth(rangeStart)} : ${nextMonthStart(rangeEnd)}`,
+      activeGrain,
+      null,
+      {
+        activePreset: null,
+        fiscalYear: null,
+        fiscalYearEnd: null,
+        startMonth: rangeStart,
+        endMonth: rangeEnd,
+      },
+    );
   };
 
   const handleMonthClick = (month: string) => {
@@ -1112,7 +1523,11 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyMonthRange(month, month);
       return;
     }
-    const [rangeStart, rangeEnd] = normalizePair(pendingMonthStart, month, (a, b) => a.localeCompare(b));
+    const [rangeStart, rangeEnd] = normalizePair(
+      pendingMonthStart,
+      month,
+      (a, b) => a.localeCompare(b),
+    );
     setPendingMonthStart('');
     applyMonthRange(rangeStart, rangeEnd);
   };
@@ -1158,7 +1573,11 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyQuarterRange(id, id);
       return;
     }
-    const [rangeStart, rangeEnd] = normalizePair(pendingQuarterStart, id, compareQuarter);
+    const [rangeStart, rangeEnd] = normalizePair(
+      pendingQuarterStart,
+      id,
+      compareQuarter,
+    );
     setPendingQuarterStart('');
     applyQuarterRange(rangeStart, rangeEnd);
   };
@@ -1166,13 +1585,18 @@ export default function CustomTimeFilterPlugin(props: any) {
   const applyYearRange = (rangeStart: number, rangeEnd: number) => {
     setStartYear(rangeStart);
     setEndYear(rangeEnd);
-    applyFilter(`${fmtDate(rangeStart, 1, 1)} : ${fmtDate(rangeEnd + 1, 1, 1)}`, activeGrain, null, {
-      activePreset: null,
-      fiscalYear: null,
-      fiscalYearEnd: null,
-      startYear: rangeStart,
-      endYear: rangeEnd,
-    });
+    applyFilter(
+      `${fmtDate(rangeStart, 1, 1)} : ${fmtDate(rangeEnd + 1, 1, 1)}`,
+      activeGrain,
+      null,
+      {
+        activePreset: null,
+        fiscalYear: null,
+        fiscalYearEnd: null,
+        startYear: rangeStart,
+        endYear: rangeEnd,
+      },
+    );
   };
 
   const handleYearClick = (year: number) => {
@@ -1194,29 +1618,40 @@ export default function CustomTimeFilterPlugin(props: any) {
       applyYearRange(year, year);
       return;
     }
-    const [rangeStart, rangeEnd] = normalizePair(pendingYearStart, year, (a, b) => a - b);
+    const [rangeStart, rangeEnd] = normalizePair(
+      pendingYearStart,
+      year,
+      (a, b) => a - b,
+    );
     setPendingYearStart(null);
     applyYearRange(rangeStart, rangeEnd);
   };
 
   const currentLabel =
     selectionMode === 'points'
-      ? selectedRanges.length ? `点选区间（${selectedRanges.length}段）` : '请选择区间'
+      ? selectedRanges.length
+        ? `点选区间（${selectedRanges.length}段）`
+        : '请选择区间'
       : activeFiscalYear !== null
-      ? activeFiscalYearEnd !== null
-        ? `${activeFiscalYear}-${activeFiscalYearEnd}财年`
-        : `${activeFiscalYear}财年`
-      : activePreset === 'this_fiscal_year'
-        ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
-        : activePreset
-          ? DEFAULT_PRESETS.find(p => p.key === activePreset)?.label || ''
-          : lastRangeRef.current
-            ? '自定义范围'
-            : '不过滤';
-  const currentGrain = TIME_GRAIN_OPTIONS.find(g => g.key === activeGrain)?.label || '日';
-  const currentRange = activePreset ? getPresetTimeRange(activePreset) : lastRangeRef.current;
-  const displayRanges = selectionMode === 'points' ? selectedRanges : [currentRange];
-  const dateSelected = (date: string) => displayRanges.some(range => isDateInRange(date, range));
+        ? activeFiscalYearEnd !== null
+          ? `${activeFiscalYear}-${activeFiscalYearEnd}财年`
+          : `${activeFiscalYear}财年`
+        : activePreset === 'this_fiscal_year'
+          ? `${fiscalYearStartFromDate(getDataEndDate())}财年`
+          : activePreset
+            ? DEFAULT_PRESETS.find(p => p.key === activePreset)?.label || ''
+            : lastRangeRef.current
+              ? '自定义范围'
+              : '不过滤';
+  const currentGrain =
+    TIME_GRAIN_OPTIONS.find(g => g.key === activeGrain)?.label || '日';
+  const currentRange = activePreset
+    ? getPresetTimeRange(activePreset)
+    : lastRangeRef.current;
+  const displayRanges =
+    selectionMode === 'points' ? selectedRanges : [currentRange];
+  const dateSelected = (date: string) =>
+    displayRanges.some(range => isDateInRange(date, range));
 
   const baseMonth = getMonthStart(getDataEndDate());
   const calendarStartMonth =
@@ -1241,7 +1676,8 @@ export default function CustomTimeFilterPlugin(props: any) {
   const canGoBackYear = displayYearStart > minimumSelectableYear;
   const yearOptions = useMemo(() => {
     const years = [];
-    for (let y = displayYearStart; y < displayYearStart + 12; y++) years.push(y);
+    for (let y = displayYearStart; y < displayYearStart + 12; y++)
+      years.push(y);
     return years;
   }, [displayYearStart]);
 
@@ -1279,7 +1715,15 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const renderCalendarNavigation = () => (
     <div style={styles.nav}>
-      <button type="button" onClick={() => canGoBack && setCalendarMonthOffset(o => o - 1)} disabled={!canGoBack} style={{ ...styles.btn, color: canGoBack ? styles.colors.primary : styles.colors.disabled }}>
+      <button
+        type="button"
+        onClick={() => canGoBack && setCalendarMonthOffset(o => o - 1)}
+        disabled={!canGoBack}
+        style={{
+          ...styles.btn,
+          color: canGoBack ? styles.colors.primary : styles.colors.disabled,
+        }}
+      >
         ← 上个月
       </button>
       <select
@@ -1288,17 +1732,31 @@ export default function CustomTimeFilterPlugin(props: any) {
         onChange={e => {
           const target = new Date(`${e.target.value}T00:00:00`);
           const base = new Date(`${baseMonth}T00:00:00`);
-          const diffMonths = (target.getFullYear() - base.getFullYear()) * 12 + (target.getMonth() - base.getMonth());
+          const diffMonths =
+            (target.getFullYear() - base.getFullYear()) * 12 +
+            (target.getMonth() - base.getMonth());
           setCalendarMonthOffset(diffMonths);
         }}
         style={styles.selectInput}
       >
         {Array.from({ length: calendarMonthCount }, (_, i) => {
           const m = addMonths(calendarStartMonth, i);
-          return <option key={m} value={m}>{m.substring(0, 7)}</option>;
+          return (
+            <option key={m} value={m}>
+              {m.substring(0, 7)}
+            </option>
+          );
         })}
       </select>
-      <button type="button" onClick={() => canGoForward && setCalendarMonthOffset(o => o + 1)} disabled={!canGoForward} style={{ ...styles.btn, color: canGoForward ? styles.colors.primary : styles.colors.disabled }}>
+      <button
+        type="button"
+        onClick={() => canGoForward && setCalendarMonthOffset(o => o + 1)}
+        disabled={!canGoForward}
+        style={{
+          ...styles.btn,
+          color: canGoForward ? styles.colors.primary : styles.colors.disabled,
+        }}
+      >
         下个月 →
       </button>
     </div>
@@ -1306,18 +1764,44 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const renderCalendarMonth = (monthStart: string) => (
     <div style={{ minWidth: 'unset' }}>
-      <div style={{ textAlign: 'center', fontWeight: 600, marginBottom: 12, color: styles.colors.text }}>
+      <div
+        style={{
+          textAlign: 'center',
+          fontWeight: 600,
+          marginBottom: 12,
+          color: styles.colors.text,
+        }}
+      >
         {formatMonthTitle(monthStart)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 5, color: styles.colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 26px)',
+          gap: 5,
+          color: styles.colors.textSecondary,
+          fontSize: 12,
+          marginBottom: 8,
+        }}
+      >
         {['一', '二', '三', '四', '五', '六', '日'].map(day => (
-          <div key={day} style={{ textAlign: 'center' }}>{day}</div>
+          <div key={day} style={{ textAlign: 'center' }}>
+            {day}
+          </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 5 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 26px)',
+          gap: 5,
+        }}
+      >
         {getMonthDays(monthStart).map(day => {
           const selected = dateSelected(day.date);
-          const endpoint = displayRanges.some(range => isDateRangeEndpoint(day.date, range));
+          const endpoint = displayRanges.some(range =>
+            isDateRangeEndpoint(day.date, range),
+          );
           const capped = day.date > getDataEndDate();
           if (day.date < minimumCalendarDate) {
             return <span key={day.date} aria-hidden="true" />;
@@ -1335,8 +1819,18 @@ export default function CustomTimeFilterPlugin(props: any) {
                 height: 26,
                 border: 'none',
                 borderRadius: endpoint ? 13 : selected ? 2 : 0,
-                background: endpoint ? styles.colors.primary : selected ? styles.colors.primaryBg : 'transparent',
-                color: endpoint ? styles.colors.selectedText : day.muted || capped ? styles.colors.disabled : selected ? styles.colors.primary : styles.colors.text,
+                background: endpoint
+                  ? styles.colors.primary
+                  : selected
+                    ? styles.colors.primaryBg
+                    : 'transparent',
+                color: endpoint
+                  ? styles.colors.selectedText
+                  : day.muted || capped
+                    ? styles.colors.disabled
+                    : selected
+                      ? styles.colors.primary
+                      : styles.colors.text,
                 cursor: capped ? 'not-allowed' : 'pointer',
                 fontSize: 12,
               }}
@@ -1351,20 +1845,54 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const renderWeekCalendarMonth = (monthStart: string) => (
     <div style={{ minWidth: 'unset' }}>
-      <div style={{ textAlign: 'center', fontWeight: 600, marginBottom: 12, color: styles.colors.text }}>
+      <div
+        style={{
+          textAlign: 'center',
+          fontWeight: 600,
+          marginBottom: 12,
+          color: styles.colors.text,
+        }}
+      >
         {formatMonthTitle(monthStart)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 5, color: styles.colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 26px)',
+          gap: 5,
+          color: styles.colors.textSecondary,
+          fontSize: 12,
+          marginBottom: 8,
+        }}
+      >
         {['日', '一', '二', '三', '四', '五', '六'].map(day => (
-          <div key={day} style={{ textAlign: 'center' }}>{day}</div>
+          <div key={day} style={{ textAlign: 'center' }}>
+            {day}
+          </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 5 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 26px)',
+          gap: 5,
+        }}
+      >
         {getMonthDays(monthStart, true).map(day => {
           const weekStart = toSunday(day.date);
           const weekEndExclusive = addDays(weekStart, 7);
-          const selected = displayRanges.some(range => Boolean(range && weekStart < parseRange(range).endExclusive && weekEndExclusive > parseRange(range).start));
-          const endpoint = displayRanges.some(range => parseRange(range).start === weekStart || parseRange(range).endExclusive === weekEndExclusive);
+          const selected = displayRanges.some(range =>
+            Boolean(
+              range &&
+              weekStart < parseRange(range).endExclusive &&
+              weekEndExclusive > parseRange(range).start,
+            ),
+          );
+          const endpoint = displayRanges.some(
+            range =>
+              parseRange(range).start === weekStart ||
+              parseRange(range).endExclusive === weekEndExclusive,
+          );
           const capped = day.date > getDataEndDate();
           if (weekStart < minimumCalendarDate) {
             return <span key={day.date} aria-hidden="true" />;
@@ -1383,8 +1911,18 @@ export default function CustomTimeFilterPlugin(props: any) {
                 height: 26,
                 border: 'none',
                 borderRadius: endpoint ? 13 : selected ? 2 : 0,
-                background: endpoint ? styles.colors.primary : selected ? styles.colors.primaryBg : 'transparent',
-                color: endpoint ? styles.colors.selectedText : day.muted || capped ? styles.colors.disabled : selected ? styles.colors.primary : styles.colors.text,
+                background: endpoint
+                  ? styles.colors.primary
+                  : selected
+                    ? styles.colors.primaryBg
+                    : 'transparent',
+                color: endpoint
+                  ? styles.colors.selectedText
+                  : day.muted || capped
+                    ? styles.colors.disabled
+                    : selected
+                      ? styles.colors.primary
+                      : styles.colors.text,
                 cursor: capped ? 'not-allowed' : 'pointer',
                 fontSize: 12,
               }}
@@ -1401,9 +1939,18 @@ export default function CustomTimeFilterPlugin(props: any) {
     <>
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
-        {selectionMode === 'points' ? '逐项点选，再次点击取消；中间未选日期不参与查询。' : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
+        {selectionMode === 'points'
+          ? '逐项点选，再次点击取消；中间未选日期不参与查询。'
+          : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
       </div>
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 24,
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+        }}
+      >
         {renderCalendarMonth(firstCalendarMonth)}
       </div>
     </>
@@ -1415,7 +1962,14 @@ export default function CustomTimeFilterPlugin(props: any) {
       <div style={{ ...styles.hint }}>
         点击任意日期会自动选择该日期所在的周日-周六整周。
       </div>
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 24,
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+        }}
+      >
         {renderWeekCalendarMonth(firstCalendarMonth)}
       </div>
     </>
@@ -1423,101 +1977,213 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const renderMonthSelector = () => (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => canGoBackMonth && setMonthYearOffset(o => o - 1)} disabled={!canGoBackMonth} style={{ fontSize: 12, cursor: canGoBackMonth ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackMonth ? styles.colors.primary : styles.colors.disabled }}>{'<'} {displayYear - 1}年</button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayYear}年</span>
-        <button type="button" onClick={() => setMonthYearOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{displayYear + 1}年 {'>'}</button>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => canGoBackMonth && setMonthYearOffset(o => o - 1)}
+          disabled={!canGoBackMonth}
+          style={{
+            fontSize: 12,
+            cursor: canGoBackMonth ? 'pointer' : 'not-allowed',
+            border: 'none',
+            background: 'transparent',
+            color: canGoBackMonth
+              ? styles.colors.primary
+              : styles.colors.disabled,
+          }}
+        >
+          {'<'} {displayYear - 1}年
+        </button>
+        <span
+          style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}
+        >
+          {displayYear}年
+        </span>
+        <button
+          type="button"
+          onClick={() => setMonthYearOffset(o => o + 1)}
+          style={{
+            fontSize: 12,
+            cursor: 'pointer',
+            border: 'none',
+            background: 'transparent',
+            color: styles.colors.primary,
+          }}
+        >
+          {displayYear + 1}年 {'>'}
+        </button>
       </div>
-    <div data-test="custom-time-month-grid" style={styles.monthGrid}>
-      {monthOptions.map(month => {
-        const selected = dateSelected(monthStartFromMonth(month));
-        const capped = monthStartFromMonth(month) > getDataEndDate();
-        return (
-          <button
-            key={month}
-            type="button"
-            disabled={capped}
-            onClick={() => handleMonthClick(month)}
-            aria-pressed={selected}
-            style={{
-              ...(selected ? styles.periodActive : styles.periodBtn),
-              opacity: capped ? 0.45 : 1,
-              cursor: capped ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {month}
-          </button>
-        );
-      })}
-    </div>
+      <div data-test="custom-time-month-grid" style={styles.monthGrid}>
+        {monthOptions.map(month => {
+          const selected = dateSelected(monthStartFromMonth(month));
+          const capped = monthStartFromMonth(month) > getDataEndDate();
+          return (
+            <button
+              key={month}
+              type="button"
+              disabled={capped}
+              onClick={() => handleMonthClick(month)}
+              aria-pressed={selected}
+              style={{
+                ...(selected ? styles.periodActive : styles.periodBtn),
+                opacity: capped ? 0.45 : 1,
+                cursor: capped ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {month}
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 
   const renderQuarterSelector = () => (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => canGoBackQuarter && setQuarterYearOffset(o => o - 1)} disabled={!canGoBackQuarter} style={{ fontSize: 12, cursor: canGoBackQuarter ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackQuarter ? styles.colors.primary : styles.colors.disabled }}>{'<'} {displayQuarterYear - 1}年</button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayQuarterYear}年</span>
-        <button type="button" onClick={() => setQuarterYearOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>{displayQuarterYear + 1}年 {'>'}</button>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => canGoBackQuarter && setQuarterYearOffset(o => o - 1)}
+          disabled={!canGoBackQuarter}
+          style={{
+            fontSize: 12,
+            cursor: canGoBackQuarter ? 'pointer' : 'not-allowed',
+            border: 'none',
+            background: 'transparent',
+            color: canGoBackQuarter
+              ? styles.colors.primary
+              : styles.colors.disabled,
+          }}
+        >
+          {'<'} {displayQuarterYear - 1}年
+        </button>
+        <span
+          style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}
+        >
+          {displayQuarterYear}年
+        </span>
+        <button
+          type="button"
+          onClick={() => setQuarterYearOffset(o => o + 1)}
+          style={{
+            fontSize: 12,
+            cursor: 'pointer',
+            border: 'none',
+            background: 'transparent',
+            color: styles.colors.primary,
+          }}
+        >
+          {displayQuarterYear + 1}年 {'>'}
+        </button>
       </div>
-    <div data-test="custom-time-quarter-grid" style={styles.quarterGrid}>
-      {quarterOptions.map(id => {
-        const { year, q } = parseQuarterId(id);
-        const range = getFQRange(year, q);
-        const selected = dateSelected(range.start);
-        const capped = range.start < minimumCalendarDate || range.start > getDataEndDate();
-        return (
-          <button
-            key={id}
-            type="button"
-            disabled={capped}
-            onClick={() => handleQuarterClick(id)}
-            aria-pressed={selected}
-            style={{
-              ...(selected ? styles.periodActive : styles.periodBtn),
-              opacity: capped ? 0.45 : 1,
-              cursor: capped ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {quarterLabel(id)}
-          </button>
-        );
-      })}
-    </div>
+      <div data-test="custom-time-quarter-grid" style={styles.quarterGrid}>
+        {quarterOptions.map(id => {
+          const { year, q } = parseQuarterId(id);
+          const range = getFQRange(year, q);
+          const selected = dateSelected(range.start);
+          const capped =
+            range.start < minimumCalendarDate || range.start > getDataEndDate();
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={capped}
+              onClick={() => handleQuarterClick(id)}
+              aria-pressed={selected}
+              style={{
+                ...(selected ? styles.periodActive : styles.periodBtn),
+                opacity: capped ? 0.45 : 1,
+                cursor: capped ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {quarterLabel(id)}
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 
   const renderYearSelector = () => (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <button type="button" onClick={() => canGoBackYear && setYearDecadeOffset(o => o - 1)} disabled={!canGoBackYear} style={{ fontSize: 12, cursor: canGoBackYear ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackYear ? styles.colors.primary : styles.colors.disabled }}>{'<'} 前十年</button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>{displayYearStart} - {displayYearStart + 11}</span>
-        <button type="button" onClick={() => setYearDecadeOffset(o => o + 1)} style={{ fontSize: 12, cursor: 'pointer', border: 'none', background: 'transparent', color: styles.colors.primary }}>后十年 {'>'}</button>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => canGoBackYear && setYearDecadeOffset(o => o - 1)}
+          disabled={!canGoBackYear}
+          style={{
+            fontSize: 12,
+            cursor: canGoBackYear ? 'pointer' : 'not-allowed',
+            border: 'none',
+            background: 'transparent',
+            color: canGoBackYear
+              ? styles.colors.primary
+              : styles.colors.disabled,
+          }}
+        >
+          {'<'} 前十年
+        </button>
+        <span
+          style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}
+        >
+          {displayYearStart} - {displayYearStart + 11}
+        </span>
+        <button
+          type="button"
+          onClick={() => setYearDecadeOffset(o => o + 1)}
+          style={{
+            fontSize: 12,
+            cursor: 'pointer',
+            border: 'none',
+            background: 'transparent',
+            color: styles.colors.primary,
+          }}
+        >
+          后十年 {'>'}
+        </button>
       </div>
-    <div data-test="custom-time-year-grid" style={styles.yearGrid}>
-      {yearOptions.map(year => {
-        const selected = dateSelected(fmtDate(year, 1, 1));
-        const capped =
-          fmtDate(year, 1, 1) < minimumCalendarDate ||
-          fmtDate(year, 1, 1) > getDataEndDate();
-        return (
-          <button
-            key={year}
-            type="button"
-            disabled={capped}
-            onClick={() => handleYearClick(year)}
-            aria-pressed={selected}
-            style={{
-              ...(selected ? styles.periodActive : styles.periodBtn),
-              opacity: capped ? 0.45 : 1,
-              cursor: capped ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {year}年
-          </button>
-        );
-      })}
-    </div>
+      <div data-test="custom-time-year-grid" style={styles.yearGrid}>
+        {yearOptions.map(year => {
+          const selected = dateSelected(fmtDate(year, 1, 1));
+          const capped =
+            fmtDate(year, 1, 1) < minimumCalendarDate ||
+            fmtDate(year, 1, 1) > getDataEndDate();
+          return (
+            <button
+              key={year}
+              type="button"
+              disabled={capped}
+              onClick={() => handleYearClick(year)}
+              aria-pressed={selected}
+              style={{
+                ...(selected ? styles.periodActive : styles.periodBtn),
+                opacity: capped ? 0.45 : 1,
+                cursor: capped ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {year}年
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 
@@ -1542,41 +2208,71 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const renderFiscalYearSelector = () => (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}
+      >
         <button
           type="button"
           aria-label="前十二年财年"
-          onClick={() => canGoBackFiscalYear && setFiscalYearOffset(offset => offset - 1)}
+          onClick={() =>
+            canGoBackFiscalYear && setFiscalYearOffset(offset => offset - 1)
+          }
           disabled={!canGoBackFiscalYear}
-          style={{ fontSize: 12, cursor: canGoBackFiscalYear ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoBackFiscalYear ? styles.colors.primary : styles.colors.disabled }}
+          style={{
+            fontSize: 12,
+            cursor: canGoBackFiscalYear ? 'pointer' : 'not-allowed',
+            border: 'none',
+            background: 'transparent',
+            color: canGoBackFiscalYear
+              ? styles.colors.primary
+              : styles.colors.disabled,
+          }}
         >
           {'<'} 前十二年
         </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}>
+        <span
+          style={{ fontSize: 12, fontWeight: 600, color: styles.colors.text }}
+        >
           {displayFiscalYearStart} - {displayFiscalYearStart + 11} 财年
         </span>
         <button
           type="button"
           aria-label="后十二年财年"
-          onClick={() => canGoForwardFiscalYear && setFiscalYearOffset(offset => offset + 1)}
+          onClick={() =>
+            canGoForwardFiscalYear && setFiscalYearOffset(offset => offset + 1)
+          }
           disabled={!canGoForwardFiscalYear}
-          style={{ fontSize: 12, cursor: canGoForwardFiscalYear ? 'pointer' : 'not-allowed', border: 'none', background: 'transparent', color: canGoForwardFiscalYear ? styles.colors.primary : styles.colors.disabled }}
+          style={{
+            fontSize: 12,
+            cursor: canGoForwardFiscalYear ? 'pointer' : 'not-allowed',
+            border: 'none',
+            background: 'transparent',
+            color: canGoForwardFiscalYear
+              ? styles.colors.primary
+              : styles.colors.disabled,
+          }}
         >
           后十二年 {'>'}
         </button>
       </div>
       <div style={{ ...styles.hint }}>
-        {selectionMode === 'points' ? '逐项选择财年，再次点击取消；不自动包含中间财年。' : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
+        {selectionMode === 'points'
+          ? '逐项选择财年，再次点击取消；不自动包含中间财年。'
+          : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
       </div>
       <div data-test="custom-time-fiscal-year-grid" style={styles.yearGrid}>
         {fiscalYearOptions.map(year => {
-          const capped =
-            year < minimumFiscalYear ||
-            year > fiscalYearStart;
+          const capped = year < minimumFiscalYear || year > fiscalYearStart;
           const selected =
-            selectionMode === 'points' ? dateSelected(fmtDate(year, 4, 1)) : activeFiscalYear !== null &&
-            year >= activeFiscalYear &&
-            year <= (activeFiscalYearEnd ?? activeFiscalYear);
+            selectionMode === 'points'
+              ? dateSelected(fmtDate(year, 4, 1))
+              : activeFiscalYear !== null &&
+                year >= activeFiscalYear &&
+                year <= (activeFiscalYearEnd ?? activeFiscalYear);
           return (
             <button
               key={year}
@@ -1618,45 +2314,188 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
   };
 
+  const comparisonDraft = getCustomComparisonDraft(
+    lastRangeRef.current,
+    selectionMode,
+    { customComparisonMode, comparisonStartDate, comparisonEndDate },
+  );
+  const changeComparison = (next: CustomComparisonDraft) => {
+    setCustomComparisonMode(next.customComparisonMode);
+    setComparisonStartDate(next.comparisonStartDate);
+    setComparisonEndDate(next.comparisonEndDate);
+    applyFilter(lastRangeRef.current, activeGrain, activePreset, next);
+  };
+  const comparisonStatus =
+    enableCustomComparison &&
+    customComparisonMode === 'custom' &&
+    (comparisonDraft.error ? (
+      <div role="alert">{comparisonDraft.error}</div>
+    ) : (
+      comparisonDraft.period && (
+        <div role="status">
+          {formatCustomPeriodComparisonLabel(comparisonDraft.period)}
+        </div>
+      )
+    ));
+  const comparisonControls = enableCustomComparison && (
+    <div style={styles.grainColumn}>
+      <label>
+        对比方式{' '}
+        <select
+          aria-label="对比方式"
+          value={customComparisonMode}
+          onChange={event =>
+            changeComparison({
+              customComparisonMode: event.target
+                .value as CustomComparisonDraft['customComparisonMode'],
+              comparisonStartDate,
+              comparisonEndDate,
+            })
+          }
+        >
+          <option value="original">原有对比</option>
+          <option value="custom">自定义期间</option>
+        </select>
+      </label>
+      {customComparisonMode === 'custom' && (
+        <>
+          <div>
+            <label>
+              对比开始日期{' '}
+              <input
+                type="date"
+                aria-label="对比开始日期"
+                value={comparisonStartDate}
+                onChange={event =>
+                  changeComparison({
+                    customComparisonMode,
+                    comparisonStartDate: event.target.value,
+                    comparisonEndDate,
+                  })
+                }
+              />
+            </label>
+          </div>
+          <div>
+            <label>
+              对比结束日期{' '}
+              <input
+                type="date"
+                aria-label="对比结束日期"
+                value={comparisonEndDate}
+                onChange={event =>
+                  changeComparison({
+                    customComparisonMode,
+                    comparisonStartDate,
+                    comparisonEndDate: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+          {comparisonStatus}
+        </>
+      )}
+      <div style={styles.hint}>
+        自定义期间仅用于作用范围内的聚合表格和透视表；其他图表沿用原有对比。
+      </div>
+      {customComparisonMode === 'original' && (
+        <div style={styles.hint}>
+          按现有时间粒度的原有策略对比；选择自定义期间后通过侧栏“应用筛选”提交。
+        </div>
+      )}
+    </div>
+  );
+
   if (collapsed) {
     return (
-      <div style={styles.container} data-test="custom-time-filter" data-theme-aware="true">
+      <div
+        style={styles.container}
+        data-test="custom-time-filter"
+        data-theme-aware="true"
+      >
         <div style={styles.toolbar}>
-          <span style={{ color: styles.colors.text, fontWeight: 500 }}>{currentLabel} | {currentGrain}</span>
-          <button type="button" onClick={() => setCollapsed(false)} style={styles.btn}>展开 ▼</button>
+          <span style={{ color: styles.colors.text, fontWeight: 500 }}>
+            {currentLabel} | {currentGrain}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            style={styles.btn}
+          >
+            展开 ▼
+          </button>
         </div>
+        {comparisonStatus}
       </div>
     );
   }
 
   return (
-    <div style={styles.container} data-test="custom-time-filter" data-theme-aware="true">
+    <div
+      style={styles.container}
+      data-test="custom-time-filter"
+      data-theme-aware="true"
+    >
       <div style={{ textAlign: 'right', padding: '4px 8px 0' }}>
-        <button type="button" onClick={() => setCollapsed(true)} style={{ ...styles.btn, color: styles.colors.primary }}>▲ 收起</button>
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          style={{ ...styles.btn, color: styles.colors.primary }}
+        >
+          ▲ 收起
+        </button>
       </div>
       <div style={styles.shell}>
+        {comparisonControls}
         {enableCustomRange && (
           <div style={styles.grainColumn}>
-            <div role="group" aria-label="区间选择方式" style={styles.grainGrid}>
+            <div
+              role="group"
+              aria-label="区间选择方式"
+              style={styles.grainGrid}
+            >
               {(['continuous', 'points'] as const).map(mode => (
-                <button type="button" key={mode}
+                <button
+                  type="button"
+                  key={mode}
                   aria-pressed={selectionMode === mode}
                   disabled={mode === 'points' && !timeColumn}
-                  style={selectionMode === mode ? styles.grainActive : styles.grainBtn}
-                  onClick={() => changeSelectionMode(mode)}>
+                  style={
+                    selectionMode === mode
+                      ? styles.grainActive
+                      : styles.grainBtn
+                  }
+                  onClick={() => changeSelectionMode(mode)}
+                >
                   {mode === 'continuous' ? '连续区间' : '点选区间'}
                 </button>
               ))}
             </div>
-            {selectionMode === 'points' && <div style={styles.hint}>比较方式：较上一选中区间；无时间轴图表显示选中区间合计。</div>}
-            {!timeColumn && <div style={styles.hint}>绑定时间列后可使用点选区间。</div>}
+            {selectionMode === 'points' && (
+              <div style={styles.hint}>
+                比较方式：较上一选中区间；无时间轴图表显示选中区间合计。
+              </div>
+            )}
+            {!timeColumn && (
+              <div style={styles.hint}>绑定时间列后可使用点选区间。</div>
+            )}
           </div>
         )}
         {enableTimeGrain && (
           <div style={styles.grainColumn}>
             <div style={styles.grainGrid}>
-              {TIME_GRAIN_OPTIONS.filter(g => g.key !== 'fiscal_year' || enableCustomRange).map(g => (
-                <button key={g.key} type="button" style={activeGrain === g.key ? styles.grainActive : styles.grainBtn} onClick={() => handleGrainClick(g)}>
+              {TIME_GRAIN_OPTIONS.filter(
+                g => g.key !== 'fiscal_year' || enableCustomRange,
+              ).map(g => (
+                <button
+                  key={g.key}
+                  type="button"
+                  style={
+                    activeGrain === g.key ? styles.grainActive : styles.grainBtn
+                  }
+                  onClick={() => handleGrainClick(g)}
+                >
                   {getGrainDisplayLabel(g.label)}
                 </button>
               ))}
@@ -1666,11 +2505,20 @@ export default function CustomTimeFilterPlugin(props: any) {
         {enablePresets && (
           <div style={styles.presetColumn}>
             <div style={styles.grid}>
-              {DEFAULT_PRESETS.filter(p => p.key !== 'this_fiscal_year').map(p => (
-                <button key={p.key} type="button" style={activePreset === p.key ? styles.btnActive : styles.btn} onClick={() => handlePresetClick(p)}>
-                  {p.label}
-                </button>
-              ))}
+              {DEFAULT_PRESETS.filter(p => p.key !== 'this_fiscal_year').map(
+                p => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    style={
+                      activePreset === p.key ? styles.btnActive : styles.btn
+                    }
+                    onClick={() => handlePresetClick(p)}
+                  >
+                    {p.label}
+                  </button>
+                ),
+              )}
             </div>
           </div>
         )}

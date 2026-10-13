@@ -18,6 +18,10 @@
  */
 import {
   ChartProps,
+  getColumnLabel,
+  getCustomPeriodComparison,
+  mergeCustomPeriodComparisonRows,
+  formatCustomPeriodComparisonLabel,
   Currency,
   DataRecord,
   extractTimegrain,
@@ -33,6 +37,10 @@ import {
 import { GenericDataType } from '@apache-superset/core/common';
 import { getColorFormatters } from '@superset-ui/chart-controls';
 import { DateFormatter, PIVOT_CHINESE_WEEKDAY_DATE_FORMAT } from '../types';
+import {
+  PERIOD_KEY,
+  validateCustomPeriodMetrics,
+} from './customPeriodComparison';
 import {
   buildMetricDescriptors,
   reconcileMetricLayout,
@@ -249,7 +257,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     theme,
   } = chartProps;
   const {
-    data,
+    data: currentData,
     colnames,
     coltypes,
     detected_currency: detectedCurrency,
@@ -280,6 +288,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     pivotNumberFormatRules = [],
   } = formData;
   const { selectedFilters } = filterState;
+  const period = getCustomPeriodComparison(rawFormData);
   const columnConfig =
     (formData as { columnConfig?: Record<string, PivotColumnConfig> })
       .columnConfig ||
@@ -331,6 +340,67 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       .map(column => column.columnName || column.column_name),
   );
 
+  const temporalDimensions = [...groupbyRows, ...groupbyColumns]
+    .map(getColumnLabel)
+    .filter(
+      name =>
+        dateColumns.has(name) ||
+        coltypes[colnames.indexOf(name)] === GenericDataType.Temporal ||
+        name === rawFormData.granularity_sqla,
+    );
+  if (period) {
+    if (
+      [...groupbyRows, ...groupbyColumns]
+        .map(getColumnLabel)
+        .includes(PERIOD_KEY)
+    ) {
+      throw new Error(
+        '自定义期间对比的维度名称与“期间对比”冲突，请重命名该维度。',
+      );
+    }
+    validateCustomPeriodMetrics(
+      metrics,
+      columnConfig,
+      chartProps.datasource.metrics || [],
+      aggregateFunction,
+    );
+    if (!queriesData[1]?.data)
+      throw new Error('自定义期间对比缺少对比查询结果，请重新应用筛选。');
+    const rowLimit = Number(rawFormData.row_limit);
+    if (
+      !Number.isSafeInteger(rowLimit) ||
+      rowLimit <= 0 ||
+      rowLimit >= Number.MAX_SAFE_INTEGER
+    ) {
+      throw new Error('自定义期间对比需要设置正整数行数限制。');
+    }
+    if (
+      currentData.length > rowLimit ||
+      queriesData[1].data.length > rowLimit
+    ) {
+      throw new Error(
+        '自定义期间对比结果超过行数限制，请提高行数限制后重试；不计算截断结果。',
+      );
+    }
+  }
+  const helperLabels = Object.values(metricRatioComponents).flatMap(
+    ({ numeratorLabel, denominatorLabel }) => [
+      numeratorLabel,
+      denominatorLabel,
+    ],
+  );
+  const data = period
+    ? mergeCustomPeriodComparisonRows(
+        currentData,
+        queriesData[1].data,
+        [...new Set([...groupbyRows, ...groupbyColumns].map(getColumnLabel))],
+        [...new Set([...metrics.map(getMetricLabel), ...helperLabels])],
+        period,
+        granularity,
+        temporalDimensions,
+      )
+    : currentData;
+
   const dateFormatters = colnames
     .filter(
       (colname: string, index: number) =>
@@ -342,6 +412,10 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
         acc: Record<string, DateFormatter | undefined>,
         temporalColname: string,
       ) => {
+        if (period && temporalDimensions.includes(temporalColname)) {
+          acc[temporalColname] = (value: unknown) => String(value);
+          return acc;
+        }
         if (dateFormat === PIVOT_CHINESE_WEEKDAY_DATE_FORMAT) {
           const formatter = granularity
             ? getTimeFormatterForGranularity(granularity)
@@ -401,6 +475,14 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   // AUTO symbol passed through - PivotTableChart handles per-cell currency detection
 
   return {
+    ...(period
+      ? {
+          customPeriodComparison: true,
+          customPeriodComparisonLabel:
+            formatCustomPeriodComparisonLabel(period),
+          customPeriodTemporalDimensions: temporalDimensions,
+        }
+      : {}),
     frozenColumnCount: savedMetricLayout?.frozen_column_count || 0,
     frozenColumnKey: savedMetricLayout?.frozen_column_key,
     freezeMetricIds: Object.fromEntries(

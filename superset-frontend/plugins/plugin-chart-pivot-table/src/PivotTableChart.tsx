@@ -41,7 +41,18 @@ import {
   NumberFormatter,
 } from '@superset-ui/core';
 import { styled, useTheme } from '@apache-superset/core/theme';
-import { aggregatorTemplates, PivotTable, sortAs } from './react-pivottable';
+import {
+  aggregatorTemplates,
+  naturalSort,
+  PivotTable,
+  sortAs,
+} from './react-pivottable';
+import {
+  createCustomPeriodAggregator,
+  unpivotCustomPeriodData,
+  PERIOD_COLUMNS,
+  PERIOD_KEY,
+} from './plugin/customPeriodComparison';
 import {
   FilterType,
   MetricsLayoutEnum,
@@ -270,6 +281,9 @@ export default function PivotTableChart(props: PivotTableProps) {
     currencyFormats,
     metricAggregateFunctions,
     metricRatioComponents = {},
+    customPeriodComparison = false,
+    customPeriodComparisonLabel,
+    customPeriodTemporalDimensions = [],
     metricsLayout,
     metricColorFormatters,
     dateFormatters,
@@ -324,6 +338,17 @@ export default function PivotTableChart(props: PivotTableProps) {
   );
   const hasCustomMetricFormatters = customFormatsArray.length > 0;
   const metricAggregatorNames = useMemo(() => {
+    if (customPeriodComparison) {
+      return {
+        [METRIC_KEY]: Object.fromEntries(
+          metrics.map(metric => {
+            const name =
+              typeof metric === 'string' ? metric : (metric.label as string);
+            return [name, `Custom period: ${name}`];
+          }),
+        ),
+      };
+    }
     const aggregateEntries = Object.entries(
       metricAggregateFunctions || {},
     ).filter(([, aggregateName]) => Boolean(aggregateName));
@@ -332,7 +357,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           [METRIC_KEY]: Object.fromEntries(aggregateEntries),
         }
       : undefined;
-  }, [metricAggregateFunctions]);
+  }, [metricAggregateFunctions, customPeriodComparison, metrics]);
   const metricFormatters = useMemo(
     () =>
       hasCustomMetricFormatters
@@ -373,16 +398,51 @@ export default function PivotTableChart(props: PivotTableProps) {
     [metrics],
   );
 
+  const comparisonAggregatorsFactory = useMemo(
+    () => (formatter: NumberFormatter) => ({
+      ...aggregatorsFactory(formatter),
+      'Custom period': () => createCustomPeriodAggregator(formatter),
+      ...Object.fromEntries(
+        metricNames.map(name => [
+          `Custom period: ${name}`,
+          () =>
+            createCustomPeriodAggregator(
+              formatter,
+              Boolean(metricRatioComponents[name]),
+              metricAggregateFunctions?.[name] ===
+                PIVOT_ABSOLUTE_RATIO_AGGREGATE_FUNCTION,
+              String(columnFormats[name] || valueFormat).includes('%'),
+            ),
+        ]),
+      ),
+    }),
+    [
+      metricNames,
+      metricRatioComponents,
+      metricAggregateFunctions,
+      columnFormats,
+      valueFormat,
+    ],
+  );
+
   const unpivotedData = useMemo(
     () =>
-      unpivotPivotTableData(
+      (customPeriodComparison
+        ? unpivotCustomPeriodData
+        : unpivotPivotTableData)(
         data,
         metricNames,
         metricRatioComponents,
         METRIC_KEY,
         currencyCodeColumn,
       ),
-    [data, metricNames, currencyCodeColumn, metricRatioComponents],
+    [
+      data,
+      metricNames,
+      currencyCodeColumn,
+      metricRatioComponents,
+      customPeriodComparison,
+    ],
   );
   const groupbyRows = useMemo(
     () => groupbyRowsRaw.map(getColumnLabel),
@@ -400,8 +460,16 @@ export default function PivotTableChart(props: PivotTableProps) {
   const sorters = useMemo(
     () => ({
       [METRIC_KEY]: sortAs(metricNames),
+      ...(customPeriodComparison
+        ? {
+            [PERIOD_KEY]: sortAs(PERIOD_COLUMNS),
+            ...Object.fromEntries(
+              customPeriodTemporalDimensions.map(name => [name, naturalSort]),
+            ),
+          }
+        : {}),
     }),
-    [metricNames],
+    [metricNames, customPeriodComparison, customPeriodTemporalDimensions],
   );
 
   const [rows, cols] = useMemo(() => {
@@ -414,9 +482,15 @@ export default function PivotTableChart(props: PivotTableProps) {
     } else {
       cols_ = combineMetric ? [...cols_, METRIC_KEY] : [METRIC_KEY, ...cols_];
     }
+    if (customPeriodComparison) {
+      if (metricsLayout === MetricsLayoutEnum.ROWS)
+        rows_.splice(rows_.indexOf(METRIC_KEY) + 1, 0, PERIOD_KEY);
+      else cols_.splice(cols_.indexOf(METRIC_KEY) + 1, 0, PERIOD_KEY);
+    }
     return [rows_, cols_];
   }, [
     combineMetric,
+    customPeriodComparison,
     groupbyColumns,
     groupbyRows,
     metricsLayout,
@@ -479,6 +553,13 @@ export default function PivotTableChart(props: PivotTableProps) {
       }
 
       const [key, val] = Object.entries(value)[0];
+      if (
+        customPeriodComparison &&
+        (key === PERIOD_KEY ||
+          key === METRIC_KEY ||
+          customPeriodTemporalDimensions.includes(key))
+      )
+        return undefined;
       let values = { ...selectedFilters };
       if (isActiveFilterValue(key, val)) {
         values = {};
@@ -530,7 +611,13 @@ export default function PivotTableChart(props: PivotTableProps) {
         isCurrentValueSelected: isActiveFilterValue(key, val),
       };
     },
-    [groupbyColumnsRaw, groupbyRowsRaw, selectedFilters],
+    [
+      groupbyColumnsRaw,
+      groupbyRowsRaw,
+      selectedFilters,
+      customPeriodComparison,
+      customPeriodTemporalDimensions,
+    ],
   );
 
   const toggleFilter = useCallback(
@@ -556,6 +643,12 @@ export default function PivotTableChart(props: PivotTableProps) {
 
       const filtersCopy = { ...filters };
       delete filtersCopy[METRIC_KEY];
+      if (customPeriodComparison) {
+        delete filtersCopy[PERIOD_KEY];
+        customPeriodTemporalDimensions.forEach(key => {
+          delete filtersCopy[key];
+        });
+      }
 
       const filtersEntries = Object.entries(filtersCopy);
       if (filtersEntries.length === 0) {
@@ -587,7 +680,13 @@ export default function PivotTableChart(props: PivotTableProps) {
       }
       handleChange(updatedFilters);
     },
-    [emitCrossFilters, selectedFilters, handleChange],
+    [
+      emitCrossFilters,
+      selectedFilters,
+      handleChange,
+      customPeriodComparison,
+      customPeriodTemporalDimensions,
+    ],
   );
 
   const tableOptions = useMemo(
@@ -603,14 +702,22 @@ export default function PivotTableChart(props: PivotTableProps) {
         isFeatureEnabled(FeatureFlag.DrillBy) ||
         isFeatureEnabled(FeatureFlag.DrillToDetail),
       highlightedHeaderCells: selectedFilters,
-      omittedHighlightHeaderGroups: [METRIC_KEY],
+      omittedHighlightHeaderGroups: [
+        METRIC_KEY,
+        ...(customPeriodComparison
+          ? [PERIOD_KEY, ...customPeriodTemporalDimensions]
+          : []),
+      ],
       cellColorFormatters: { [METRIC_KEY]: metricColorFormatters },
       dateFormatters,
       pivotNumberFormatRules,
+      customPeriodComparison,
     }),
     [
       colTotals,
       colSubTotals,
+      customPeriodComparison,
+      customPeriodTemporalDimensions,
       dateFormatters,
       emitCrossFilters,
       metricColorFormatters,
@@ -648,7 +755,13 @@ export default function PivotTableChart(props: PivotTableProps) {
             const col = cols[i];
             const formatter = dateFormatters[col];
             const formattedVal = formatter?.(Number(val)) || String(val);
-            if (i > 0) {
+            if (
+              i > 0 &&
+              (!customPeriodComparison ||
+                (col !== METRIC_KEY &&
+                  col !== PERIOD_KEY &&
+                  !customPeriodTemporalDimensions.includes(col)))
+            ) {
               drillToDetailFilters.push({
                 col,
                 op: '==',
@@ -662,6 +775,13 @@ export default function PivotTableChart(props: PivotTableProps) {
         if (rowKey) {
           rowKey.forEach((val, i) => {
             const col = rows[i];
+            if (
+              customPeriodComparison &&
+              (col === METRIC_KEY ||
+                col === PERIOD_KEY ||
+                customPeriodTemporalDimensions.includes(col))
+            )
+              return;
             const formatter = dateFormatters[col];
             const formattedVal = formatter?.(Number(val)) || String(val);
             drillToDetailFilters.push({
@@ -673,17 +793,28 @@ export default function PivotTableChart(props: PivotTableProps) {
             });
           });
         }
+        const drillDataPoint =
+          customPeriodComparison &&
+          dataPoint &&
+          Object.keys(dataPoint).some(
+            col =>
+              col === METRIC_KEY ||
+              col === PERIOD_KEY ||
+              customPeriodTemporalDimensions.includes(col),
+          )
+            ? undefined
+            : dataPoint;
         onContextMenu(e.clientX, e.clientY, {
           drillToDetail: drillToDetailFilters,
           crossFilter: dataPoint
             ? getCrossFilterDataMask(dataPoint)
             : undefined,
-          drillBy: dataPoint && {
+          drillBy: drillDataPoint && {
             filters: [
               {
-                col: Object.keys(dataPoint)[0],
+                col: Object.keys(drillDataPoint)[0],
                 op: '==',
-                val: Object.values(dataPoint)[0],
+                val: Object.values(drillDataPoint)[0],
               },
             ],
             groupbyFieldName: rowKey ? 'groupbyRows' : 'groupbyColumns',
@@ -695,6 +826,8 @@ export default function PivotTableChart(props: PivotTableProps) {
       cols,
       dateFormatters,
       getCrossFilterDataMask,
+      customPeriodComparison,
+      customPeriodTemporalDimensions,
       onContextMenu,
       rows,
       timeGrainSqla,
@@ -704,6 +837,14 @@ export default function PivotTableChart(props: PivotTableProps) {
   return (
     <Styles height={height} width={width} margin={theme.sizeUnit * 4}>
       <PivotTableWrapper>
+        {customPeriodComparison && (
+          <div role="note">
+            {customPeriodComparisonLabel && (
+              <div>{customPeriodComparisonLabel}</div>
+            )}
+            超过行数限制时不计算对比；四类对比值不互相求和。对齐日期仅用于展示，不参与日期筛选或钻取。
+          </div>
+        )}
         <PivotTable
           frozenColumnCount={frozenColumnCount}
           frozenColumnKey={frozenColumnKey}
@@ -712,11 +853,17 @@ export default function PivotTableChart(props: PivotTableProps) {
           data={unpivotedData}
           rows={rows}
           cols={cols}
-          aggregatorsFactory={aggregatorsFactory}
+          aggregatorsFactory={
+            customPeriodComparison
+              ? comparisonAggregatorsFactory
+              : aggregatorsFactory
+          }
           defaultFormatter={defaultFormatter}
           customFormatters={metricFormatters}
           customAggregatorNames={metricAggregatorNames}
-          aggregatorName={aggregateFunction}
+          aggregatorName={
+            customPeriodComparison ? 'Custom period' : aggregateFunction
+          }
           vals={vals}
           colOrder={colOrder}
           rowOrder={rowOrder}

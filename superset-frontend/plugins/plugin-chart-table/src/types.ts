@@ -20,6 +20,7 @@ import {
   TimeGranularity,
   QueryFormMetric,
   ChartProps,
+  CustomPeriodComparison,
   DataRecord,
   DataRecordFilters,
   QueryMode,
@@ -118,6 +119,7 @@ export interface TableChartTransformedProps<D extends DataRecord = DataRecord> {
     filters?: ContextMenuFilters,
   ) => void;
   isUsingTimeComparison?: boolean;
+  customPeriodComparison?: CustomPeriodComparison;
   basicColorFormatters?: { [Key: string]: BasicColorFormatterType }[];
   basicColorColumnFormatters?: { [Key: string]: BasicColorFormatterType }[];
   startDateOffset?: string;
