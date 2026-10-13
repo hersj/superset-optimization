@@ -115,6 +115,10 @@ export function buildCustomPeriodComparisonQuery(
   bounds(period.currentTimeRange);
   bounds(period.comparisonTimeRange);
   const timeColumn = period.timeColumn || query.granularity;
+  const extras = { ...query.extras };
+  // Nested extras reject time_compare; each custom period has its own bounds.
+  delete extras.time_compare;
+  delete extras.instant_time_comparison_range;
   return {
     ...query,
     time_range: period.comparisonTimeRange,
@@ -123,11 +127,7 @@ export function buildCustomPeriodComparisonQuery(
     time_shift: undefined,
     time_offsets: [],
     time_compare: [],
-    extras: {
-      ...query.extras,
-      time_compare: [],
-      instant_time_comparison_range: undefined,
-    },
+    extras,
     filters: query.filters?.map(filter =>
       filter.op === 'TEMPORAL_RANGE' && filter.col === timeColumn
         ? { ...filter, val: period.comparisonTimeRange }

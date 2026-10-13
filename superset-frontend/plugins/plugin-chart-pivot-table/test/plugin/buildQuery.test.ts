@@ -311,7 +311,8 @@ test('custom current and comparison queries replace every bound time range and c
     expect(query.time_shift).toBeUndefined();
     expect(query.time_offsets).toEqual([]);
     expect(query.time_compare).toEqual([]);
-    expect(query.extras?.time_compare).toEqual([]);
+    expect(query.extras).not.toHaveProperty('time_compare');
+    expect(query.extras).not.toHaveProperty('instant_time_comparison_range');
   });
 });
 

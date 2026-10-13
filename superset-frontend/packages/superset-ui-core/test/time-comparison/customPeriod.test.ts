@@ -110,6 +110,58 @@ test('comparison replaces the selected temporal range while retaining other filt
 });
 
 test.each([
+  ['current', period.currentTimeRange],
+  ['comparison', period.comparisonTimeRange],
+])(
+  '%s query serializes only backend-supported extras and clears legacy comparison',
+  (_, range) => {
+    const query = {
+      metrics: ['sales'],
+      time_range: period.currentTimeRange,
+      granularity: 'biz_date',
+      extras: {
+        where: "shop = 'A'",
+        having: 'SUM(sales) > 0',
+        time_grain_sqla: 'P1D',
+        relative_start: 'today',
+        relative_end: 'now',
+        column_order: ['biz_date', 'sales'],
+        transpile_to_dialect: true,
+        time_compare: ['1 month ago'],
+        instant_time_comparison_range: '1 month ago',
+      },
+      filters: [
+        { col: 'biz_date', op: 'TEMPORAL_RANGE', val: period.currentTimeRange },
+      ],
+    } as QueryObject;
+    const result = buildCustomPeriodComparisonQuery(query, {
+      ...period,
+      comparisonTimeRange: range,
+    });
+    // ChartDataExtrasSchema rejects unknown fields, unlike the top-level schema.
+    const serialized = JSON.parse(JSON.stringify(result));
+    expect(serialized.extras).toEqual({
+      where: "shop = 'A'",
+      having: 'SUM(sales) > 0',
+      time_grain_sqla: 'P1D',
+      relative_start: 'today',
+      relative_end: 'now',
+      column_order: ['biz_date', 'sales'],
+      transpile_to_dialect: true,
+    });
+    expect(result.extras).not.toHaveProperty('time_compare');
+    expect(result.extras).not.toHaveProperty('instant_time_comparison_range');
+    expect(result.time_range).toBe(range);
+    expect(result.filters?.[0].val).toBe(range);
+    expect(query.extras).toHaveProperty('time_compare', ['1 month ago']);
+    expect(query.extras).toHaveProperty(
+      'instant_time_comparison_range',
+      '1 month ago',
+    );
+  },
+);
+
+test.each([
   [13000, 10000, 3000, 0.3],
   [-50, -100, 50, 0.5],
   [0, 100, -100, -1],
