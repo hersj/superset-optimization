@@ -18,6 +18,8 @@
  */
 import { QueryFormData, QueryObject } from '../query';
 import { DataRecord } from '../types';
+import { getTimeFormatter } from '../time-format/TimeFormatterRegistrySingleton';
+import { TimeGranularity } from '../time-format/types';
 
 export const CUSTOM_PERIOD_SUFFIX = 'custom_period';
 const DAY = 86400000;
@@ -158,13 +160,33 @@ export function calculatePeriodDifference(
   };
 }
 
+function normalizeDate(value: unknown): string {
+  if (typeof value === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    // SQL calendar dates and naive datetimes already represent business dates.
+    const calendarDate = value.slice(0, 10);
+    dateValue(calendarDate);
+    return calendarDate;
+  }
+  if (
+    !(value instanceof Date) &&
+    typeof value !== 'number' &&
+    typeof value !== 'string'
+  ) {
+    throw new Error('Invalid calendar date');
+  }
+  const instant = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(instant.getTime()))
+    throw new Error('Invalid calendar date');
+  const calendarDate = getTimeFormatter(
+    undefined,
+    TimeGranularity.DAY,
+  )(instant);
+  dateValue(calendarDate);
+  return calendarDate;
+}
+
 function bucket(value: unknown, start: number, grain: string): number {
-  const text =
-    typeof value === 'number'
-      ? new Date(value).toISOString().slice(0, 10)
-      : value instanceof Date
-        ? value.toISOString().slice(0, 10)
-        : String(value).slice(0, 10);
+  const text = normalizeDate(value);
   const date = new Date(dateValue(text));
   const origin = new Date(start);
   const months =
@@ -286,13 +308,7 @@ export function mergeCustomPeriodComparisonRows(
     temporalDimensions.forEach(dim => {
       const [a, b] = entry.dates[dim] || [];
       const format = (value: unknown) =>
-        value == null
-          ? '—'
-          : typeof value === 'number' || value instanceof Date
-            ? (value instanceof Date ? value : new Date(value))
-                .toISOString()
-                .slice(0, 10)
-            : String(value).slice(0, 10);
+        value == null ? '—' : normalizeDate(value);
       entry.row[dim] =
         `第${Number(entry.keys[dimensions.indexOf(dim)]) + 1}${unit} · 当前 ${format(a)} / 对比 ${format(b)}`;
     });

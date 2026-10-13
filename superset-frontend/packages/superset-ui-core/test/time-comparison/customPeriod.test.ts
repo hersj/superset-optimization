@@ -270,6 +270,82 @@ test.each([
   },
 );
 
+test.each([
+  ['epoch', 1785859200000, Date.parse('2026-08-11T16:00:00Z')],
+  ['Date', new Date('2026-08-04T16:00:00Z'), new Date('2026-08-11T16:00:00Z')],
+  ['ISO UTC', '2026-08-04T16:00:00Z', '2026-08-11T16:00:00Z'],
+  ['ISO offset', '2026-08-05T00:00:00+08:00', '2026-08-12T00:00:00+08:00'],
+  ['calendar date', '2026-08-05', '2026-08-12'],
+  ['naive SQL datetime', '2026-08-05 00:00:00', '2026-08-12 00:00:00'],
+])(
+  'backend %s uses the existing business day for both alignment and labels',
+  (_, a, b) => {
+    const rows = mergeCustomPeriodComparisonRows(
+      [{ biz_date: a, sales: 10 }],
+      [{ biz_date: b, sales: 5 }],
+      ['biz_date'],
+      ['sales'],
+      {
+        currentTimeRange: '2026-08-05 : 2026-08-08',
+        comparisonTimeRange: '2026-08-12 : 2026-08-15',
+        timeColumn: 'biz_date',
+      },
+      'P1D',
+      ['biz_date'],
+    );
+    expect(rows).toEqual([
+      {
+        biz_date: '第1天 · 当前 2026-08-05 / 对比 2026-08-12',
+        sales: 10,
+        sales__custom_period: 5,
+      },
+    ]);
+  },
+);
+
+test.each([
+  [
+    'P1W_SUN',
+    '2026-08-09',
+    '2026-08-16',
+    '2026-08-08T16:00:00Z',
+    '2026-08-15T16:00:00Z',
+    '周',
+  ],
+  [
+    'P1M',
+    '2026-08-01',
+    '2026-09-01',
+    '2026-07-31T16:00:00Z',
+    '2026-08-31T16:00:00Z',
+    '月',
+  ],
+])(
+  'backend %s boundary timestamps stay in the first business bucket',
+  (grain, a, b, aTimestamp, bTimestamp, unit) => {
+    const rows = mergeCustomPeriodComparisonRows(
+      [{ biz_date: Date.parse(aTimestamp), sales: 10 }],
+      [{ biz_date: new Date(bTimestamp), sales: 5 }],
+      ['biz_date'],
+      ['sales'],
+      {
+        currentTimeRange: `${a} : 2026-08-20`,
+        comparisonTimeRange: `${b} : 2026-09-20`,
+        timeColumn: 'biz_date',
+      },
+      grain,
+      ['biz_date'],
+    );
+    expect(rows).toEqual([
+      {
+        biz_date: `第1${unit} · 当前 ${a} / 对比 ${b}`,
+        sales: 10,
+        sales__custom_period: 5,
+      },
+    ]);
+  },
+);
+
 test('duplicate returned grain keys are rejected rather than silently overwritten', () => {
   expect(() =>
     mergeCustomPeriodComparisonRows(
