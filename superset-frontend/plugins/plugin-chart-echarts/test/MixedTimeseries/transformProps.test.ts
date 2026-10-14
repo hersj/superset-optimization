@@ -1299,3 +1299,146 @@ test.each([
     expect(html).not.toContain('<thead>');
   },
 );
+
+test.each([false, true])(
+  'native standalone secondary offset pairs its query metric (item %s)',
+  item => {
+    const offset = '2026-04-01 : 2026-07-01';
+    const timestamp = Date.parse('2026-08-31T16:00:00Z');
+    const props = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...formData,
+        metrics: ['毛利润', '配送销售额'],
+        metricsB: [
+          {
+            expressionType: 'SQL',
+            sqlExpression: 'SUM(profit)/SUM(sales)',
+            label: '毛利率',
+          },
+        ],
+        groupby: [],
+        groupbyB: [],
+        richTooltip: !item,
+        yAxisIndexB: 0,
+        yAxisFormat: ',.0f',
+        yAxisFormatSecondary: '.2%',
+        time_compare: [offset],
+        time_compare_b: [offset],
+        extra_form_data: {
+          time_grain_sqla: 'P1M',
+          time_compare: [offset],
+          custom_form_data: {
+            custom_period_comparison: {
+              currentTimeRange: '2026-07-01 : 2026-10-01',
+              comparisonTimeRange: offset,
+              timeColumn: 'ds',
+            },
+          },
+        },
+      } as EchartsMixedTimeseriesFormData,
+      queriesData: [
+        createTestQueryData([
+          {
+            ds: timestamp,
+            毛利润: 77600,
+            [`毛利润, ${offset}`]: 29100,
+            配送销售额: 331300,
+            [`配送销售额, ${offset}`]: 212800,
+          },
+        ]),
+        createTestQueryData([
+          { ds: timestamp, 毛利率: 0.2343, [offset]: 0.1367 },
+        ]),
+      ],
+    });
+    props.queriesData.forEach(query => {
+      query.colnames = ['ds'];
+      query.coltypes = [GenericDataType.Temporal];
+    });
+    const transformed = transformProps(props);
+    const entries = transformed.echartOptions.series as SeriesOption[];
+    const points = entries.map(entry => ({
+      seriesId: String(entry.id),
+      seriesName: String(entry.name),
+      value: (entry.data as unknown[])[0],
+    }));
+    const rawPoint = points.find(point => point.seriesName === offset);
+    if (!rawPoint) throw new Error('Missing native standalone offset');
+    transformed.onFocusedSeries(offset);
+    const tooltip = transformed.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+      backgroundColor: string;
+      borderColor: string;
+      textStyle: { color: string };
+    };
+    const element = document.createElement('div');
+    element.innerHTML = tooltip.formatter(item ? rawPoint : points);
+    const rows = [...element.querySelectorAll('tbody tr')];
+    expect(rows).toHaveLength(item ? 1 : 3);
+    const rate = rows.find(row => row.children[0].textContent === '毛利率');
+    expect(rate).toBeDefined();
+    expect([...rate!.children].map(cell => cell.textContent)).toEqual([
+      '毛利率',
+      '23.43%',
+      '13.67%',
+    ]);
+    expect(rate!.getAttribute('style')).toContain('font-weight:700');
+    expect(element.innerHTML).not.toContain(offset);
+    expect(tooltip.backgroundColor).toBe('#fff');
+    expect(tooltip.borderColor).toBe('#d1d5db');
+    expect(tooltip.textStyle.color).toBe('#1f2937');
+    const axis = transformed.echartOptions.xAxis as {
+      axisLabel: { color: string };
+    };
+    expect(axis.axisLabel.color).toBe('#1f2937');
+    const legend = transformed.echartOptions.legend as {
+      textStyle: { color: string };
+      data: string[];
+    };
+    expect(legend.textStyle.color).toBe('#1f2937');
+    expect(entries.some(entry => entry.name === offset)).toBe(true);
+    const hidden = transformProps({
+      ...props,
+      legendState: { [offset]: false },
+    });
+    const hiddenTooltip = hidden.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    element.innerHTML = hiddenTooltip.formatter(
+      item ? points.find(point => point.seriesName === '毛利率') : points,
+    );
+    const hiddenRate = [...element.querySelectorAll('tbody tr')].find(
+      row => row.children[0].textContent === '毛利率',
+    );
+    expect([...hiddenRate!.children].map(cell => cell.textContent)).toEqual([
+      '毛利率',
+      '23.43%',
+      '—',
+    ]);
+  },
+);
+
+test('ordinary mixed chart retains its existing theme and default tooltip options', () => {
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData,
+    queriesData,
+  });
+  const options = transformProps(props).echartOptions;
+  const tooltip = options.tooltip as {
+    backgroundColor?: string;
+    borderColor: string;
+  };
+  expect(tooltip.backgroundColor).toBeUndefined();
+  expect(tooltip.borderColor).toBe('transparent');
+  expect(
+    (options.xAxis as { axisLabel: { color?: string } }).axisLabel.color,
+  ).toBeUndefined();
+});

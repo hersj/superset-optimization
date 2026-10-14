@@ -51,6 +51,14 @@ interface TooltipSeries {
   itemStyle?: { color?: unknown };
 }
 
+export const CUSTOM_TIME_TEXT_COLOR = '#1f2937';
+export const CUSTOM_PERIOD_TOOLTIP_STYLE = {
+  backgroundColor: '#fff',
+  borderColor: '#d1d5db',
+  borderWidth: 1,
+  textStyle: { color: CUSTOM_TIME_TEXT_COLOR },
+};
+
 const comparisonLabels: Record<string, string> = {
   [ComparisonType.Values]: '对比',
   [ComparisonType.Difference]: '差额',
@@ -122,6 +130,8 @@ export function formatCustomPeriodTooltip({
   selectedSeries,
   formatterForSeries,
   comparisonTypeForSeries = () => ComparisonType.Values,
+  originalSeriesForKey,
+  isComparisonForSeries,
 }: {
   params: TooltipPoint[];
   series: TooltipSeries[];
@@ -136,9 +146,16 @@ export function formatCustomPeriodTooltip({
   selectedSeries?: string | null;
   formatterForSeries: (key: string) => ValueFormatter;
   comparisonTypeForSeries?: (key: string) => string;
+  originalSeriesForKey?: (key: string) => string;
+  isComparisonForSeries?: (key: string) => boolean;
 }): string {
   const offset = period.comparisonTimeRange;
-  const original = (key: string) => getOriginalSeries(key, [offset]);
+  const original =
+    originalSeriesForKey ?? ((key: string) => getOriginalSeries(key, [offset]));
+  const isComparison =
+    isComparisonForSeries ??
+    ((key: string) =>
+      key === offset || Boolean(getTimeOffset({ name: key }, [offset])));
   const keyOf = (point: TooltipPoint) =>
     String(point.seriesId ?? point.seriesName ?? '');
   const points = params.filter(
@@ -205,7 +222,7 @@ export function formatCustomPeriodTooltip({
     const name = original(key);
     if (!name || (selectedSeries && name !== original(selectedSeries))) return;
     const row = paired.get(name) ?? {};
-    if (getTimeOffset({ name: key }, [offset])) row.comparison = point;
+    if (isComparison(key)) row.comparison = point;
     else row.current = point;
     paired.set(name, row);
   });
@@ -238,7 +255,7 @@ export function formatCustomPeriodTooltip({
     if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
     const key = keyOf(point ?? {});
     let formatter = formatterForSeries(key);
-    if (getTimeOffset({ name: key }, [offset])) {
+    if (isComparison(key)) {
       const type = comparisonTypeForSeries(key);
       const isNumericPercent =
         formatter instanceof NumberFormatter &&

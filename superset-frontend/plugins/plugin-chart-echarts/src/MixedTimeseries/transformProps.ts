@@ -101,6 +101,8 @@ import {
 import { TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import {
+  CUSTOM_TIME_TEXT_COLOR,
+  CUSTOM_PERIOD_TOOLTIP_STYLE,
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
@@ -332,6 +334,11 @@ export default function transformProps(
     xAxisType,
   });
   const series: SeriesOption[] = [];
+  // Keep query provenance independently of axis selection and display-name deduplication.
+  const customSeriesSources = new Map<
+    SeriesOption,
+    { primary: boolean; rawName: string }
+  >();
 
   const resolvedCurrency = resolveAutoCurrency(
     currencyFormat,
@@ -535,6 +542,10 @@ export default function transformProps(
 
     if (transformedSeries) {
       series.push(transformedSeries);
+      customSeriesSources.set(transformedSeries, {
+        primary: true,
+        rawName: entryName,
+      });
       const transformedName = String(transformedSeries.name || '');
       legendInputs.push({
         name: transformedName,
@@ -624,6 +635,10 @@ export default function transformProps(
 
     if (transformedSeries) {
       series.push(transformedSeries);
+      customSeriesSources.set(transformedSeries, {
+        primary: false,
+        rawName: entryName,
+      });
       const transformedName = String(transformedSeries.name || '');
       legendInputs.push({
         name: transformedName,
@@ -750,13 +765,47 @@ export default function transformProps(
   const alignTicks = yAxisIndex !== yAxisIndexB;
 
   // dedupSeries 会修改重复序列的最终 id；tooltip 必须按去重后的序列轴归属选择 formatter。
-  const dedupedSeries = dedupSeries(
-    reorderForecastSeries(series) as SeriesOption[],
+  const orderedSeries = reorderForecastSeries(series) as SeriesOption[];
+  const dedupedSeries = dedupSeries(orderedSeries);
+  const customSourcesByKey = new Map(
+    dedupedSeries.map((entry, index) => [
+      String(entry.id ?? entry.name ?? ''),
+      customSeriesSources.get(orderedSeries[index]),
+    ]),
   );
+  const customOriginalSeries = (key: string): string => {
+    const source = customSourcesByKey.get(key);
+    const queryMetrics = source?.primary ? metrics : metricsB;
+    const groups = source?.primary ? groupby : groupbyB;
+    // A single-metric native comparison returns the offset itself as the column name.
+    // Resolve only from that query's metric metadata, never from colors or another query.
+    if (
+      source &&
+      source.rawName === customPeriod?.comparisonTimeRange &&
+      queryMetrics.length === 1 &&
+      groups.length === 0
+    ) {
+      const metricName = getMetricDisplayName(queryMetrics[0], verboseMap);
+      return showQueryIdentifiers
+        ? `${metricName} (Query ${source.primary ? 'A' : 'B'})`
+        : metricName;
+    }
+    return getOriginalSeries(key, allTimeCompare);
+  };
   const primarySeries = new Set(
     dedupedSeries
       .filter(entry => entry.yAxisIndex !== 1)
       .map(entry => String(entry.id || '')),
+  );
+
+  const legendProps = getLegendProps(
+    legendType,
+    legendOrientation,
+    legendVisible,
+    theme,
+    zoomable,
+    legendStateWithTimeCompare,
+    chartPadding,
   );
 
   const echartOptions: EChartsCoreOption = {
@@ -771,6 +820,10 @@ export default function transformProps(
       nameGap: convertInteger(xAxisTitleMargin),
       nameLocation: 'middle',
       axisLabel: {
+        ...(controlledTimeFormatter &&
+        xAxisDataType === GenericDataType.Temporal
+          ? { color: CUSTOM_TIME_TEXT_COLOR }
+          : {}),
         formatter: xAxisFormatter,
         rotate: xAxisLabelRotation,
         interval: xAxisLabelInterval,
@@ -846,6 +899,7 @@ export default function transformProps(
     ],
     tooltip: {
       ...getDefaultTooltip(refs),
+      ...(customPeriod ? CUSTOM_PERIOD_TOOLTIP_STYLE : {}),
       show: !inContextMenu,
       trigger: richTooltip ? 'axis' : 'item',
       formatter: (params: any) => {
@@ -886,9 +940,18 @@ export default function transformProps(
             itemTooltip: !richTooltip,
             legendState: legendStateWithTimeCompare,
             focusedSeries,
+            originalSeriesForKey: customOriginalSeries,
+            isComparisonForSeries: key => {
+              const rawName = customSourcesByKey.get(key)?.rawName ?? key;
+              return (
+                rawName === customPeriod.comparisonTimeRange ||
+                Boolean(getTimeOffset({ name: rawName }, allTimeCompare))
+              );
+            },
             formatterForSeries: key => {
-              const isPrimary = primarySeries.has(key);
-              const originalKey = getOriginalSeries(key, allTimeCompare);
+              const isPrimary =
+                customSourcesByKey.get(key)?.primary ?? primarySeries.has(key);
+              const originalKey = customOriginalSeries(key);
               const groups = isPrimary ? groupby : groupbyB;
               const labels = isPrimary ? labelMap : labelMapB;
               const formatterKey =
@@ -906,7 +969,8 @@ export default function transformProps(
             comparisonTypeForSeries: key =>
               String(
                 chartProps.rawFormData[
-                  primarySeries.has(key)
+                  (customSourcesByKey.get(key)?.primary ??
+                  primarySeries.has(key))
                     ? 'comparison_type'
                     : 'comparison_type_b'
                 ] ?? 'values',
@@ -959,15 +1023,15 @@ export default function transformProps(
       },
     },
     legend: {
-      ...getLegendProps(
-        legendType,
-        legendOrientation,
-        legendVisible,
-        theme,
-        zoomable,
-        legendStateWithTimeCompare,
-        chartPadding,
-      ),
+      ...legendProps,
+      ...(controlledTimeFormatter || customPeriod
+        ? {
+            textStyle: {
+              ...legendProps.textStyle,
+              color: CUSTOM_TIME_TEXT_COLOR,
+            },
+          }
+        : {}),
       formatter: hasTimeCompare
         ? (name: string) =>
             customPeriod &&

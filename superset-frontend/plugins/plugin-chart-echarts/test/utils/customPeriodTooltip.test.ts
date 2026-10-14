@@ -452,3 +452,24 @@ test('custom tooltip explicitly keeps readable text on its white background', ()
     'color:#1f2937',
   );
 });
+
+test('selected standalone native offset resolves to its metric while preserving the visible pair', () => {
+  const element = render({
+    params: [
+      { seriesId: '销售额', value: [timestamp, 100] },
+      { seriesId: '毛利率', value: [timestamp, 0.2343] },
+      { seriesId: offset, value: [timestamp, 0.1367] },
+    ],
+    originalSeriesForKey: key => (key === offset ? '毛利率' : key),
+    selectedSeries: offset,
+    focusedSeries: offset,
+    formatterForSeries: () => getNumberFormatter('.2%'),
+  });
+  expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
+  expect(
+    [...element.querySelectorAll('tbody td')].map(cell => cell.textContent),
+  ).toEqual(['毛利率', '23.43%', '13.67%']);
+  expect(element.querySelector('tbody tr')?.getAttribute('style')).toContain(
+    'font-weight:700',
+  );
+});

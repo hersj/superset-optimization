@@ -1714,8 +1714,80 @@ test('ordinary explicit d3 axis format is preserved without the CustomTime compa
   });
   chartProps.queriesData[0].colnames = ['ds'];
   chartProps.queriesData[0].coltypes = [GenericDataType.Temporal];
-  const axis = transformProps(chartProps).echartOptions.xAxis as {
-    axisLabel: { formatter: (value: number, index: number) => string };
+  const options = transformProps(chartProps).echartOptions;
+  const axis = options.xAxis as {
+    axisLabel: {
+      formatter: (value: number, index: number) => string;
+      color?: string;
+    };
   };
   expect(axis.axisLabel.formatter(timestamp, 0)).toBe('2026/12');
+  expect(axis.axisLabel.color).toBeUndefined();
+  const tooltip = options.tooltip as {
+    backgroundColor?: string;
+    borderColor: string;
+  };
+  expect(tooltip.backgroundColor).toBeUndefined();
+  expect(tooltip.borderColor).toBe('transparent');
+});
+
+test('native standalone single metric offset pairs without changing its real key', () => {
+  const offset = '2026-04-01 : 2026-07-01';
+  const timestamp = Date.parse('2026-08-31T16:00:00Z');
+  const props = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      x_axis: 'ds',
+      metrics: ['毛利率'],
+      groupby: [],
+      richTooltip: true,
+      yAxisFormat: '.2%',
+      time_compare: [offset],
+      extra_form_data: {
+        time_grain_sqla: 'P1M',
+        time_compare: [offset],
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-07-01 : 2026-10-01',
+            comparisonTimeRange: offset,
+            timeColumn: 'ds',
+          },
+        },
+      },
+    },
+    queriesData: [
+      createTestQueryData([
+        { ds: timestamp, 毛利率: 0.2343, [offset]: 0.1367 },
+      ]),
+    ],
+  });
+  props.queriesData[0].colnames = ['ds'];
+  props.queriesData[0].coltypes = [GenericDataType.Temporal];
+  const result = transformProps(props);
+  const entries = result.echartOptions.series as SeriesOption[];
+  const points = entries.map(entry => ({
+    seriesId: String(entry.id),
+    seriesName: String(entry.name),
+    value: (entry.data as unknown[])[0],
+  }));
+  const tooltip = result.echartOptions.tooltip as {
+    formatter: (params: unknown) => string;
+    backgroundColor: string;
+  };
+  const element = document.createElement('div');
+  element.innerHTML = tooltip.formatter(points);
+  expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
+  expect(
+    [...element.querySelectorAll('tbody td')].map(cell => cell.textContent),
+  ).toEqual(['毛利率', '23.43%', '13.67%']);
+  expect(entries.some(entry => entry.name === offset)).toBe(true);
+  expect(tooltip.backgroundColor).toBe('#fff');
+  expect(
+    (result.echartOptions.xAxis as { axisLabel: { color: string } }).axisLabel
+      .color,
+  ).toBe('#1f2937');
+  expect(
+    (result.echartOptions.legend as { textStyle: { color: string } }).textStyle
+      .color,
+  ).toBe('#1f2937');
 });

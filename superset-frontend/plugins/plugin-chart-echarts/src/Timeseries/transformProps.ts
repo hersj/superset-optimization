@@ -113,6 +113,8 @@ import {
 } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import {
+  CUSTOM_TIME_TEXT_COLOR,
+  CUSTOM_PERIOD_TOOLTIP_STYLE,
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
@@ -124,6 +126,7 @@ import {
   getYAxisFormatter,
 } from '../utils/formatters';
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
+import { getMetricDisplayName } from '../utils/metricDisplayName';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
 
 /*
@@ -877,6 +880,9 @@ export default function transformProps(
       // from overlapping each other, with showMaxLabel to ensure
       // the last data point label stays visible (#37181).
       hideOverlap: !(xAxisType === AxisType.Time && xAxisLabelRotation !== 0),
+      ...(controlledTimeFormatter && xAxisDataType === GenericDataType.Temporal
+        ? { color: CUSTOM_TIME_TEXT_COLOR }
+        : {}),
       formatter: xAxisFormatter,
       rotate: xAxisLabelRotation,
       interval: xAxisLabelInterval,
@@ -981,6 +987,16 @@ export default function transformProps(
     }
   }
 
+  const legendProps = getLegendProps(
+    legendType,
+    legendOrientation,
+    legendVisible,
+    theme,
+    zoomable,
+    colorByPrimaryAxis ? legendState : groupedLegendState,
+    padding,
+  );
+
   const echartOptions: EChartsCoreOption = {
     useUTC: true,
     grid: {
@@ -991,6 +1007,7 @@ export default function transformProps(
     yAxis,
     tooltip: {
       ...getDefaultTooltip(refs),
+      ...(customPeriod ? CUSTOM_PERIOD_TOOLTIP_STYLE : {}),
       show: !inContextMenu,
       trigger: richTooltip ? 'axis' : 'item',
       formatter: (params: any) => {
@@ -1063,6 +1080,12 @@ export default function transformProps(
             legendState: groupedLegendState,
             focusedSeries,
             selectedSeries: selectedSeriesName,
+            originalSeriesForKey: key =>
+              key === customPeriod.comparisonTimeRange &&
+              metrics.length === 1 &&
+              groupBy.length === 0
+                ? getMetricDisplayName(metrics[0], verboseMap)
+                : getOriginalSeries(key, array),
             formatterForSeries: () => formatter,
             comparisonTypeForSeries: () =>
               String(chartProps.rawFormData.comparison_type ?? 'values'),
@@ -1127,15 +1150,15 @@ export default function transformProps(
       },
     },
     legend: {
-      ...getLegendProps(
-        legendType,
-        legendOrientation,
-        legendVisible,
-        theme,
-        zoomable,
-        colorByPrimaryAxis ? legendState : groupedLegendState,
-        padding,
-      ),
+      ...legendProps,
+      ...(controlledTimeFormatter || customPeriod
+        ? {
+            textStyle: {
+              ...legendProps.textStyle,
+              color: CUSTOM_TIME_TEXT_COLOR,
+            },
+          }
+        : {}),
       scrollDataIndex: legendIndex || 0,
       ...(shouldGroupLogicalLegends
         ? {
