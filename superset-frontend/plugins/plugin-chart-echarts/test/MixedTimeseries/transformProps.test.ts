@@ -16,7 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { init, EChartsOption } from 'echarts';
+import { supersetTheme } from '@apache-superset/core/theme';
 import {
+  ChartProps,
   AnnotationStyle,
   AnnotationType,
   ComparisonType,
@@ -1443,9 +1446,14 @@ test('ordinary mixed chart retains its existing theme and default tooltip option
   ).toBeUndefined();
 });
 
-test.each([true, false])(
-  'CustomTime controlled quarter has only one actual bucket with master ON %s',
-  enabled => {
+test.each([
+  { grain: 'P3M', enabled: true },
+  { grain: 'P3M', enabled: false },
+  { grain: 'P3M_FISCAL', enabled: true },
+  { grain: 'P3M_FISCAL', enabled: false },
+])(
+  'CustomTime controlled $grain has one actual bucket with master ON $enabled',
+  ({ grain, enabled }) => {
     const offset = '2026-04-01 : 2026-07-01';
     const timestamp = Date.parse('2026-06-30T16:00:00Z');
     const period = {
@@ -1467,7 +1475,7 @@ test.each([true, false])(
         time_compare: enabled ? [offset] : [],
         time_compare_b: enabled ? [offset] : [],
         extra_form_data: {
-          time_grain_sqla: 'P3M',
+          time_grain_sqla: grain,
           time_compare: enabled ? [offset] : [],
           custom_form_data: { custom_period_comparison: period },
         },
@@ -1495,3 +1503,221 @@ test.each([true, false])(
     expect(entries[0].encode).toMatchObject({ x: 2, y: 1 });
   },
 );
+
+test('live 598 fiscal-quarter settings render one bucket with original values and three paired metrics', () => {
+  // Captured saved settings and grain from the 2026-10-14 readonly snapshot;
+  // numbers match its one-row A/B As Table evidence. Use real ChartProps normalization.
+  const savedSettings = {
+    datasource: '98__table',
+    viz_type: 'mixed_timeseries',
+    slice_id: 598,
+    x_axis: 'earliest_ship_date',
+    time_grain_sqla: 'P1W_SUN',
+    metrics: [
+      {
+        aggregate: 'SUM',
+        column: {
+          advanced_data_type: null,
+          certification_details: null,
+          certified_by: null,
+          column_name: 'shipped_sales',
+          description: null,
+          expression: null,
+          filterable: true,
+          groupby: true,
+          id: 1308,
+          is_certified: false,
+          is_dttm: false,
+          python_date_format: null,
+          type: 'NUMERIC(18, 6)',
+          type_generic: 0,
+          verbose_name: null,
+          warning_markdown: null,
+        },
+        datasourceWarning: false,
+        expressionType: 'SIMPLE',
+        hasCustomLabel: true,
+        label: '配送销售额',
+        optionName: 'metric_myl23egd6pc_oglocrb8xc',
+        sqlExpression: null,
+      },
+      {
+        aggregate: 'SUM',
+        column: {
+          advanced_data_type: null,
+          certification_details: null,
+          certified_by: null,
+          column_name: 'gross_profit',
+          description: null,
+          expression: null,
+          filterable: true,
+          groupby: true,
+          id: 1321,
+          is_certified: false,
+          is_dttm: false,
+          python_date_format: null,
+          type: 'NUMERIC(18, 6)',
+          type_generic: 0,
+          verbose_name: null,
+          warning_markdown: null,
+        },
+        datasourceWarning: false,
+        expressionType: 'SIMPLE',
+        hasCustomLabel: true,
+        label: '毛利润',
+        optionName: 'metric_rwz3c51owy_pmctklozb7',
+        sqlExpression: null,
+      },
+    ],
+    groupby: [],
+    metrics_b: [
+      {
+        aggregate: null,
+        column: null,
+        datasourceWarning: false,
+        expressionType: 'SQL',
+        hasCustomLabel: true,
+        label: '毛利率',
+        optionName: 'metric_4qje3vx1ikm_psgh1584p1',
+        sqlExpression:
+          'CASE \r\n    WHEN SUM("shipped_sales") != 0 \r\n    THEN ROUND(SUM("gross_profit") / SUM("shipped_sales"), 4) \r\n    ELSE 0 \r\nEND',
+      },
+    ],
+    groupby_b: [],
+    annotation_layers: [],
+    seriesType: 'bar',
+    seriesTypeB: 'smooth',
+    stack: true,
+    stackB: false,
+    area: true,
+    areaB: false,
+    show_value: true,
+    show_valueB: true,
+    only_total: false,
+    only_totalB: true,
+    opacity: 0,
+    opacityB: 1,
+    markerEnabled: false,
+    markerEnabledB: false,
+    markerSize: 0,
+    markerSizeB: 8,
+    yAxisIndex: 0,
+    yAxisIndexB: 1,
+    sort_series_type: 'sum',
+    sort_series_typeB: 'sum',
+    sort_series_ascending: true,
+    sort_series_ascendingB: true,
+    zoomable: true,
+    minorTicks: true,
+    show_legend: true,
+    legendType: 'plain',
+    legendOrientation: 'top',
+    legendMargin: 50,
+    x_axis_time_format: 'smart_date',
+    xAxisLabelRotation: 45,
+    xAxisLabelInterval: 'auto',
+    force_max_interval: false,
+    show_query_identifiers: false,
+    rich_tooltip: true,
+    tooltipSortByMetric: false,
+    tooltipTimeFormat: 'smart_date',
+    minorSplitLine: false,
+    truncateXAxis: true,
+    truncateYAxis: false,
+    truncateYAxisSecondary: true,
+    y_axis_bounds: [null, null],
+    y_axis_bounds_secondary: [-0.5, 0.8],
+    y_axis_format: 'CN_WAN',
+    y_axis_format_secondary: '.2%',
+    currency_format_secondary: {},
+    y_axis_title: '配送额/毛利润',
+    y_axis_title_margin: 50,
+    y_axis_title_position: 'Left',
+    logAxis: false,
+    logAxisSecondary: false,
+    echart_options: '{}',
+    comparison_type: 'values',
+    comparison_type_b: 'values',
+  };
+  const offset = '2026-04-01 : 2026-07-01';
+  const timestamp = Date.parse('2026-07-01T00:00:00+08:00');
+  const formData = {
+    ...savedSettings,
+    time_compare: [offset],
+    time_compare_b: [offset],
+    extra_form_data: {
+      time_grain_sqla: 'P3M_FISCAL',
+      time_compare: [offset],
+      custom_form_data: {
+        custom_period_comparison: {
+          currentTimeRange: '2026-07-01 : 2026-10-01',
+          comparisonTimeRange: offset,
+          timeColumn: 'earliest_ship_date',
+        },
+      },
+    },
+  };
+  const queries = [
+    createTestQueryData([
+      {
+        earliest_ship_date: timestamp,
+        配送销售额: 837994.140311,
+        毛利润: 144452.46442,
+        [`配送销售额, ${offset}`]: 762739.234604,
+        [`毛利润, ${offset}`]: 110360.203568,
+      },
+    ]),
+    createTestQueryData([
+      { earliest_ship_date: timestamp, 毛利率: 0.1724, [offset]: 0.1447 },
+    ]),
+  ];
+  queries.forEach(query => {
+    query.colnames = ['earliest_ship_date'];
+    query.coltypes = [GenericDataType.Temporal];
+  });
+  const chartProps = new ChartProps({
+    formData,
+    queriesData: queries,
+    theme: supersetTheme,
+    width: 1100,
+    height: 550,
+  }) as unknown as EchartsMixedTimeseriesProps;
+  const result = transformProps(chartProps);
+  const options = result.echartOptions;
+  expect(options.xAxis).toMatchObject({
+    type: 'category',
+    data: [String(timestamp)],
+  });
+  const entries = options.series as SeriesOption[];
+  const sales = entries.find(entry => entry.name === '配送销售额');
+  const baseline = entries.find(entry => entry.name === offset);
+  expect(sales?.data).toEqual([[timestamp, 837994.140311, String(timestamp)]]);
+  expect(baseline?.data).toEqual([[timestamp, 0.1447, String(timestamp)]]);
+  const element = document.createElement('div');
+  element.innerHTML = (
+    options.tooltip as { formatter: (params: unknown) => string }
+  ).formatter(
+    entries.map(entry => ({
+      seriesId: entry.id,
+      seriesName: entry.name,
+      value: (entry.data as unknown[])[0],
+    })),
+  );
+  expect(element.querySelectorAll('tbody tr')).toHaveLength(3);
+  expect(element.textContent).toContain('17.24%');
+  expect(element.textContent).toContain('14.47%');
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 1100,
+    height: 550,
+  });
+  try {
+    chart.setOption({ ...options, animation: false } as EChartsOption);
+    const svg = chart.renderToSVGString();
+    expect(svg.split('2026年7–9月')).toHaveLength(2);
+    expect(svg).not.toContain('2026年6–8月');
+  } finally {
+    chart.dispose();
+  }
+});

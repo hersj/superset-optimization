@@ -58,7 +58,8 @@ export function alignPeriodAxis(
     (!isWeekGrain(timeGrain) &&
       timeGrain !== 'P1Y_FISCAL' &&
       !(
-        customTimeControlled && ['P1M', 'P3M', 'P1Y'].includes(timeGrain ?? '')
+        customTimeControlled &&
+        ['P1M', 'P3M', 'P3M_FISCAL', 'P1Y'].includes(timeGrain ?? '')
       )) ||
     !axis ||
     axis.type !== 'time' ||

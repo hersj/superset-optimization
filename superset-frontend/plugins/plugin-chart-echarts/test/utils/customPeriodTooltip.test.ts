@@ -483,6 +483,7 @@ test('selected standalone native offset resolves to its metric while preserving 
 
 test.each([
   ['P3M', ['2026-06-30T16:00:00Z'], ['2026年7–9月']],
+  ['P3M_FISCAL', ['2026-06-30T16:00:00Z'], ['2026年7–9月']],
   [
     'P1M',
     ['2027-01-31T16:00:00Z', '2026-12-31T16:00:00Z', '2026-11-30T16:00:00Z'],

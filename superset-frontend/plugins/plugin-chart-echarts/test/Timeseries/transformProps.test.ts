@@ -1792,9 +1792,14 @@ test('native standalone single metric offset pairs without changing its real key
   ).toBe('#1f2937');
 });
 
-test.each([true, false])(
-  'CustomTime controlled quarter has only one actual bucket with master ON %s',
-  enabled => {
+test.each([
+  { grain: 'P3M', enabled: true },
+  { grain: 'P3M', enabled: false },
+  { grain: 'P3M_FISCAL', enabled: true },
+  { grain: 'P3M_FISCAL', enabled: false },
+])(
+  'CustomTime controlled $grain has one actual bucket with master ON $enabled',
+  ({ grain, enabled }) => {
     const offset = '2026-04-01 : 2026-07-01';
     const timestamp = Date.parse('2026-06-30T16:00:00Z');
     const period = {
@@ -1810,7 +1815,7 @@ test.each([true, false])(
         metrics: ['销售额'],
         time_compare: enabled ? [offset] : [],
         extra_form_data: {
-          time_grain_sqla: 'P3M',
+          time_grain_sqla: grain,
           time_compare: enabled ? [offset] : [],
           custom_form_data: { custom_period_comparison: period },
         },
