@@ -1791,3 +1791,47 @@ test('native standalone single metric offset pairs without changing its real key
       .color,
   ).toBe('#1f2937');
 });
+
+test.each([true, false])(
+  'CustomTime controlled quarter has only one actual bucket with master ON %s',
+  enabled => {
+    const offset = '2026-04-01 : 2026-07-01';
+    const timestamp = Date.parse('2026-06-30T16:00:00Z');
+    const period = {
+      currentTimeRange: '2026-07-01 : 2026-10-01',
+      comparisonTimeRange: offset,
+      timeColumn: 'ds',
+    };
+    const props = createTestChartProps({
+      formData: {
+        ...timeCompareFormData,
+        x_axis: 'ds',
+        groupby: [],
+        metrics: ['销售额'],
+        time_compare: enabled ? [offset] : [],
+        extra_form_data: {
+          time_grain_sqla: 'P3M',
+          time_compare: enabled ? [offset] : [],
+          custom_form_data: { custom_period_comparison: period },
+        },
+      },
+      queriesData: [createTestQueryData([{ ds: timestamp, 销售额: 100 }])],
+    });
+    props.queriesData.forEach(query => {
+      query.colnames = ['ds'];
+      query.coltypes = [GenericDataType.Temporal];
+    });
+    const result = transformProps(props);
+    const axis = result.echartOptions.xAxis as {
+      type: string;
+      data: string[];
+      axisLabel: { formatter: (value: string, index: number) => string };
+    };
+    expect(axis.type).toBe('category');
+    expect(axis.data).toEqual([String(timestamp)]);
+    expect(axis.axisLabel.formatter(axis.data[0], 0)).toBe('2026年7–9月');
+    const entries = result.echartOptions.series as SeriesOption[];
+    expect(entries[0].data).toEqual([[timestamp, 100, String(timestamp)]]);
+    expect(entries[0].encode).toMatchObject({ x: 2, y: 1 });
+  },
+);

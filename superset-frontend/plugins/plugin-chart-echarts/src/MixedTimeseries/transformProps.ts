@@ -1103,7 +1103,12 @@ export default function transformProps(
     customEchartOptions = undefined;
   }
 
-  const alignedEchartOptions = alignPeriodAxis(echartOptions, timeGrainSqla);
+  const alignedEchartOptions = alignPeriodAxis(
+    echartOptions,
+    timeGrainSqla,
+    false,
+    Boolean(controlledTimeFormatter),
+  );
   const mergedEchartOptions = customEchartOptions
     ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)
     : alignedEchartOptions;

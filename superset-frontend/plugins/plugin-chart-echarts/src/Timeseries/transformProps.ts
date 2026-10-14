@@ -1257,6 +1257,7 @@ export default function transformProps(
     echartOptions,
     timeGrainSqla,
     isHorizontal,
+    Boolean(controlledTimeFormatter),
   );
   let mergedEchartOptions = customEchartOptions
     ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)

@@ -32,29 +32,34 @@ function pointValues(row: unknown): number[] | undefined {
 }
 
 /**
- * 功能审计（可重写规格）：周和财年刻度与实际时间分组对齐
- * - 功能目的与触发方式：标准/混合时序图生成 ECharts 配置后调用，避免连续时间轴生成月初周刻度或年初财年刻度。
+ * 功能审计（可重写规格）：期间刻度与实际时间分组对齐
+ * - 功能目的与触发方式：标准/混合时序图生成 ECharts 配置后调用，避免连续时间轴生成与实际期间桶不符的刻度。
  * - 输入契约：有效时间粒度、已有单时间轴和二维折线/柱图系列；日期为查询返回的毫秒时间戳，横向图日期在第二列。
- * - 输出契约：周和财年轴只使用各系列实际日期的升序并集；同一日期共用一个刻度。日/月/自然年、非时间轴保持原配置。
- * - 处理流程：限定周和财年粒度，收集实际日期；使用 ECharts 原生 category 和 encode 将附加的字符串日期映射到绘图轴。
- * - 业务规则：不按显示周名去重、不填补不存在的周、不改变时区或周号算法；查询值和原始前两列不变，tooltip/下钻继续读取原时间戳。
+ * - 输出契约：周、财年以及 CustomTime 受控的月/季/年轴使用各系列实际日期的升序并集；同一日期共用一个刻度。普通月/季/年、日粒度和非时间轴保持原配置。
+ * - 处理流程：限定周/财年或明确标记受控的月/季/年粒度，收集实际日期；使用 ECharts 原生 category 和 encode 将附加的字符串日期映射到绘图轴。
+ * - 业务规则：不按显示标签去重、不填补不存在的期间、不改变时区或周号算法；查询值和原始前两列不变，tooltip/下钻继续读取原时间戳。
  * - 状态与副作用：只返回展示配置副本，不修改输入、SQL、筛选状态、缓存或图表存储；未显示标签仍保留数据点。
  * - 外部依赖：ECharts 分类轴/encode、既有日期 formatter；标签密度继续服从已有 interval，刻度与柱/折线中心对齐。
  * - 异常与边界：空系列、非二维/非数值时间、带标注或非折线柱图保持原配置，避免改变既有特殊坐标语义；各系列缺少期间仍按并集对齐。
  * - 不变量与约束：业务时间轴元数据不变，第三列仅用于绘制，旧的日期和指标索引保持不变；自定义 ECharts 配置仍可在随后覆盖。
- * - 验证方式：periodAxis.test.ts 用实际 ECharts 验证周/财年唯一刻度、柱线位置、缺期、缩放和原始值不变。
+ * - 验证方式：periodAxis.test.ts 和 customPeriodTooltip.test.ts 用实际 ECharts 验证唯一刻度、柱线位置、缺期、缩放和原始值不变。
  */
 export function alignPeriodAxis(
   options: EChartsCoreOption,
   timeGrain?: string,
   isHorizontal = false,
+  customTimeControlled = false,
 ): EChartsCoreOption {
   const axisKey = isHorizontal ? 'yAxis' : 'xAxis';
   const axis = options[axisKey] as XAXisComponentOption;
   const series = options.series as (LineSeriesOption | BarSeriesOption)[];
   const dateIndex = isHorizontal ? 1 : 0;
   if (
-    (!isWeekGrain(timeGrain) && timeGrain !== 'P1Y_FISCAL') ||
+    (!isWeekGrain(timeGrain) &&
+      timeGrain !== 'P1Y_FISCAL' &&
+      !(
+        customTimeControlled && ['P1M', 'P3M', 'P1Y'].includes(timeGrain ?? '')
+      )) ||
     !axis ||
     axis.type !== 'time' ||
     !Array.isArray(series) ||

@@ -18,6 +18,13 @@
  */
 
 import {
+  init,
+  EChartsOption,
+  BarSeriesOption,
+  XAXisComponentOption,
+} from 'echarts';
+import { alignPeriodAxis } from '../../src/utils/periodAxis';
+import {
   ComparisonType,
   CurrencyFormatter,
   getNumberFormatter,
@@ -473,3 +480,72 @@ test('selected standalone native offset resolves to its metric while preserving 
     'font-weight:700',
   );
 });
+
+test.each([
+  ['P3M', ['2026-06-30T16:00:00Z'], ['2026年7–9月']],
+  [
+    'P1M',
+    ['2027-01-31T16:00:00Z', '2026-12-31T16:00:00Z', '2026-11-30T16:00:00Z'],
+    ['2026年12月', '2027年1月', '2027年2月'],
+  ],
+  [
+    'P1Y',
+    ['2026-12-31T16:00:00Z', '2025-12-31T16:00:00Z'],
+    ['2026年', '2027年'],
+  ],
+])(
+  'controlled %s ticks use actual chronological buckets, not continuous-axis invented dates',
+  (grain, sourceDates, labels) => {
+    const dates = sourceDates.map(Date.parse);
+    const data = dates.map((date, index) => [date, index + 1]);
+    const options: EChartsOption = {
+      animation: false,
+      xAxis: {
+        type: 'time',
+        axisLabel: {
+          formatter: getCustomTimeUnitFormatter(grain),
+          interval: 0,
+        } as XAXisComponentOption['axisLabel'] & { interval: number },
+      },
+      yAxis: { type: 'value' },
+      series: [
+        { id: 'A', name: 'A', type: 'bar', data },
+        { id: 'B', name: 'B', type: 'line', data: data.slice(0, 1) },
+      ],
+    };
+    const output = alignPeriodAxis(
+      options,
+      grain,
+      false,
+      true,
+    ) as EChartsOption;
+    expect(output).toMatchObject({
+      xAxis: {
+        type: 'category',
+        data: [...dates].sort((a, b) => a - b).map(String),
+      },
+    });
+    expect(
+      (output.series as BarSeriesOption[])[0].data?.map(row =>
+        (row as number[]).slice(0, 2),
+      ),
+    ).toEqual(data);
+    expect((options.series as BarSeriesOption[])[0].data).toBe(data);
+    const chart = init(null, undefined, {
+      renderer: 'svg',
+      ssr: true,
+      width: 1100,
+      height: 400,
+    });
+    try {
+      chart.setOption(output);
+      const svg = chart.renderToSVGString();
+      for (const label of labels) expect(svg.split(label)).toHaveLength(2);
+      expect(svg).not.toContain('2026年6–8月');
+    } finally {
+      chart.dispose();
+    }
+    expect(alignPeriodAxis(options, grain)).toBe(options);
+    expect(alignPeriodAxis(options, 'P1D', false, true)).toBe(options);
+  },
+);
