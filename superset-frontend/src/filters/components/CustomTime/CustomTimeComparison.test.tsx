@@ -339,6 +339,7 @@ test.each([
     startDate('2026-08-05');
     const picker = within(screen.getByRole('group', { name: '对比开始日期' }));
     fireEvent.click(picker.getByRole('button', { name: grain }));
+    expect(picker.queryByText(/继续单击第二个/)).not.toBeInTheDocument();
     fireEvent.click(picker.getByRole('button', { name: cell }));
     expect(
       lastMask(setDataMask).extraFormData.custom_form_data
@@ -365,4 +366,19 @@ test('comparison shortcuts preserve current period and derive its duration', () 
     const [start, end] = period.comparisonTimeRange.split(' : ');
     expect((Date.parse(end) - Date.parse(start)) / 86400000).toBe(9);
   }
+});
+
+test('fiscal comparison explains start-only selection while current retains range selection', () => {
+  mount();
+  chooseCustom();
+  const picker = within(screen.getByRole('group', { name: '对比开始日期' }));
+  fireEvent.click(picker.getByRole('button', { name: '按财年' }));
+  expect(
+    picker.getByText('单击选择财年开始；结束自动按当前期间计算。'),
+  ).toBeInTheDocument();
+  const current = within(screen.getByRole('group', { name: '当前期间' }));
+  fireEvent.click(current.getByRole('button', { name: '按财年' }));
+  expect(
+    current.getByText(/继续单击第二个财年选择连续区间/),
+  ).toBeInTheDocument();
 });

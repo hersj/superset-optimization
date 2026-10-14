@@ -2306,9 +2306,11 @@ export default function CustomTimeFilterPlugin(props: any) {
         </button>
       </div>
       <div style={{ ...styles.hint }}>
-        {selectionMode === 'points'
-          ? '逐项选择财年，再次点击取消；不自动包含中间财年。'
-          : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
+        {onSelectStart
+          ? '单击选择财年开始；结束自动按当前期间计算。'
+          : selectionMode === 'points'
+            ? '逐项选择财年，再次点击取消；不自动包含中间财年。'
+            : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
       </div>
       <div data-test="custom-time-fiscal-year-grid" style={styles.yearGrid}>
         {fiscalYearOptions.map(year => {
