@@ -26,6 +26,8 @@ import {
   Metric,
   getValueFormatter,
   tooltipHtml,
+  formatCustomPeriodComparisonLabel,
+  calculatePeriodDifference,
 } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import { EChartsCoreOption, graphic } from 'echarts/core';
@@ -41,6 +43,11 @@ import {
 import { getDateFormatter, parseMetricValue, getOriginalLabel } from '../utils';
 import { getDefaultTooltip } from '../../utils/tooltip';
 import { Refs } from '../../types';
+import {
+  formatBigNumberPeriodComparison,
+  parseBigNumberPeriodValue,
+  getBigNumberCustomPeriod,
+} from '../customComparison';
 
 const formatPercentChange = getNumberFormatter(
   NumberFormats.PERCENT_SIGNED_1_POINT,
@@ -137,6 +144,7 @@ export default function transformProps(
   const metrics = chartProps.datasource?.metrics || [];
   const originalLabel = getOriginalLabel(metric, metrics);
   const showMetricName = chartProps.rawFormData?.show_metric_name ?? false;
+  const customPeriod = getBigNumberCustomPeriod(formData, rawFormData);
   const compareLag = Number(compareLag_) || 0;
   let formattedSubheader = subheader;
 
@@ -197,7 +205,19 @@ export default function transformProps(
     }
   }
 
-  if (compareLag > 0 && sortedData.length > 0) {
+  if (customPeriod) {
+    bigNumber = parseBigNumberPeriodValue(
+      queriesData[1]?.data?.[0]?.[metricName],
+    );
+    bigNumberFallback = null;
+    percentChange =
+      calculatePeriodDifference(
+        bigNumber,
+        parseBigNumberPeriodValue(queriesData[2]?.data?.[0]?.[metricName]),
+      ).percentDifferenceNum ?? 0;
+  }
+
+  if (!customPeriod && compareLag > 0 && sortedData.length > 0) {
     const compareIndex = compareLag;
     if (compareIndex < sortedData.length) {
       const compareFromValue = sortedData[compareIndex][1];
@@ -272,6 +292,13 @@ export default function transformProps(
     currencyCodeColumn,
     detectedCurrency,
   );
+  if (customPeriod) {
+    formattedSubheader = formatBigNumberPeriodComparison(
+      bigNumber,
+      parseBigNumberPeriodValue(queriesData[2]?.data?.[0]?.[metricName]),
+      value => numberFormatter.format(value),
+    );
+  }
   const xAxisFormatter = getXAxisFormatter(timeFormat);
   const yAxisFormatter =
     metricColtype === GenericDataType.Temporal ||
@@ -393,7 +420,11 @@ export default function transformProps(
     metricNameFontSize,
     headerFontSize,
     subtitleFontSize,
-    subtitle,
+    subtitle: customPeriod
+      ? [formatCustomPeriodComparisonLabel(customPeriod), subtitle]
+          .filter(Boolean)
+          .join(' | ')
+      : subtitle,
     subheaderFontSize,
     mainColor,
     showTimestamp,

@@ -23,13 +23,13 @@ const period = {
   comparisonTimeRange: '2026-08-05 : 2026-08-18',
   timeColumn: 'biz_date',
 };
-function form(id: number, extraControls = {}) {
+function form(id: number, extraControls = {}, vizType = 'table') {
   const args = {
     chart: {
       id,
       form_data: {
         datasource: '1__table',
-        viz_type: 'table',
+        viz_type: vizType,
         time_compare: ['1 month ago'],
       },
     },
@@ -69,4 +69,49 @@ test('explicit dashboard comparison OFF remains higher priority than custom peri
   expect(selected.time_compare).toEqual([]);
   expect(getCustomPeriodComparison(selected)).toBeUndefined();
   expect(selected.extra_form_data?.time_range).toBe(period.currentTimeRange);
+});
+
+test.each(['echarts_timeseries_line', 'echarts_timeseries_bar'])(
+  '%s receives the custom period in its existing comparison controls within scope',
+  vizType => {
+    const selected = form(99001, {}, vizType);
+    expect(selected.time_compare).toEqual([period.comparisonTimeRange]);
+    expect(selected.extra_form_data?.time_compare).toEqual([
+      period.comparisonTimeRange,
+    ]);
+    expect(form(99002, {}, vizType).time_compare).toEqual(['1 month ago']);
+  },
+);
+
+test('both mixed chart queries receive the same custom comparison period', () => {
+  const selected = form(99001, {}, 'mixed_timeseries');
+  expect(selected.time_compare).toEqual([period.comparisonTimeRange]);
+  expect(selected.time_compare_b).toEqual([period.comparisonTimeRange]);
+  expect(selected.extra_form_data?.time_compare).toEqual([
+    period.comparisonTimeRange,
+  ]);
+  expect(form(99002, {}, 'mixed_timeseries').time_compare).toEqual([
+    '1 month ago',
+  ]);
+});
+
+test('OFF clears custom chart comparison without clearing the current period', () => {
+  const selected = form(99001, { time_compare: [] }, 'mixed_timeseries');
+  expect(selected.time_compare).toEqual([]);
+  expect(getCustomPeriodComparison(selected)).toBeUndefined();
+  expect(selected.extra_form_data?.time_range).toBe(period.currentTimeRange);
+});
+
+test.each(['big_number', 'big_number_total'])(
+  'OFF disables %s own comparison',
+  vizType => {
+    const selected = form(99001, { time_compare: [] }, vizType);
+    expect(selected.comparison_enabled).toBe(false);
+    expect(selected.compare_lag).toBe(0);
+    expect(getCustomPeriodComparison(selected)).toBeUndefined();
+  },
+);
+
+test('unsupported chart comparison controls are not overwritten', () => {
+  expect(form(99001, {}, 'pie').time_compare).toEqual(['1 month ago']);
 });

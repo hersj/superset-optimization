@@ -21,6 +21,7 @@ import {
   calculatePeriodDifference,
   createCustomPeriodComparison,
   getCustomPeriodComparison,
+  getCustomComparisonBucketDate,
   getPeriodDayCount,
   mergeCustomPeriodComparisonRows,
 } from '../../src/time-comparison/customPeriod';
@@ -68,9 +69,7 @@ test('custom metadata uses the existing native filter custom_form_data channel',
     extra_form_data: { custom_form_data: { custom_period_comparison: period } },
   };
   expect(getCustomPeriodComparison(formData)).toEqual(period);
-  expect(
-    getCustomPeriodComparison({ datasource: '1__table', viz_type: 'table' }),
-  ).toBeUndefined();
+  expect(getCustomPeriodComparison({})).toBeUndefined();
 });
 
 test('comparison replaces the selected temporal range while retaining other filters', () => {
@@ -370,3 +369,122 @@ test('an inclusive end which overflows the supported calendar is rejected before
     ),
   ).toThrow('Periods require ISO calendar dates');
 });
+
+test.each([
+  [
+    'P1D',
+    '2026-08-05 : 2026-08-08',
+    '2026-08-12 : 2026-08-16',
+    1785859200000,
+    '2026-08-12',
+  ],
+  [
+    'P1D',
+    '2026-08-05 : 2026-08-08',
+    '2026-08-12 : 2026-08-16',
+    '2026-08-08',
+    '2026-08-15',
+  ],
+  [
+    'P1D',
+    '2026-08-05 : 2026-08-08',
+    '2026-08-12 : 2026-08-16',
+    '2026-08-09',
+    null,
+  ],
+  [
+    'P1D',
+    '2026-08-05 : 2026-08-08',
+    '2026-08-12 : 2026-08-16',
+    '2026-08-04',
+    null,
+  ],
+  [
+    'P1W_SUN',
+    '2026-08-05 : 2026-08-20',
+    '2026-07-08 : 2026-07-20',
+    '2026-08-02',
+    '2026-07-05',
+  ],
+  [
+    'P1W_SUN',
+    '2026-08-05 : 2026-08-20',
+    '2026-07-08 : 2026-07-20',
+    '2026-08-09',
+    '2026-07-12',
+  ],
+  [
+    'P1W',
+    '2026-08-05 : 2026-08-20',
+    '2026-07-08 : 2026-07-20',
+    '2026-08-03',
+    '2026-07-06',
+  ],
+  [
+    'P1M',
+    '2026-10-15 : 2026-12-01',
+    '2026-08-05 : 2026-09-18',
+    '2026-10-01',
+    '2026-08-01',
+  ],
+  [
+    'P1M',
+    '2026-10-15 : 2026-12-01',
+    '2026-08-05 : 2026-09-18',
+    '2026-11-01',
+    '2026-09-01',
+  ],
+  [
+    'P1M',
+    '2026-10-15 : 2026-12-01',
+    '2026-08-05 : 2026-09-18',
+    '2026-12-01',
+    null,
+  ],
+  [
+    'P3M',
+    '2026-10-15 : 2027-01-01',
+    '2026-08-05 : 2026-09-18',
+    '2026-10-01',
+    '2026-07-01',
+  ],
+  [
+    'P3M_FISCAL',
+    '2026-10-15 : 2027-01-01',
+    '2026-08-05 : 2026-09-18',
+    '2026-10-01',
+    '2026-07-01',
+  ],
+  [
+    'P1Y',
+    '2026-07-01 : 2027-01-01',
+    '2024-11-01 : 2025-01-01',
+    '2026-01-01',
+    '2024-01-01',
+  ],
+  [
+    'P1Y_FISCAL',
+    '2026-07-01 : 2027-04-01',
+    '2024-02-05 : 2024-04-01',
+    '2026-04-01',
+    '2023-04-01',
+  ],
+  [
+    'P1D',
+    '2024-02-27 : 2024-03-02',
+    '2025-02-27 : 2025-03-02',
+    '2024-02-29',
+    '2025-03-01',
+  ],
+])(
+  'custom tooltip bucket %s maps from actual selected starts, retaining partial buckets',
+  (grain, currentTimeRange, comparisonTimeRange, value, expected) => {
+    expect(
+      getCustomComparisonBucketDate(
+        value,
+        { currentTimeRange, comparisonTimeRange },
+        grain,
+      ),
+    ).toBe(expected);
+  },
+);

@@ -17,6 +17,10 @@
  * under the License.
  */
 import { buildQueryContext, QueryFormData } from '@superset-ui/core';
+import {
+  buildBigNumberPeriodQueries,
+  getBigNumberCustomPeriod,
+} from '../customComparison';
 import { getBigNumberComparisonRanges } from './comparisonRanges';
 
 type ComparisonMode = 'previous' | 'year';
@@ -59,6 +63,9 @@ function isComparisonEnabled(formData: QueryFormData): boolean {
 
 export default function buildQuery(formData: QueryFormData) {
   return buildQueryContext(formData, baseQueryObject => {
+    const customPeriod = getBigNumberCustomPeriod(formData);
+    if (customPeriod)
+      return buildBigNumberPeriodQueries(baseQueryObject, customPeriod);
     const timeRange =
       (baseQueryObject.time_range as string | undefined) ||
       (formData.time_range as string | undefined) ||

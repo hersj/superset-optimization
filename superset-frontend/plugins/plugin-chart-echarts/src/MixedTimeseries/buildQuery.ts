@@ -19,6 +19,7 @@
 import {
   buildQueryContext,
   ensureIsArray,
+  getCustomPeriodComparison,
   normalizeOrderBy,
   PostProcessingPivot,
   QueryFormData,
@@ -42,6 +43,7 @@ import {
 } from '../utils/formDataSuffix';
 
 export default function buildQuery(formData: QueryFormData) {
+  const customPeriod = getCustomPeriodComparison(formData);
   const nativeTimeCompare = (formData.extra_form_data as any)?.time_compare;
   const baseFormData = {
     ...formData,
@@ -58,6 +60,7 @@ export default function buildQuery(formData: QueryFormData) {
     buildQueryContext(fd, baseQueryObject => {
       const queryObject = {
         ...baseQueryObject,
+        extras: { ...baseQueryObject.extras },
         columns: [
           ...(isXAxisSet(formData)
             ? ensureIsArray(getXAxisColumn(formData))
@@ -68,12 +71,12 @@ export default function buildQuery(formData: QueryFormData) {
         ...(isXAxisSet(formData) ? {} : { is_timeseries: true }),
       };
 
-      // Time-comparison (time-shift) only aligns cleanly at day/month grains.
-      // At week/quarter/year a fixed offset like "30 days ago" produces a
-      // misaligned column → "referenced column not available in the DataFrame".
-      // So keep the comparison only for day/month and disable it otherwise.
-      // The active grain comes from the resolved query extras (reflects a
-      // dashboard time-grain filter); fd.time_grain_sqla is just the default.
+      if (customPeriod) {
+        delete queryObject.extras.time_compare;
+        delete queryObject.extras.instant_time_comparison_range;
+      }
+      // Preserve the legacy relative-offset grain guard. Custom periods and
+      // selected ranges align ordinal buckets at week, quarter and year grains.
       if (ensureIsArray(fd.time_compare).length > 0) {
         const activeGrain =
           (queryObject.extras && (queryObject.extras as any).time_grain_sqla) ||
@@ -82,7 +85,9 @@ export default function buildQuery(formData: QueryFormData) {
         const comparisonAllowed =
           // 点选比较按选中周期关联，不使用旧的固定日期偏移对齐。
           ensureIsArray(fd.time_compare).every(
-            offset => offset === '上一选中区间',
+            offset =>
+              offset === '上一选中区间' ||
+              offset === customPeriod?.comparisonTimeRange,
           ) ||
           activeGrain === 'P1D' ||
           activeGrain === 'P1W' ||

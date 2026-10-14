@@ -19,6 +19,7 @@
 import {
   AnnotationStyle,
   AnnotationType,
+  ComparisonType,
   DataRecord,
   FormulaAnnotationLayer,
   VizType,
@@ -986,5 +987,192 @@ test.each([
       registry.remove(schemeId);
       window.featureFlags = {};
     }
+  },
+);
+
+test.each([
+  [
+    'P1D',
+    '2026-08-05 : 2026-08-08',
+    '2026-08-12 : 2026-08-16',
+    1785859200000,
+    '2026-08-05',
+    '2026-08-12',
+    3,
+    4,
+  ],
+  [
+    'P1M',
+    '2026-10-15 : 2026-11-18',
+    '2026-08-05 : 2026-09-18',
+    Date.parse('2026-09-30T16:00:00Z'),
+    '2026-10-01',
+    '2026-08-01',
+    34,
+    44,
+  ],
+])(
+  'custom %s legend preserves its key and native grain overrides saved day grain in tooltip',
+  (
+    grain,
+    currentTimeRange,
+    offset,
+    timestamp,
+    currentDate,
+    comparisonDate,
+    currentDays,
+    comparisonDays,
+  ) => {
+    const period = {
+      currentTimeRange,
+      comparisonTimeRange: offset,
+      timeColumn: 'ds',
+    };
+    const chartProps = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...formData,
+        metrics: ['配送销售额'],
+        metricsB: ['毛利率'],
+        groupby: [],
+        groupbyB: [],
+        richTooltip: true,
+        showLegend: true,
+        time_grain_sqla: 'P1D',
+        timeGrainSqla: 'P1D',
+        time_range: 'Last 30 days',
+        time_compare: [offset],
+        time_compare_b: [offset],
+        extra_form_data: {
+          time_grain_sqla: grain,
+          time_compare: [offset],
+          custom_form_data: { custom_period_comparison: period },
+        },
+      } as EchartsMixedTimeseriesFormData,
+      queriesData: [
+        createTestQueryData([
+          { 配送销售额: 100, [`配送销售额__${offset}`]: 80, ds: timestamp },
+        ]),
+        createTestQueryData([
+          { 毛利率: 0.2, [`毛利率__${offset}`]: 0.1, ds: timestamp },
+        ]),
+      ],
+    });
+    chartProps.queriesData.forEach(query => {
+      query.colnames = ['ds'];
+      query.coltypes = [GenericDataType.Temporal];
+    });
+    const transformed = transformProps(chartProps);
+    const legend = transformed.echartOptions.legend as {
+      data: string[];
+      formatter: (name: string) => string;
+    };
+    const comparisonKey = legend.data.find(name => name.includes(offset));
+    expect(comparisonKey).toBeDefined();
+    if (!comparisonKey) throw new Error('Missing comparison legend');
+    expect(legend.formatter(comparisonKey)).toBe('对比期间');
+    const selected = transformed.echartOptions.legend as {
+      selected: Record<string, boolean>;
+    };
+    expect(selected.selected[comparisonKey]).toBe(true);
+    const hidden = transformProps({
+      ...chartProps,
+      legendState: { [`comparison:${offset}`]: false },
+    });
+    expect(
+      (hidden.echartOptions.legend as { selected: Record<string, boolean> })
+        .selected[comparisonKey],
+    ).toBe(false);
+    const legacyHidden = transformProps({
+      ...chartProps,
+      legendState: { [comparisonKey]: false },
+    });
+    expect(
+      (
+        legacyHidden.echartOptions.legend as {
+          selected: Record<string, boolean>;
+        }
+      ).selected[comparisonKey],
+    ).toBe(false);
+    const metadata = transformed.legendGroups;
+    expect(metadata?.stateKeys[comparisonKey]).toBe(`comparison:${offset}`);
+    const tooltip = transformed.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    const html = tooltip.formatter([
+      { seriesId: '配送销售额', marker: '', value: [timestamp, 100] },
+      {
+        seriesId: `配送销售额__${offset}`,
+        marker: '',
+        value: [timestamp, 80],
+      },
+    ]);
+    expect(html).toContain(currentDate);
+    expect(html).toContain(comparisonDate);
+    expect(html).toContain(`${currentDays} 天`);
+    expect(html).toContain(`${comparisonDays} 天`);
+    expect(html).toContain('期间长度不同');
+  },
+);
+
+test.each([
+  ComparisonType.Difference,
+  ComparisonType.Percentage,
+  ComparisonType.Ratio,
+])(
+  'custom %s renders backend-derived series without synthesizing current series',
+  style => {
+    const offset = '2026-08-12 : 2026-08-16';
+    const period = {
+      currentTimeRange: '2026-08-05 : 2026-08-08',
+      comparisonTimeRange: offset,
+      timeColumn: 'ds',
+    };
+    const chartProps = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...formData,
+        metrics: ['配送销售额'],
+        metricsB: ['毛利率'],
+        groupby: [],
+        groupbyB: [],
+        richTooltip: true,
+        showLegend: true,
+        comparison_type: style,
+        comparison_type_b: style,
+        time_compare: [offset],
+        time_compare_b: [offset],
+        extra_form_data: {
+          time_grain_sqla: 'P1D',
+          time_compare: [offset],
+          custom_form_data: { custom_period_comparison: period },
+        },
+      } as EchartsMixedTimeseriesFormData,
+      queriesData: [
+        createTestQueryData([
+          { [`配送销售额__${offset}`]: 20, ds: 1785859200000 },
+        ]),
+        createTestQueryData([
+          { [`毛利率__${offset}`]: 0.1, ds: 1785859200000 },
+        ]),
+      ],
+    });
+    const result = transformProps(chartProps);
+    const series = result.echartOptions.series as SeriesOption[];
+    expect(series).toHaveLength(2);
+    expect(series.every(item => String(item.name).includes(offset))).toBe(true);
+    const legend = result.echartOptions.legend as {
+      data: string[];
+      selected: Record<string, boolean>;
+    };
+    expect(legend.data).toHaveLength(1);
+    const [comparisonKey] = legend.data;
+    expect(legend.selected[comparisonKey]).toBe(true);
   },
 );

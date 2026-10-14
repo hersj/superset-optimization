@@ -22,10 +22,12 @@ import {
   DataRecordFilters,
   DataRecordValue,
   ensureIsArray,
+  getCustomPeriodComparison,
   JsonObject,
   PartialFilters,
   QueryFormExtraFilter,
   ChartCustomization,
+  VizType,
 } from '@superset-ui/core';
 import {
   ChartConfiguration,
@@ -613,12 +615,42 @@ export default function getFormDataWithExtraFilters({
     };
     if (
       !ensureIsArray(extraControls.time_compare).length &&
+      [VizType.BigNumber, VizType.BigNumberTotal].includes(formData.viz_type)
+    ) {
+      formData.comparison_enabled = false;
+      formData.compare_lag = 0;
+    }
+    if (
+      !ensureIsArray(extraControls.time_compare).length &&
       formData.extra_form_data.custom_form_data?.custom_period_comparison
     ) {
       formData.extra_form_data.custom_form_data = {
         ...formData.extra_form_data.custom_form_data,
         custom_period_comparison: null,
       };
+    }
+  }
+  const customPeriod = getCustomPeriodComparison(formData);
+  const timeComparisonCharts: string[] = [
+    VizType.Area,
+    VizType.Timeseries,
+    VizType.Bar,
+    VizType.Line,
+    VizType.SmoothLine,
+    VizType.Scatter,
+    VizType.Step,
+    VizType.MixedTimeseries,
+  ];
+  if (customPeriod && timeComparisonCharts.includes(formData.viz_type)) {
+    // Keep each chart's comparison_type; only replace its comparison period.
+    const comparison = [customPeriod.comparisonTimeRange];
+    formData.time_compare = comparison;
+    formData.extra_form_data = {
+      ...formData.extra_form_data,
+      time_compare: comparison,
+    };
+    if (formData.viz_type === VizType.MixedTimeseries) {
+      formData.time_compare_b = comparison;
     }
   }
   const pointFilters = formData.extra_form_data?.filters?.filter(

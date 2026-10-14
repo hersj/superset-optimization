@@ -25,6 +25,7 @@ import {
   CategoricalColorNamespace,
   CurrencyFormatter,
   ensureIsArray,
+  getCustomPeriodComparison,
   getCustomFormatter,
   getNumberFormatter,
   getXAxisLabel,
@@ -645,9 +646,15 @@ export default function transformProps(
     (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
     (chartProps as any).rawFormData?.time_grain_sqla ||
     _timeGrainSqla;
+  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
+  const customPeriod = allTimeCompare.includes(
+    selectedPeriod?.comparisonTimeRange ?? '',
+  )
+    ? selectedPeriod
+    : undefined;
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla)
+      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod)
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
@@ -671,7 +678,11 @@ export default function transformProps(
   const stateLegendGroups = buildLegendGroupMetadata(legendInputs);
   const legendGroups = hasTimeCompare ? stateLegendGroups : emptyLegendMetadata;
   const legendStateWithTimeCompare = hasTimeCompare
-    ? resolveLegendState(legendState, legendGroups)
+    ? resolveLegendState(
+        legendState,
+        legendGroups,
+        customPeriod?.comparisonTimeRange,
+      )
     : (() => {
         /*
          * 功能审计（可重写规格）：混合图关闭时间对比时的图例状态投影
@@ -900,7 +911,10 @@ export default function transformProps(
         chartPadding,
       ),
       formatter: hasTimeCompare
-        ? (name: string) => legendGroups.labels[name] ?? name
+        ? (name: string) =>
+            legendGroups.labels[name] === customPeriod?.comparisonTimeRange
+              ? '对比期间'
+              : (legendGroups.labels[name] ?? name)
         : metricLegendFormatter,
       data: (hasTimeCompare
         ? Object.keys(legendGroups.groups).filter(

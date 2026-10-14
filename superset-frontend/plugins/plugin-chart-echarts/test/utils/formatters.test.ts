@@ -222,3 +222,30 @@ test('fiscal labels use the business timezone at the April boundary for axes and
     expect(formatter(Date.UTC(2025, 3, 1))).toBe('2025财年');
   }
 });
+
+test.each([
+  [
+    '2026-08-04T16:00:00Z',
+    '2026-08-12 : 2026-08-16',
+    '当前 2026-08-05 / 对比 2026-08-12',
+  ],
+  [
+    '2026-08-07T16:00:00Z',
+    '2026-08-12 : 2026-08-16',
+    '当前 — / 对比 2026-08-15',
+  ],
+  [
+    '2026-08-06T16:00:00Z',
+    '2026-08-12 : 2026-08-14',
+    '当前 2026-08-07 / 对比 —',
+  ],
+])(
+  'custom tooltip real-date header preserves a missing side at %s',
+  (instant, comparisonTimeRange, expected) => {
+    const formatter = getTooltipTimeFormatter(undefined, 'P1D', {
+      currentTimeRange: '2026-08-05 : 2026-08-08',
+      comparisonTimeRange,
+    });
+    expect(formatter(Date.parse(instant))).toContain(expected);
+  },
+);

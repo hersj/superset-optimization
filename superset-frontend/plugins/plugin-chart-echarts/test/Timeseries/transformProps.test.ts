@@ -1522,3 +1522,84 @@ test('dashboard fiscal grain aligns the standard timeseries axis with actual Apr
     ],
   });
 });
+
+test('custom period legend retains its full key while tooltip shows real comparison dates and unequal days', () => {
+  const offset = '2026-08-12 : 2026-08-16';
+  const period = {
+    currentTimeRange: '2026-08-05 : 2026-08-08',
+    comparisonTimeRange: offset,
+    timeColumn: 'ds',
+  };
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      x_axis: 'ds',
+      metrics: ['配送销售额'],
+      groupby: [],
+      richTooltip: true,
+      showLegend: true,
+      time_compare: [offset],
+      extra_form_data: {
+        time_grain_sqla: 'P1D',
+        time_compare: [offset],
+        custom_form_data: { custom_period_comparison: period },
+      },
+    },
+    queriesData: [
+      createTestQueryData([
+        { 配送销售额: 100, [`配送销售额__${offset}`]: 80, ds: 1785859200000 },
+      ]),
+    ],
+  });
+  chartProps.queriesData.forEach(query => {
+    query.colnames = ['ds'];
+    query.coltypes = [GenericDataType.Temporal];
+  });
+  const transformed = transformProps(chartProps);
+  const legend = transformed.echartOptions.legend as {
+    data: string[];
+    formatter: (name: string) => string;
+  };
+  const comparisonKey = legend.data.find(name => name.includes(offset));
+  expect(comparisonKey).toBeDefined();
+  if (!comparisonKey) throw new Error('Missing comparison legend');
+  expect(legend.formatter(comparisonKey)).toBe('对比期间');
+  const selected = transformed.echartOptions.legend as {
+    selected: Record<string, boolean>;
+  };
+  expect(selected.selected[comparisonKey]).toBe(true);
+  const hidden = transformProps({
+    ...chartProps,
+    legendState: { [`comparison:${offset}`]: false },
+  });
+  expect(
+    (hidden.echartOptions.legend as { selected: Record<string, boolean> })
+      .selected[comparisonKey],
+  ).toBe(false);
+  const legacyHidden = transformProps({
+    ...chartProps,
+    legendState: { [comparisonKey]: false },
+  });
+  expect(
+    (legacyHidden.echartOptions.legend as { selected: Record<string, boolean> })
+      .selected[comparisonKey],
+  ).toBe(false);
+  const metadata = transformed.legendGroups;
+  expect(metadata?.stateKeys[comparisonKey]).toBe(`comparison:${offset}`);
+  const tooltip = transformed.echartOptions.tooltip as {
+    formatter: (params: unknown) => string;
+  };
+  const html = tooltip.formatter([
+    { seriesId: '配送销售额', marker: '', value: [1785859200000, 100] },
+    {
+      seriesId: `配送销售额__${offset}`,
+      marker: '',
+      value: [1785859200000, 80],
+    },
+  ]);
+  expect(html).toContain('2026-08-05');
+  expect(html).toContain('2026-08-12');
+  expect(html).toContain('3 天');
+  expect(html).toContain('4 天');
+  expect(html).toContain('期间长度不同');
+});

@@ -19,6 +19,7 @@
 import {
   buildQueryContext,
   ensureIsArray,
+  getCustomPeriodComparison,
   getXAxisColumn,
   isXAxisSet,
   normalizeOrderBy,
@@ -54,6 +55,7 @@ import {
  * - 验证方式：Timeseries buildQuery 覆盖 30 days ago -> 1 week ago。
  */
 export default function buildQuery(formData: QueryFormData) {
+  const customPeriod = getCustomPeriodComparison(formData);
   const effectiveFormData = {
     ...formData,
     time_compare: ensureIsArray(
@@ -62,6 +64,11 @@ export default function buildQuery(formData: QueryFormData) {
   };
   const { groupby } = effectiveFormData;
   return buildQueryContext(effectiveFormData, baseQueryObject => {
+    const extras = { ...baseQueryObject.extras };
+    if (customPeriod) {
+      delete extras.time_compare;
+      delete extras.instant_time_comparison_range;
+    }
     /* the `pivotOperatorInRuntime` determines how to pivot the dataframe returned from the raw query.
        1. If it's a time compared query, there will return a pivoted dataframe that append time compared metrics. for instance:
 
@@ -106,6 +113,7 @@ export default function buildQuery(formData: QueryFormData) {
     return [
       {
         ...baseQueryObject,
+        extras,
         metrics: [...(baseQueryObject.metrics || []), ...extra_metrics],
         columns,
         series_columns: groupby,

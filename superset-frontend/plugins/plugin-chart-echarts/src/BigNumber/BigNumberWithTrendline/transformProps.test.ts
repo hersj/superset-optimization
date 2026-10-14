@@ -56,6 +56,7 @@ jest.mock('@superset-ui/chart-controls', () => ({
 }));
 
 jest.mock('@superset-ui/core', () => ({
+  ...jest.requireActual('@superset-ui/core'),
   GenericDataType: { Temporal: 2, String: 1 },
   extractTimegrain: jest.fn(() => 'P1D'),
   getMetricLabel: jest.fn(metric => metric),
@@ -280,4 +281,79 @@ describe('BigNumberWithTrendline transformProps', () => {
     expect(result.bigNumber).toBe(360);
     expect(result.subheader).toBe('50.0% WoW');
   });
+});
+
+const customPeriod = {
+  currentTimeRange: '2026-10-01 : 2026-10-14',
+  comparisonTimeRange: '2026-08-05 : 2026-09-05',
+  timeColumn: 'ds',
+};
+const customExtra = {
+  custom_form_data: { custom_period_comparison: customPeriod },
+};
+
+test('custom trend card uses exact aggregate rate and retains daily sparkline', () => {
+  const result = transformProps({
+    width: 400,
+    height: 300,
+    formData: {
+      metric: 'value',
+      aggregation: 'sum',
+      compareLag: 1,
+      showTrendLine: true,
+      colorPicker: { r: 0, g: 0, b: 0 },
+    },
+    rawFormData: {
+      datasource: '1__table',
+      viz_type: 'big_number',
+      extra_form_data: customExtra,
+    },
+    queriesData: [
+      {
+        data: [
+          { __timestamp: 1, value: 0.1 },
+          { __timestamp: 2, value: 0.5 },
+        ],
+        colnames: ['__timestamp', 'value'],
+        coltypes: [],
+      },
+      { data: [{ value: 0.3 }] },
+      { data: [{ value: 0.2 }] },
+    ],
+    hooks: {},
+    datasource: {},
+    theme: { colorBgContainer: '#fff' },
+  } as unknown as BigNumberWithTrendlineChartProps);
+  expect(result.bigNumber).toBe(0.3);
+  expect(result.subheader).toContain('对比值 $0.2');
+  expect(result.subheader).toContain('变化率 +50.0%');
+  expect(result.trendLineData).toEqual([
+    [1, 0.1],
+    [2, 0.5],
+  ]);
+  expect(result.subtitle).toContain('13 天');
+});
+
+test('custom trend card parses A/B consistently using the existing metric parser', () => {
+  const result = transformProps({
+    width: 400,
+    height: 300,
+    formData: {
+      metric: 'value',
+      aggregation: 'sum',
+      colorPicker: { r: 0, g: 0, b: 0 },
+    },
+    rawFormData: { extra_form_data: customExtra },
+    queriesData: [
+      { data: [], colnames: [], coltypes: [] },
+      { data: [{ value: '0.3' }] },
+      { data: [{ value: '0.2' }] },
+    ],
+    hooks: {},
+    datasource: {},
+    theme: {},
+  } as unknown as BigNumberWithTrendlineChartProps);
+  expect(result.bigNumber).toBe(0.3);
+  expect(result.subheader).toContain('对比值 $0.2');
+  expect(result.subheader).toContain('变化率 +50.0%');
 });

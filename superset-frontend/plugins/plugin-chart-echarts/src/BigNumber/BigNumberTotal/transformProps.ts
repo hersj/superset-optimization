@@ -26,11 +26,17 @@ import {
   extractTimegrain,
   QueryFormData,
   getValueFormatter,
+  formatCustomPeriodComparisonLabel,
 } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import { BigNumberTotalChartProps, BigNumberVizProps } from '../types';
 import { getDateFormatter, getOriginalLabel, parseMetricValue } from '../utils';
 import { Refs } from '../../types';
+import {
+  formatBigNumberPeriodComparison,
+  parseBigNumberPeriodValue,
+  getBigNumberCustomPeriod,
+} from '../customComparison';
 
 type ComparisonMode = 'previous' | 'year';
 type ComparisonDisplay = 'percent' | 'delta_percent';
@@ -220,6 +226,7 @@ export default function transformProps(
       ? formatTime
       : numberFormatter;
 
+  const customPeriod = getBigNumberCustomPeriod(formData, rawFormData);
   const comparisonModes = getComparisonModes(formData as QueryFormData);
   const comparisonValues = comparisonModes.reduce<
     Partial<Record<ComparisonMode, number | null>>
@@ -230,15 +237,21 @@ export default function transformProps(
       : null;
     return acc;
   }, {});
-  const comparisonText = isComparisonEnabled(formData as QueryFormData)
-    ? getComparisonText(
-        typeof bigNumber === 'number' ? bigNumber : null,
-        comparisonValues,
-        comparisonModes,
-        getComparisonDisplay(formData as QueryFormData),
+  const comparisonText = customPeriod
+    ? formatBigNumberPeriodComparison(
+        bigNumber,
+        parseBigNumberPeriodValue(queriesData[1]?.data?.[0]?.[metricName]),
         numberFormatter,
       )
-    : '';
+    : isComparisonEnabled(formData as QueryFormData)
+      ? getComparisonText(
+          typeof bigNumber === 'number' ? bigNumber : null,
+          comparisonValues,
+          comparisonModes,
+          getComparisonDisplay(formData as QueryFormData),
+          numberFormatter,
+        )
+      : '';
 
   const { onContextMenu } = hooks;
 
@@ -256,7 +269,11 @@ export default function transformProps(
     subheader: comparisonText || subheader || '',
     subheaderFontSize,
     subtitleFontSize: formattedSubtitleFontSize,
-    subtitle: formattedSubtitle,
+    subtitle: customPeriod
+      ? [formatCustomPeriodComparisonLabel(customPeriod), formattedSubtitle]
+          .filter(Boolean)
+          .join(' | ')
+      : formattedSubtitle,
     onContextMenu,
     refs,
     colorThresholdFormatters,

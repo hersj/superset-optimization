@@ -61,6 +61,30 @@ test('existing CustomTime hides the opt-in comparison controls by default', () =
   expect(screen.queryByLabelText('对比方式')).not.toBeInTheDocument();
 });
 
+test('current period selection precedes comparison and explains the existing chart switch', () => {
+  mount();
+  const current = screen.getByRole('group', { name: '当前期间' });
+  const comparison = screen.getByRole('group', { name: '对比期间' });
+  expect(current.compareDocumentPosition(comparison) & 4).toBeTruthy();
+  expect(current).toHaveTextContent('2026-10-01 ～ 2026-10-13');
+  expect(comparison).toHaveTextContent('右上角');
+  expect(comparison).toHaveTextContent('图表原有');
+  expect(comparison).toHaveTextContent('大数字');
+});
+
+test('editing the current period keeps its controls open and preserves comparison dates', () => {
+  const { setDataMask } = mount();
+  chooseCustom();
+  dates('2026-08-05', '2026-08-17');
+  fireEvent.click(screen.getByText('修改当前期间'));
+  fireEvent.click(screen.getByRole('button', { name: '最近7天' }));
+  expect(screen.getByRole('button', { name: '最近7天' })).toBeVisible();
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison,
+  ).toMatchObject({ comparisonTimeRange: '2026-08-05 : 2026-08-18' });
+});
+
 test('custom comparison publishes one scoped draft with inclusive dates and day counts', () => {
   const { setDataMask } = mount();
   chooseCustom();

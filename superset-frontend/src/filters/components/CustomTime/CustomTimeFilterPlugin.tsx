@@ -2337,8 +2337,15 @@ export default function CustomTimeFilterPlugin(props: any) {
         </div>
       )
     ));
+  const currentBounds = parseRange(lastRangeRef.current);
+  const currentPeriodLabel =
+    isValidIsoDate(currentBounds.start) &&
+    isValidIsoDate(currentBounds.endExclusive)
+      ? `${currentBounds.start} ～ ${subtractDays(currentBounds.endExclusive, 1)}`
+      : currentLabel;
   const comparisonControls = enableCustomComparison && (
-    <div style={styles.grainColumn}>
+    <div role="group" aria-label="对比期间" style={styles.grainColumn}>
+      <strong>对比期间</strong>
       <label>
         对比方式{' '}
         <select
@@ -2397,7 +2404,8 @@ export default function CustomTimeFilterPlugin(props: any) {
         </>
       )}
       <div style={styles.hint}>
-        自定义期间仅用于作用范围内的聚合表格和透视表；其他图表沿用原有对比。
+        自定义期间控制作用范围内图表原有的时间比较，并用于大数字、表格和透视表。
+        请打开看板右上角“时间比较”；关闭时仅显示当前期间。
       </div>
       {customComparisonMode === 'original' && (
         <div style={styles.hint}>
@@ -2447,84 +2455,95 @@ export default function CustomTimeFilterPlugin(props: any) {
         </button>
       </div>
       <div style={styles.shell}>
-        {comparisonControls}
-        {enableCustomRange && (
+        <section role="group" aria-label="当前期间">
           <div style={styles.grainColumn}>
-            <div
-              role="group"
-              aria-label="区间选择方式"
-              style={styles.grainGrid}
-            >
-              {(['continuous', 'points'] as const).map(mode => (
-                <button
-                  type="button"
-                  key={mode}
-                  aria-pressed={selectionMode === mode}
-                  disabled={mode === 'points' && !timeColumn}
-                  style={
-                    selectionMode === mode
-                      ? styles.grainActive
-                      : styles.grainBtn
-                  }
-                  onClick={() => changeSelectionMode(mode)}
+            <strong>当前期间</strong>
+            <div style={styles.hint}>{currentPeriodLabel}</div>
+          </div>
+          <details open={enableCustomComparison ? undefined : true}>
+            <summary style={styles.grainColumn}>修改当前期间</summary>
+            {enableCustomRange && (
+              <div style={styles.grainColumn}>
+                <div
+                  role="group"
+                  aria-label="区间选择方式"
+                  style={styles.grainGrid}
                 >
-                  {mode === 'continuous' ? '连续区间' : '点选区间'}
-                </button>
-              ))}
-            </div>
-            {selectionMode === 'points' && (
-              <div style={styles.hint}>
-                比较方式：较上一选中区间；无时间轴图表显示选中区间合计。
+                  {(['continuous', 'points'] as const).map(mode => (
+                    <button
+                      type="button"
+                      key={mode}
+                      aria-pressed={selectionMode === mode}
+                      disabled={mode === 'points' && !timeColumn}
+                      style={
+                        selectionMode === mode
+                          ? styles.grainActive
+                          : styles.grainBtn
+                      }
+                      onClick={() => changeSelectionMode(mode)}
+                    >
+                      {mode === 'continuous' ? '连续区间' : '点选区间'}
+                    </button>
+                  ))}
+                </div>
+                {selectionMode === 'points' && (
+                  <div style={styles.hint}>
+                    比较方式：较上一选中区间；无时间轴图表显示选中区间合计。
+                  </div>
+                )}
+                {!timeColumn && (
+                  <div style={styles.hint}>绑定时间列后可使用点选区间。</div>
+                )}
               </div>
             )}
-            {!timeColumn && (
-              <div style={styles.hint}>绑定时间列后可使用点选区间。</div>
+            {enableTimeGrain && (
+              <div style={styles.grainColumn}>
+                <div style={styles.grainGrid}>
+                  {TIME_GRAIN_OPTIONS.filter(
+                    g => g.key !== 'fiscal_year' || enableCustomRange,
+                  ).map(g => (
+                    <button
+                      key={g.key}
+                      type="button"
+                      style={
+                        activeGrain === g.key
+                          ? styles.grainActive
+                          : styles.grainBtn
+                      }
+                      onClick={() => handleGrainClick(g)}
+                    >
+                      {getGrainDisplayLabel(g.label)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
-        )}
-        {enableTimeGrain && (
-          <div style={styles.grainColumn}>
-            <div style={styles.grainGrid}>
-              {TIME_GRAIN_OPTIONS.filter(
-                g => g.key !== 'fiscal_year' || enableCustomRange,
-              ).map(g => (
-                <button
-                  key={g.key}
-                  type="button"
-                  style={
-                    activeGrain === g.key ? styles.grainActive : styles.grainBtn
-                  }
-                  onClick={() => handleGrainClick(g)}
-                >
-                  {getGrainDisplayLabel(g.label)}
-                </button>
-              ))}
+            {enablePresets && (
+              <div style={styles.presetColumn}>
+                <div style={styles.grid}>
+                  {DEFAULT_PRESETS.filter(
+                    p => p.key !== 'this_fiscal_year',
+                  ).map(p => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      style={
+                        activePreset === p.key ? styles.btnActive : styles.btn
+                      }
+                      onClick={() => handlePresetClick(p)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={styles.panel}>
+              {enableCustomRange && renderExpandedSelector()}
             </div>
-          </div>
-        )}
-        {enablePresets && (
-          <div style={styles.presetColumn}>
-            <div style={styles.grid}>
-              {DEFAULT_PRESETS.filter(p => p.key !== 'this_fiscal_year').map(
-                p => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    style={
-                      activePreset === p.key ? styles.btnActive : styles.btn
-                    }
-                    onClick={() => handlePresetClick(p)}
-                  >
-                    {p.label}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-        )}
-        <div style={styles.panel}>
-          {enableCustomRange && renderExpandedSelector()}
-        </div>
+          </details>
+        </section>
+        {comparisonControls}
       </div>
       <div style={styles.status}>
         {currentLabel} | {currentGrain}

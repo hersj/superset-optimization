@@ -112,7 +112,6 @@ from superset.utils.core import (
     is_adhoc_column,
     MediumText,
     normalize_dttm_col,
-    QueryObjectFilterClause,
     remove_duplicates,
     SqlExpressionType,
     TIME_COMPARISON,
@@ -1323,7 +1322,9 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
         # Process the dataframe if not empty
         df = result.df
-        if not df.empty:
+        if not df.empty or any(
+            self.is_valid_date_range(offset) for offset in query_object.time_offsets
+        ):
             # Normalize datetime columns and metrics
             df = self.normalize_df(df, query_object)
 
@@ -1379,12 +1380,30 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         from superset.common.utils.query_cache_manager import QueryCacheManager
 
         # ensure query_object is immutable
-        query_object_clone = copy.copy(query_object)
+        query_for_bounds = query_object
+        if (
+            any(
+                self.is_valid_date_range(offset) for offset in query_object.time_offsets
+            )
+            and not query_object.time_range
+        ):
+            temporal_col = self._get_temporal_column_for_filter(
+                query_object, get_x_axis_label(query_object.columns)
+            )
+            query_for_bounds = copy.copy(query_object)
+            query_for_bounds.filter = [
+                flt
+                for flt in query_object.filter
+                if flt.get("op") == FilterOperator.TEMPORAL_RANGE
+                and flt.get("col") == temporal_col
+            ]
         queries: list[str] = []
         cache_keys: list[str | None] = []
         offset_dfs: dict[str, pd.DataFrame] = {}
 
-        outer_from_dttm, outer_to_dttm = get_since_until_from_query_object(query_object)
+        outer_from_dttm, outer_to_dttm = get_since_until_from_query_object(
+            query_for_bounds
+        )
         if not outer_from_dttm or not outer_to_dttm:
             raise QueryObjectValidationError(
                 _(
@@ -1409,6 +1428,8 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             )
 
         for offset in query_object.time_offsets:
+            # Start each offset from original filters to avoid cross-offset leakage.
+            query_object_clone = copy.copy(query_object)
             try:
                 original_offset = offset
                 is_date_range_offset = self.is_valid_date_range(offset)
@@ -1428,6 +1449,16 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     # Use the specified range directly
                     query_object_clone.from_dttm = offset_from_dttm
                     query_object_clone.to_dttm = offset_to_dttm
+                    query_object_clone.time_range = original_offset
+                    query_object_clone.time_shift = None
+                    if (
+                        not offset_from_dttm
+                        or not offset_to_dttm
+                        or offset_from_dttm >= offset_to_dttm
+                    ):
+                        raise QueryObjectValidationError(
+                            "Comparison date range must have a positive length"
+                        )
 
                     # For date range offsets, we must NOT set inner bounds
                     # These create additional WHERE clauses that conflict with our
@@ -1482,21 +1513,24 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 # Create a completely new filter list to preserve original filters
                 query_object_clone.filter = copy.deepcopy(query_object_clone.filter)
 
-                # Remove any existing temporal filters that might conflict
-                query_object_clone.filter = [
-                    flt
-                    for flt in query_object_clone.filter
-                    if not (flt.get("op") == FilterOperator.TEMPORAL_RANGE)
-                ]
-
-                # Determine the temporal column with multiple fallback strategies
                 temporal_col = self._get_temporal_column_for_filter(
                     query_object, x_axis_label
                 )
-
-                # Always add a temporal filter for date range offsets
-                if temporal_col:
-                    new_temporal_filter: QueryObjectFilterClause = {
+                if not temporal_col:
+                    raise QueryObjectValidationError(
+                        "Unable to identify the bound comparison time column"
+                    )
+                # Other date columns remain business filters, including their ranges.
+                query_object_clone.filter = [
+                    flt
+                    for flt in query_object_clone.filter
+                    if not (
+                        flt.get("op") == FilterOperator.TEMPORAL_RANGE
+                        and flt.get("col") == temporal_col
+                    )
+                ]
+                query_object_clone.filter.append(
+                    {
                         "col": temporal_col,
                         "op": FilterOperator.TEMPORAL_RANGE,
                         "val": (
@@ -1504,16 +1538,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                             f"{query_object_clone.to_dttm}"
                         ),
                     }
-                    query_object_clone.filter.append(new_temporal_filter)
-
-                else:
-                    # This should rarely happen with proper fallbacks
-                    raise QueryObjectValidationError(
-                        _(
-                            "Unable to identify temporal column for date range time comparison."  # noqa: E501
-                            "Please ensure your dataset has a properly configured time column."  # noqa: E501
-                        )
-                    )
+                )
 
             else:
                 # RELATIVE OFFSET: Original logic for non-date-range offsets
@@ -1562,7 +1587,8 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 flt
                 for flt in query_object_clone.filter
                 if not (
-                    flt.get("col") == x_axis_label
+                    not is_date_range_offset
+                    and flt.get("col") == x_axis_label
                     and flt.get("op") != FilterOperator.TEMPORAL_RANGE
                 )
             ]
@@ -1647,6 +1673,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 offset_dfs,
                 time_grain,
                 join_keys,
+                query_object=query_for_bounds,
             )
 
         return CachedTimeOffset(df=df, queries=queries, cache_keys=cache_keys)
@@ -1788,63 +1815,181 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
     def _get_temporal_column_for_filter(  # noqa: C901
         self, query_object: QueryObject, x_axis_label: str | None
     ) -> str | None:
-        """
-        Helper method to reliably determine the temporal column for filtering.
-
-        This method tries multiple strategies to find the correct temporal column:
-        1. Use the column from existing TEMPORAL_RANGE filter
-        2. Use explicitly set granularity
-        3. Use x_axis_label if it exists
-
-        :param query_object: The query object
-        :param x_axis_label: The x-axis label from the query
-        :return: The name of the temporal column, or None if not found
-        """
-        # Strategy 1: Use the column from existing TEMPORAL_RANGE filter
-        if query_object.filter:
-            for flt in query_object.filter:
-                if flt.get("op") == FilterOperator.TEMPORAL_RANGE:
-                    col = flt.get("col")
-                    if isinstance(col, str):
-                        return col
-                    elif isinstance(col, dict) and col.get("sqlExpression"):
-                        return str(col.get("label") or col.get("sqlExpression"))
-
-        # Strategy 2: Use explicitly set granularity
+        """Prefer the bound axis over independent date filters."""
         if query_object.granularity:
             return query_object.granularity
-
-        # Strategy 3: Use x_axis_label if it exists
         if x_axis_label:
             return x_axis_label
-
-        return None
+        temporal_columns = {
+            flt.get("col")
+            for flt in query_object.filter
+            if flt.get("op") == FilterOperator.TEMPORAL_RANGE
+            and isinstance(flt.get("col"), str)
+        }
+        return next(iter(temporal_columns)) if len(temporal_columns) == 1 else None
 
     def _process_date_range_offset(
         self, offset_df: pd.DataFrame, join_keys: list[str]
     ) -> tuple[pd.DataFrame, list[str]]:
         """Process date range offset data and return modified DataFrame and keys."""
-        temporal_cols = ["ds", "__timestamp", "dttm"]
-        non_temporal_join_keys = [key for key in join_keys if key not in temporal_cols]
+        return offset_df, join_keys
 
-        if non_temporal_join_keys:
-            return offset_df, non_temporal_join_keys
+    def _align_date_range_offset(  # noqa: C901
+        self,
+        df: pd.DataFrame,
+        offset_df: pd.DataFrame,
+        offset: str,
+        time_grain: str | None,
+        join_keys: list[str],
+        query_object: QueryObject | None,
+    ) -> pd.DataFrame:
+        """Match absolute periods by selected bucket ordinal, never sum ratio rows."""
+        candidates = (
+            list(get_base_axis_labels(query_object.columns)) if query_object else []
+        )
+        candidates += [DTTM_ALIAS]
+        axis = next(
+            (name for name in candidates if name in join_keys and name in offset_df),
+            None,
+        )
+        if axis is None:
+            # A totals query has exactly one SQL-aggregated row per business key.
+            if not join_keys and (len(df) > 1 or len(offset_df) > 1):
+                raise QueryObjectValidationError(
+                    "Date-range totals require a single aggregate row"
+                )
+            key = "__temp_join_key__"
+            left, right = df.copy(), offset_df.copy()
+            keys = join_keys or [key]
+            if not join_keys:
+                left[key] = right[key] = 1
+            try:
+                result = left.merge(
+                    right,
+                    how="outer",
+                    on=keys,
+                    suffixes=("", R_SUFFIX),
+                    validate="one_to_one",
+                    sort=False,
+                )
+            except pd.errors.MergeError as ex:
+                raise QueryObjectValidationError(
+                    "Date-range comparison has duplicate series keys"
+                ) from ex
+            return result.drop(columns=[key], errors="ignore")
+        if query_object is None or not time_grain:
+            raise QueryObjectValidationError(
+                "Date-range alignment requires the original period and time grain"
+            )
+        current_from, current_to = get_since_until_from_query_object(query_object)
+        offset_from, offset_to = get_since_until_from_time_range(time_range=offset)
+        if (
+            not all([current_from, current_to, offset_from, offset_to])
+            or current_from >= current_to
+        ):
+            raise QueryObjectValidationError(
+                "Date-range alignment requires enclosed periods"
+            )
+        grain = {
+            TimeGrain.WEEK_STARTING_SUNDAY: "P1W_SUN",
+            TimeGrain.WEEK_ENDING_SATURDAY: "P1W_SUN",
+            TimeGrain.WEEK_STARTING_MONDAY: "P1W",
+            TimeGrain.WEEK_ENDING_SUNDAY: "P1W",
+        }.get(time_grain, time_grain)
+        try:
+            current_starts = selected_period_starts([(current_from, current_to)], grain)
+            offset_starts = selected_period_starts([(offset_from, offset_to)], grain)
+        except ValueError as ex:
+            raise QueryObjectValidationError(str(ex)) from ex
+        key = OFFSET_JOIN_COLUMN_SUFFIX + offset
+        left, right = df.copy(), offset_df.copy()
+        left[axis], right[axis] = (
+            pd.to_datetime(left[axis]),
+            pd.to_datetime(right[axis]),
+        )
 
-        metric_columns = [col for col in offset_df.columns if col not in temporal_cols]
+        def business_dates(series: pd.Series) -> pd.Series:
+            return (
+                series.dt.tz_convert("Asia/Shanghai").dt.tz_localize(None)
+                if series.dt.tz
+                else series + pd.Timedelta(hours=8)
+            )
 
-        if metric_columns:
-            aggregated_values = {}
-            for col in metric_columns:
-                if pd.api.types.is_numeric_dtype(offset_df[col]):
-                    aggregated_values[col] = offset_df[col].sum()
-                else:
-                    aggregated_values[col] = (
-                        offset_df[col].iloc[0] if not offset_df.empty else None
+        def ordinals(series: pd.Series, starts: list[datetime]) -> pd.Series:
+            business = business_dates(series)
+            bucket_dates = {
+                value: selected_period_starts(
+                    [
+                        (
+                            value.to_pydatetime(),
+                            value.to_pydatetime() + timedelta(microseconds=1),
+                        )
+                    ],
+                    grain,
+                )[0]
+                for value in business.dropna().unique()
+            }
+            lookup = {pd.Timestamp(value): index for index, value in enumerate(starts)}
+            return business.map(bucket_dates).map(lookup)
+
+        left[key], right[key] = (
+            ordinals(left[axis], current_starts),
+            ordinals(right[axis], offset_starts),
+        )
+        left, right = left.dropna(subset=[key]), right.dropna(subset=[key])
+        try:
+            result = left.merge(
+                right,
+                how="outer",
+                on=[key, *[name for name in join_keys if name != axis]],
+                suffixes=("", R_SUFFIX),
+                validate="one_to_one",
+                sort=False,
+            )
+        except pd.errors.MergeError as ex:
+            raise QueryObjectValidationError(
+                "Date-range comparison has duplicate ordinal/series keys"
+            ) from ex
+        reference = left[axis] if not left.empty else right[axis]
+        if not reference.empty:
+            stamp = business_dates(reference).iloc[0]
+            bucket = selected_period_starts(
+                [
+                    (
+                        stamp.to_pydatetime(),
+                        stamp.to_pydatetime() + timedelta(microseconds=1),
                     )
+                ],
+                grain,
+            )[0]
+            clock = stamp - pd.Timestamp(bucket)
+            months = {
+                "P1M": 1,
+                "P3M": 3,
+                "P3M_FISCAL": 3,
+                "P1Y": 12,
+                "P1Y_FISCAL": 12,
+            }.get(grain)
 
-            offset_df = pd.DataFrame([aggregated_values])
+            def aligned_stamp(position: float) -> pd.Timestamp:
+                step = (
+                    pd.DateOffset(months=int(position) * months)
+                    if months
+                    else pd.DateOffset(
+                        days=int(position) * (7 if grain in {"P1W", "P1W_SUN"} else 1)
+                    )
+                )
+                value = pd.Timestamp(current_starts[0]) + step + clock
+                return (
+                    value.tz_localize("Asia/Shanghai").tz_convert(reference.dt.tz)
+                    if reference.dt.tz
+                    else value - pd.Timedelta(hours=8)
+                )
 
-        return offset_df, []
+            result[axis] = result[axis].where(
+                result[axis].notna(), result[key].map(aligned_stamp)
+            )
+        return result.drop(columns=[key])
 
     def _apply_cleanup_logic(
         self,
@@ -1955,6 +2100,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         offset_dfs: dict[str, pd.DataFrame],
         time_grain: str | None,
         join_keys: list[str],
+        query_object: QueryObject | None = None,
     ) -> pd.DataFrame:
         """
         Join offset DataFrames with the main DataFrame.
@@ -1979,6 +2125,13 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             ) and feature_flag_manager.is_feature_enabled(
                 "DATE_RANGE_TIMESHIFTS_ENABLED"
             )
+
+            if is_date_range_offset:
+                df = self._align_date_range_offset(
+                    df, offset_df, offset, time_grain, join_keys, query_object
+                )
+                df = self._apply_cleanup_logic(df, offset, time_grain, join_keys, True)
+                continue
 
             offset_df, actual_join_keys = self._determine_join_keys(
                 df,

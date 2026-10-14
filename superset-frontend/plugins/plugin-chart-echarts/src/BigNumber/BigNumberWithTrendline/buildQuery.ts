@@ -23,6 +23,7 @@ import {
   getXAxisColumn,
   isXAxisSet,
   QueryFormData,
+  buildCustomPeriodComparisonQuery,
 } from '@superset-ui/core';
 import {
   aggregationOperator,
@@ -31,6 +32,10 @@ import {
   resampleOperator,
   rollingWindowOperator,
 } from '@superset-ui/chart-controls';
+import {
+  buildBigNumberPeriodQueries,
+  getBigNumberCustomPeriod,
+} from '../customComparison';
 
 export default function buildQuery(formData: QueryFormData) {
   const isRawMetric = formData.aggregation === 'raw';
@@ -53,6 +58,17 @@ export default function buildQuery(formData: QueryFormData) {
         ].filter(Boolean),
       },
     ];
+
+    const customPeriod = getBigNumberCustomPeriod(formData);
+    if (customPeriod) {
+      return [
+        buildCustomPeriodComparisonQuery(queries[0], {
+          ...customPeriod,
+          comparisonTimeRange: customPeriod.currentTimeRange,
+        }),
+        ...buildBigNumberPeriodQueries(baseQueryObject, customPeriod),
+      ];
+    }
 
     // Only add second query for raw metrics which need different query structure
     // All other aggregations (sum, mean, min, max, median, LAST_VALUE) can be computed client-side from trendline data

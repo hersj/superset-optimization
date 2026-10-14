@@ -19,6 +19,9 @@
 
 import {
   CurrencyFormatter,
+  CustomPeriodComparison,
+  getCustomComparisonBucketDate,
+  getPeriodDayCount,
   ensureIsArray,
   getSellerfoxSundayWeekLabel,
   getNumberFormatter,
@@ -190,7 +193,31 @@ export const getYAxisFormatter = (
 export function getTooltipTimeFormatter(
   format?: string,
   timeGrain?: string,
+  customPeriod?: CustomPeriodComparison,
 ): TimeFormatter | StringConstructor {
+  if (customPeriod) {
+    const currentDays = getPeriodDayCount(customPeriod.currentTimeRange);
+    const comparisonDays = getPeriodDayCount(customPeriod.comparisonTimeRange);
+    return new TimeFormatter({
+      id: 'custom_period_comparison',
+      formatFunc: date => {
+        const current = getCustomComparisonBucketDate(
+          date,
+          {
+            ...customPeriod,
+            comparisonTimeRange: customPeriod.currentTimeRange,
+          },
+          timeGrain,
+        );
+        const comparison = getCustomComparisonBucketDate(
+          date,
+          customPeriod,
+          timeGrain,
+        );
+        return `当前 ${current ?? '—'} / 对比 ${comparison ?? '—'}（当前 ${currentDays} 天 / 对比 ${comparisonDays} 天${currentDays !== comparisonDays ? '，期间长度不同' : ''}）`;
+      },
+    });
+  }
   if (timeGrain) {
     return getSmartDateVerboseFormatter(timeGrain);
   }

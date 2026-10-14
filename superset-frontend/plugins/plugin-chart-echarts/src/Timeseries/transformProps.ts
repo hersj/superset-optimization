@@ -27,6 +27,7 @@ import {
   CategoricalColorNamespace,
   CurrencyFormatter,
   ensureIsArray,
+  getCustomPeriodComparison,
   tooltipHtml,
   getCustomFormatter,
   getMetricLabel,
@@ -702,9 +703,13 @@ export default function transformProps(
     }
   }
 
+  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
+  const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
+    ? selectedPeriod
+    : undefined;
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla)
+      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod)
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
@@ -797,7 +802,11 @@ export default function transformProps(
     ? buildLegendGroupMetadata(legendInputs)
     : emptyLegendMetadata;
   const groupedLegendState = shouldGroupLogicalLegends
-    ? resolveLegendState(legendState, legendGroups)
+    ? resolveLegendState(
+        legendState,
+        legendGroups,
+        customPeriod?.comparisonTimeRange,
+      )
     : legendState;
   const legendData =
     colorByPrimaryAxis && groupBy.length === 0 && series.length > 0
@@ -1099,7 +1108,10 @@ export default function transformProps(
       scrollDataIndex: legendIndex || 0,
       ...(shouldGroupLogicalLegends
         ? {
-            formatter: (name: string) => legendGroups.labels[name] ?? name,
+            formatter: (name: string) =>
+              legendGroups.labels[name] === customPeriod?.comparisonTimeRange
+                ? '对比期间'
+                : (legendGroups.labels[name] ?? name),
           }
         : {}),
       data:

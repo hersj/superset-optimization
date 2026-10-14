@@ -99,3 +99,56 @@ describe('BigNumberWithTrendline buildQuery', () => {
     expect(queryContextSum.queries.length).toBe(1);
   });
 });
+
+const customPeriod = {
+  currentTimeRange: '2026-10-01 : 2026-10-14',
+  comparisonTimeRange: '2026-08-05 : 2026-09-05',
+  timeColumn: 'ds',
+};
+const customExtra = {
+  custom_form_data: { custom_period_comparison: customPeriod },
+};
+
+test('custom trend card preserves sparkline and queries independent aggregate A/B for rates', () => {
+  const metric = {
+    expressionType: 'SQL' as const,
+    sqlExpression: 'SUM(profit) / NULLIF(SUM(sales), 0)',
+    label: 'rate',
+    hasCustomLabel: true,
+    optionName: 'rate',
+    aggregate: null,
+    column: null,
+  };
+  const result = buildQuery({
+    datasource: '1__table',
+    viz_type: 'big_number',
+    metric,
+    aggregation: 'sum',
+    extra_form_data: customExtra,
+  });
+  expect(result.queries).toHaveLength(3);
+  expect(result.queries[0].columns).toEqual(['order_date']);
+  expect(result.queries.slice(1).map(query => query.time_range)).toEqual([
+    customPeriod.currentTimeRange,
+    customPeriod.comparisonTimeRange,
+  ]);
+  result.queries.slice(1).forEach(query => {
+    expect(query.metrics).toEqual([metric]);
+    expect(query.is_timeseries).toBe(false);
+    expect(query.columns).toEqual([]);
+    expect(query.post_processing).toEqual([]);
+  });
+});
+
+test('reads normalized extraFormData custom period', () => {
+  const result = buildQuery({
+    datasource: '1__table',
+    viz_type: 'big_number',
+    metric: 'profit',
+    extraFormData: customExtra,
+  });
+  expect(result.queries).toHaveLength(3);
+  expect(result.queries[result.queries.length - 1].time_range).toBe(
+    customPeriod.comparisonTimeRange,
+  );
+});

@@ -562,7 +562,7 @@ DEFAULT_FEATURE_FLAGS: dict[str, bool] = {
     # Enable support for date range timeshifts (e.g., "2015-01-03 : 2015-01-04")
     # in addition to relative timeshifts (e.g., "1 day ago")
     # @lifecycle: development
-    "DATE_RANGE_TIMESHIFTS_ENABLED": False,
+    "DATE_RANGE_TIMESHIFTS_ENABLED": True,
     # Enable granular export controls (can_export_data, can_export_image,
     # can_copy_clipboard) instead of the single can_csv permission
     # @lifecycle: development

@@ -27,6 +27,7 @@ jest.mock('@superset-ui/chart-controls', () => ({
 }));
 
 jest.mock('@superset-ui/core', () => ({
+  ...jest.requireActual('@superset-ui/core'),
   GenericDataType: { Temporal: 2, String: 1 },
   getMetricLabel: jest.fn(metric => metric),
   extractTimegrain: jest.fn(() => 'P1D'),
@@ -35,7 +36,7 @@ jest.mock('@superset-ui/core', () => ({
 
 jest.mock('../utils', () => ({
   getDateFormatter: jest.fn(() => (v: any) => `${v}pm`),
-  parseMetricValue: jest.fn(val => Number(val)),
+  parseMetricValue: jest.fn(val => (val == null ? null : Number(val))),
   getOriginalLabel: jest.fn((metric, metrics) => {
     console.log(metrics);
     return metric;
@@ -306,4 +307,98 @@ describe('BigNumberTotal transformProps', () => {
     expect(result.bigNumber).toBe(100);
     expect(result.subheader).toBe(baseFormData.subheader);
   });
+});
+
+const customPeriod = {
+  currentTimeRange: '2026-10-01 : 2026-10-14',
+  comparisonTimeRange: '2026-08-05 : 2026-09-05',
+  timeColumn: 'ds',
+};
+const customExtra = {
+  custom_form_data: { custom_period_comparison: customPeriod },
+};
+
+test.each([
+  { a: 13000, b: 31000, delta: '$-18000', rate: '-58.1%' },
+  { a: -50, b: -100, delta: '+$50', rate: '+50.0%' },
+  { a: 50, b: 0, delta: '+$50', rate: '—' },
+  { a: 0, b: 0, delta: '$0', rate: '—' },
+  { a: 50, b: null, delta: '—', rate: '—' },
+  { a: null, b: 100, delta: '—', rate: '—' },
+])(
+  'custom total card compares full periods: $a / $b',
+  ({ a, b, delta, rate }) => {
+    const result = transformProps({
+      width: 400,
+      height: 300,
+      formData: { metric: 'value', comparisonEnabled: false },
+      rawFormData: {
+        datasource: '1__table',
+        viz_type: 'big_number_total',
+        extra_form_data: customExtra,
+      },
+      queriesData: [
+        { data: [{ value: a }], coltypes: [] },
+        { data: [{ value: b }] },
+      ],
+      hooks: {},
+      datasource: {},
+    } as unknown as BigNumberTotalChartProps);
+    expect(result.bigNumber).toBe(a);
+    expect(result.subheader).toContain(`对比值 ${b === null ? '—' : `$${b}`}`);
+    expect(result.subheader).toContain(`差额 ${delta}`);
+    expect(result.subheader).toContain(`变化率 ${rate}`);
+    expect(result.subtitle).toContain('13 天');
+    expect(result.subtitle).toContain('31 天');
+    expect(result.subtitle).toContain('期间长度不同');
+  },
+);
+
+test.each([false, true])(
+  'normalized custom period respects raw OFF precedence: %s',
+  off => {
+    const result = transformProps({
+      width: 400,
+      height: 300,
+      formData: {
+        metric: 'value',
+        comparisonEnabled: false,
+        extraFormData: customExtra,
+      },
+      rawFormData: off
+        ? {
+            extra_form_data: {
+              custom_form_data: { custom_period_comparison: null },
+            },
+          }
+        : {},
+      queriesData: [
+        { data: [{ value: 100 }], coltypes: [] },
+        { data: [{ value: 50 }] },
+      ],
+      hooks: {},
+      datasource: {},
+    } as unknown as BigNumberTotalChartProps);
+    expect(result.subheader.includes('变化率 +100.0%')).toBe(!off);
+    expect(result.subheader.length === 0).toBe(off);
+  },
+);
+
+test('custom total card parses both period values through the existing metric parser', () => {
+  const result = transformProps({
+    width: 400,
+    height: 300,
+    formData: { metric: 'value', comparisonEnabled: false },
+    rawFormData: { extra_form_data: customExtra },
+    queriesData: [
+      { data: [{ value: '13000' }], coltypes: [] },
+      { data: [{ value: '31000' }] },
+    ],
+    hooks: {},
+    datasource: {},
+  } as unknown as BigNumberTotalChartProps);
+  expect(result.bigNumber).toBe(13000);
+  expect(result.subheader).toContain('对比值 $31000');
+  expect(result.subheader).toContain('差额 $-18000');
+  expect(result.subheader).toContain('变化率 -58.1%');
 });

@@ -77,7 +77,7 @@ export function createCustomPeriodComparison(
 }
 
 export function getCustomPeriodComparison(
-  formData: QueryFormData,
+  formData: Pick<QueryFormData, 'extra_form_data'>,
 ): CustomPeriodComparison | undefined {
   const value =
     formData.extra_form_data?.custom_form_data?.custom_period_comparison;
@@ -226,6 +226,51 @@ function bucket(value: unknown, start: number, grain: string): number {
   if (grain !== 'P1D')
     throw new Error(`Unsupported comparison time grain: ${grain}`);
   return (date.getTime() - start) / DAY;
+}
+
+/** Maps an aligned axis bucket to its real comparison date, including partial buckets. */
+export function getCustomComparisonBucketDate(
+  value: unknown,
+  period: CustomPeriodComparison,
+  timeGrain = 'P1D',
+): string | null {
+  const ordinal = bucket(value, bounds(period.currentTimeRange)[0], timeGrain);
+  const [start, end] = bounds(period.comparisonTimeRange);
+  const date = new Date(start);
+  const monthStep = timeGrain.startsWith('P1Y')
+    ? 12
+    : timeGrain.startsWith('P3M')
+      ? 3
+      : timeGrain === 'P1M'
+        ? 1
+        : 0;
+  const dayStep = timeGrain.startsWith('P1W') ? 7 : 1;
+  if (monthStep) {
+    date.setUTCDate(1);
+    if (timeGrain === 'P1Y_FISCAL') {
+      date.setUTCFullYear(
+        date.getUTCFullYear() - (date.getUTCMonth() < 3 ? 1 : 0),
+      );
+      date.setUTCMonth(3);
+    } else {
+      date.setUTCMonth(Math.floor(date.getUTCMonth() / monthStep) * monthStep);
+    }
+    date.setUTCMonth(date.getUTCMonth() + ordinal * monthStep);
+  } else {
+    if (dayStep === 7) {
+      const weekStart = timeGrain === 'P1W_SUN' ? 0 : 1;
+      date.setUTCDate(
+        date.getUTCDate() - ((date.getUTCDay() - weekStart + 7) % 7),
+      );
+    }
+    date.setUTCDate(date.getUTCDate() + ordinal * dayStep);
+  }
+  const next = new Date(date);
+  if (monthStep) next.setUTCMonth(next.getUTCMonth() + monthStep);
+  else next.setUTCDate(next.getUTCDate() + dayStep);
+  return date.getTime() < end && next.getTime() > start
+    ? date.toISOString().slice(0, 10)
+    : null;
 }
 
 /** Both periods are independently aggregated; missing rows never become zero. */

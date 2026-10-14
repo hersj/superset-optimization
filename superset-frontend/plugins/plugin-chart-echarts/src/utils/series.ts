@@ -160,6 +160,7 @@ export function buildLegendGroupMetadata(
 export function resolveLegendState(
   selected: LegendState | undefined,
   metadata: LegendGroupMetadata,
+  defaultComparisonOffset?: string,
 ): LegendState {
   const input = selected ?? {};
   const state: LegendState = { ...input };
@@ -187,7 +188,9 @@ export function resolveLegendState(
       selectedByRepresentative ??
       selectedByLabel ??
       legacyMemberState ??
-      kind !== 'comparison';
+      (kind !== 'comparison' ||
+        (defaultComparisonOffset !== undefined &&
+          label === defaultComparisonOffset));
 
     groupSelected[representative] = isSelected;
     state[stateKey] = isSelected;
