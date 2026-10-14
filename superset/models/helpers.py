@@ -1520,6 +1520,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     raise QueryObjectValidationError(
                         "Unable to identify the bound comparison time column"
                     )
+                query_object_clone.granularity = temporal_col
                 # Other date columns remain business filters, including their ranges.
                 query_object_clone.filter = [
                     flt
@@ -1815,17 +1816,34 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
     def _get_temporal_column_for_filter(  # noqa: C901
         self, query_object: QueryObject, x_axis_label: str | None
     ) -> str | None:
-        """Prefer the bound axis over independent date filters."""
-        if query_object.granularity:
-            return query_object.granularity
-        if x_axis_label:
-            return x_axis_label
-        temporal_columns = {
-            flt.get("col")
+        """Prefer a temporal axis; categorical axes do not bind date ranges."""
+        temporal_filters = [
+            flt
             for flt in query_object.filter
             if flt.get("op") == FilterOperator.TEMPORAL_RANGE
             and isinstance(flt.get("col"), str)
+        ]
+        temporal_columns = {flt["col"] for flt in temporal_filters}
+        for candidate in [query_object.granularity, x_axis_label]:
+            column = (
+                self.get_column(candidate)
+                if candidate and hasattr(self, "get_column")
+                else None
+            )
+            is_temporal = (
+                column.get("is_dttm")
+                if isinstance(column, dict)
+                else getattr(column, "is_dttm", False)
+            )
+            if candidate and (is_temporal or candidate in temporal_columns):
+                return candidate
+        matching_columns = {
+            flt["col"]
+            for flt in temporal_filters
+            if query_object.time_range and flt.get("val") == query_object.time_range
         }
+        if len(matching_columns) == 1:
+            return next(iter(matching_columns))
         return next(iter(temporal_columns)) if len(temporal_columns) == 1 else None
 
     def _process_date_range_offset(

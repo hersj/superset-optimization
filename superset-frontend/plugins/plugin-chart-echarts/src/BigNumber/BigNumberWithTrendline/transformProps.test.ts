@@ -331,7 +331,8 @@ test('custom trend card uses exact aggregate rate and retains daily sparkline', 
     [1, 0.1],
     [2, 0.5],
   ]);
-  expect(result.subtitle).toContain('13 天');
+  expect(result.subtitle).toBe('');
+  expect(result.subtitleTooltip).toContain('13 天');
 });
 
 test('custom trend card parses A/B consistently using the existing metric parser', () => {

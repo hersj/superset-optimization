@@ -69,30 +69,21 @@ function BigNumberVis({
     props.height * (showTrendLine ? 1 - PROPORTION.TRENDLINE : 1);
   const metricVisible = showMetricName && Boolean(props.metricName);
   const kickerVisible = showTimestamp && props.timestamp != null;
-  const visibleRows =
-    1 +
-    Number(metricVisible) +
-    Number(kickerVisible) +
-    Number(Boolean(subheader)) +
-    Number(Boolean(props.subtitle));
-  const requestedHeight =
-    textHeight *
-    (headerFontSize +
-      (metricVisible ? metricNameFontSize : 0) +
-      (kickerVisible ? kickerFontSize : 0) +
-      (subheader ? subheaderFontSize : 0) +
-      (props.subtitle ? subtitleFontSize : 0));
-  // Reserve margins and padding before fitting custom comparison text.
-  const heightScale =
-    customComparison && requestedHeight > 0
-      ? Math.min(
-          1,
-          Math.max(0, textHeight - visibleRows * theme.sizeUnit * 2 - 10) /
-            requestedHeight,
-        )
-      : 1;
-  const fitHeight = (height: number) =>
-    customComparison ? Math.max(1, height * heightScale) : height;
+  const comparisonLines =
+    customComparison && subheader ? subheader.split('\n') : [];
+  const comparisonHeight = comparisonLines.length * 16;
+  const extraTextRows = Number(metricVisible) + Number(kickerVisible);
+  // Keep readable 12px/16px stat rows; use the remaining budget for the main value.
+  const customHeaderHeight = Math.max(
+    16,
+    Math.min(
+      Math.floor(headerFontSize * textHeight),
+      textHeight -
+        comparisonHeight -
+        extraTextRows * 16 -
+        (extraTextRows + 1) * 4,
+    ),
+  );
 
   // Convert state to hooks
   const [elementsRendered, setElementsRendered] = useState(false);
@@ -121,7 +112,7 @@ function BigNumberVis({
   const getClassName = () => {
     const names = `superset-legacy-chart-big-number ${className} ${
       props.bigNumberFallback ? 'is-fallback-value' : ''
-    }`;
+    } ${customComparison ? 'custom-period-comparison' : ''}`;
     if (showTrendLine) return names;
     return `${names} no-trendline`;
   };
@@ -152,7 +143,7 @@ function BigNumberVis({
   };
 
   const renderMetricName = (availableHeight: number) => {
-    const maxHeight = fitHeight(availableHeight);
+    const maxHeight = customComparison ? 16 : availableHeight;
     const { metricName, width } = props;
     if (!showMetricName || !metricName) return null;
 
@@ -174,8 +165,11 @@ function BigNumberVis({
         ref={metricNameRef}
         className="metric-name"
         style={{
-          fontSize,
-          height: 'auto',
+          fontSize: customComparison ? 12 : fontSize,
+          height: customComparison ? 16 : 'auto',
+          ...(customComparison
+            ? { lineHeight: '16px', margin: 0, padding: 0, flexShrink: 0 }
+            : {}),
         }}
       >
         {text}
@@ -184,7 +178,7 @@ function BigNumberVis({
   };
 
   const renderKicker = (availableHeight: number) => {
-    const maxHeight = fitHeight(availableHeight);
+    const maxHeight = customComparison ? 16 : availableHeight;
     const { timestamp, width } = props;
     if (
       !formatTime ||
@@ -213,8 +207,11 @@ function BigNumberVis({
         ref={kickerRef}
         className="kicker"
         style={{
-          fontSize,
-          height: 'auto',
+          fontSize: customComparison ? 12 : fontSize,
+          height: customComparison ? 16 : 'auto',
+          ...(customComparison
+            ? { lineHeight: '16px', margin: 0, padding: 0, flexShrink: 0 }
+            : {}),
         }}
       >
         {text}
@@ -223,7 +220,7 @@ function BigNumberVis({
   };
 
   const renderHeader = (availableHeight: number) => {
-    const maxHeight = fitHeight(availableHeight);
+    const maxHeight = customComparison ? customHeaderHeight : availableHeight;
     const { bigNumber, width, colorThresholdFormatters, onContextMenu } = props;
     // Format bigNumber based on its type: null/undefined -> "No data", number -> format, else -> string
     let text: string;
@@ -259,14 +256,17 @@ function BigNumberVis({
 
     const container = createTemporaryContainer();
     document.body.append(container);
-    const fontSize = computeMaxFontSize({
+    const measuredFontSize = computeMaxFontSize({
       text,
-      maxWidth: width * 0.9, // reduced it's max width
+      maxWidth: customComparison ? width : width * 0.9,
       maxHeight,
       className: 'header-line',
       container,
     });
     container.remove();
+    const fontSize = customComparison
+      ? Math.max(12, Math.min(measuredFontSize, maxHeight - 4))
+      : measuredFontSize;
 
     const handleContextMenu = (e: MouseEvent<HTMLDivElement>) => {
       if (onContextMenu) {
@@ -283,7 +283,15 @@ function BigNumberVis({
           display: 'flex',
           alignItems: 'center',
           fontSize,
-          height: 'auto',
+          height: customComparison ? maxHeight : 'auto',
+          ...(customComparison
+            ? {
+                lineHeight: `${maxHeight}px`,
+                margin: 0,
+                padding: 0,
+                flexShrink: 0,
+              }
+            : {}),
           color: numberColor,
         }}
         onContextMenu={handleContextMenu}
@@ -294,51 +302,64 @@ function BigNumberVis({
   };
 
   const rendermetricComparisonSummary = (availableHeight: number) => {
-    const maxHeight = fitHeight(availableHeight);
     const { width } = props;
-    let fontSize = 0;
-
     const text = subheader;
-
-    if (text) {
-      const container = createTemporaryContainer();
-      document.body.append(container);
-      try {
-        const lines = customComparison ? text.split('\n') : [text];
-        fontSize = Math.min(
-          ...lines.map(line =>
-            computeMaxFontSize({
-              text: line,
-              maxWidth: width * 0.9,
-              maxHeight: maxHeight / lines.length,
-              className: 'subheader-line',
-              container,
-            }),
-          ),
-        );
-      } finally {
-        container.remove();
-      }
-
+    if (!text) return null;
+    if (customComparison) {
       return (
         <div
           ref={subheaderRef}
           className="subheader-line"
+          title={props.subtitleTooltip}
           style={{
-            fontSize,
-            height: maxHeight,
-            ...(customComparison ? { whiteSpace: 'pre-line' as const } : {}),
+            fontSize: 12,
+            height: comparisonHeight,
+            width: '100%',
+            margin: 0,
+            padding: 0,
+            flexShrink: 0,
           }}
         >
-          {text}
+          {comparisonLines.map(line => (
+            <div
+              key={line}
+              className="comparison-stat-line"
+              style={{ whiteSpace: 'nowrap', lineHeight: '16px' }}
+            >
+              {line}
+            </div>
+          ))}
         </div>
       );
     }
-    return null;
+    const container = createTemporaryContainer();
+    document.body.append(container);
+    let fontSize;
+    try {
+      fontSize = computeMaxFontSize({
+        text,
+        maxWidth: width * 0.9,
+        maxHeight: availableHeight,
+        className: 'subheader-line',
+        container,
+      });
+    } finally {
+      container.remove();
+    }
+    return (
+      <div
+        ref={subheaderRef}
+        className="subheader-line"
+        style={{ fontSize, height: availableHeight }}
+      >
+        {text}
+      </div>
+    );
   };
 
   const renderSubtitle = (availableHeight: number) => {
-    const maxHeight = fitHeight(availableHeight);
+    if (customComparison) return null;
+    const maxHeight = availableHeight;
     const { subtitle, width, bigNumber, bigNumberFallback } = props;
     let fontSize = 0;
 
@@ -443,7 +464,7 @@ function BigNumberVis({
   };
 
   const getTotalElementsHeight = () => {
-    const marginPerElement = 8; // theme.sizeUnit = 4, so margin-bottom = 8px
+    const marginPerElement = customComparison ? 4 : 8; // custom flex gap versus ordinary bottom margin
 
     const refs = [
       metricNameRef,
@@ -480,14 +501,21 @@ function BigNumberVis({
     const overflow = shouldApplyOverflow(allTextHeight);
 
     return (
-      <div className={componentClassName}>
+      <div
+        className={componentClassName}
+        title={props.subtitleTooltip}
+        style={customComparison ? { width: '100%' } : undefined}
+      >
         <div
           className="text-container"
           style={{
             height: allTextHeight,
+            ...(customComparison
+              ? { width: '100%', gap: 4, flexShrink: 0 }
+              : {}),
             ...(overflow
               ? {
-                  display: 'block',
+                  display: customComparison ? 'flex' : 'block',
                   boxSizing: 'border-box',
                   overflowX: 'hidden',
                   overflowY: 'auto',
@@ -525,11 +553,13 @@ function BigNumberVis({
   return (
     <div
       className={componentClassName}
+      title={props.subtitleTooltip}
       style={{
         height,
+        ...(customComparison ? { width: '100%' } : {}),
         ...(overflow
           ? {
-              display: 'block',
+              display: customComparison ? 'flex' : 'block',
               boxSizing: 'border-box',
               overflowX: 'hidden',
               overflowY: 'auto',
@@ -538,7 +568,14 @@ function BigNumberVis({
           : {}),
       }}
     >
-      <div className="text-container">
+      <div
+        className="text-container"
+        style={
+          customComparison
+            ? { width: '100%', gap: 4, flexShrink: 0 }
+            : undefined
+        }
+      >
         {renderFallbackWarning()}
         {renderMetricName((metricNameFontSize || 0) * height)}
         {renderKicker((kickerFontSize || 0) * height)}

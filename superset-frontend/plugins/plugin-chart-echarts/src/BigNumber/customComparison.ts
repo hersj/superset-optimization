@@ -23,7 +23,6 @@ import {
   QueryObject,
   QueryFormData,
   getCustomPeriodComparison,
-  getPeriodDayCount,
 } from '@superset-ui/core';
 import { parseMetricValue } from './utils';
 
@@ -63,16 +62,6 @@ export function buildBigNumberPeriodQueries(
   ];
 }
 
-export function getBigNumberPeriodLabel(
-  period: CustomPeriodComparison,
-): string {
-  const currentDays = getPeriodDayCount(period.currentTimeRange);
-  const comparisonDays = getPeriodDayCount(period.comparisonTimeRange);
-  return currentDays === comparisonDays
-    ? `两期均 ${currentDays} 天`
-    : `当前 ${currentDays} 天 · 对比 ${comparisonDays} 天（期间长度不同）`;
-}
-
 export function parseBigNumberPeriodValue(value: unknown): number | null {
   return typeof value === 'number' || typeof value === 'string'
     ? parseMetricValue(value)
@@ -100,5 +89,5 @@ export function formatBigNumberPeriodComparison(
     percentDifferenceNum === null
       ? '—'
       : `${percentDifferenceNum > 0 ? '+' : ''}${(percentDifferenceNum * 100).toFixed(1)}%`;
-  return `对比值 ${baseline}\n差额 ${delta} · 变化率 ${percent}`;
+  return `对比值 ${baseline}\n差额 ${delta}\n变化率 ${percent}`;
 }

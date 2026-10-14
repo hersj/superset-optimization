@@ -348,9 +348,10 @@ test.each([
     expect(result.subheader).toContain(`对比值 ${b === null ? '—' : `$${b}`}`);
     expect(result.subheader).toContain(`差额 ${delta}`);
     expect(result.subheader).toContain(`变化率 ${rate}`);
-    expect(result.subtitle).toContain('13 天');
-    expect(result.subtitle).toContain('31 天');
-    expect(result.subtitle).toContain('期间长度不同');
+    expect(result.subtitle).toBe('');
+    expect(result.subtitleTooltip).toContain('13 天');
+    expect(result.subtitleTooltip).toContain('31 天');
+    expect(result.subtitleTooltip).toContain('期间长度不同');
   },
 );
 
@@ -404,10 +405,10 @@ test('custom total card parses both period values through the existing metric pa
 });
 
 test.each([
-  { width: 222, height: 158 },
+  { width: 161.5, height: 92 },
   { width: 640, height: 300 },
 ])(
-  'custom card fits a compact comparison and keeps full period tooltip at $width × $height',
+  'custom card preserves three stats and full period tooltip at $width × $height',
   ({ width, height }) => {
     const result = transformProps({
       width,
@@ -425,18 +426,12 @@ test.each([
       hooks: {},
       datasource: {},
     } as unknown as BigNumberTotalChartProps);
-    expect(result.subheader?.split('\n')).toHaveLength(2);
-    expect(result.subtitle).not.toContain('2026-');
-    expect(result.subtitle).toContain('13 天');
-    expect(result.subtitle).toContain('31 天');
+    expect(result.subheader?.split('\n')).toHaveLength(3);
+    expect(result.subtitle).toBe('');
+    expect(result.subtitleTooltip).toContain('13 天');
+    expect(result.subtitleTooltip).toContain('31 天');
     expect(result.subtitleTooltip).toContain('2026-10-01');
     expect(result.subtitleTooltip).toContain('2026-08-05');
     expect(result.subtitleTooltip).toContain('按完整期间总量比较');
-    const rowBudget =
-      (result.headerFontSize +
-        result.subheaderFontSize +
-        result.subtitleFontSize) *
-      height;
-    expect(rowBudget + 3 * 8 + 10).toBeLessThanOrEqual(height);
   },
 );

@@ -357,6 +357,71 @@ class Contract(unittest.TestCase):
                 )
                 self.assertEqual(output["__timestamp"].tolist(), list(a))
 
+    def test_categorical_query_without_time_granularity_replaces_only_bound_date(self):
+        obj = query(
+            axis="shop_name",
+            start="2026-09-01",
+            end="2026-09-08",
+            offsets=["2026-08-05 : 2026-08-12"],
+        )
+        obj.granularity = None
+        obj.columns[0].update(
+            {
+                "sqlExpression": "shop_name",
+                "expressionType": "SQL",
+                "isColumnReference": True,
+            }
+        )
+        obj.filter[1]["col"] = "earliest_ship_date"
+        obj.filter.append(
+            {"col": "earliest_ship_date", "op": "TEMPORAL_RANGE", "val": "No filter"}
+        )
+        self.source.get_column = lambda col: SimpleNamespace(
+            is_dttm=col in {"earliest_ship_date", "other_date"}
+        )
+        current = pd.DataFrame({"shop_name": ["SW1-UK"], "metric": [11895.668808]})
+        comparison = pd.DataFrame({"shop_name": ["SW1-UK"], "metric": [9766.0]})
+
+        def execute(params):
+            self.calls.append(copy.deepcopy(params))
+            date_filters = [
+                f
+                for f in params["filter"]
+                if f["col"] == "earliest_ship_date" and f["op"] == "TEMPORAL_RANGE"
+            ]
+            is_comparison = (
+                len(date_filters) == 1
+                and date_filters[0]["val"]
+                == "2026-08-05 00:00:00 : 2026-08-12 00:00:00"
+            )
+            result = (
+                current
+                if params.get("time_offsets")
+                else (comparison if is_comparison else comparison.iloc[:0])
+            )
+            return SimpleNamespace(
+                df=result.copy(),
+                query="SELECT ... WHERE existing_rls",
+                status="success",
+            )
+
+        original = copy.deepcopy(obj.to_dict())
+        self.source.query = execute
+        output = self.source.get_query_result(obj).df
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(obj.to_dict(), original)
+        self.assertEqual(self.calls[1]["columns"], original["columns"])
+        self.assertEqual(output["metric__2026-08-05 : 2026-08-12"].tolist(), [9766.0])
+        self.assertEqual(self.calls[1]["granularity"], "earliest_ship_date")
+        self.assertIn(obj.filter[0], self.calls[1]["filter"])
+        self.assertIn(obj.filter[2], self.calls[1]["filter"])
+        self.assertFalse(
+            any(
+                f["col"] == "shop_name" and f["op"] == "TEMPORAL_RANGE"
+                for f in self.calls[1]["filter"]
+            )
+        )
+
     def test_categorical_axis_with_time_grain_pairs_business_keys_without_summing(self):
         obj = query(axis="shop")
         current = pd.DataFrame({"shop": ["SW1-UK", "A-only"], "metric": [0.12, 0.20]})
