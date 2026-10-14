@@ -1636,7 +1636,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             cache_keys.append(None)
 
             offset_metrics_df = result.df
-            if offset_metrics_df.empty:
+            if offset_metrics_df.empty and not is_date_range_offset:
                 offset_metrics_df = pd.DataFrame(
                     {
                         col: [np.NaN]
@@ -1849,7 +1849,16 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         )
         candidates += [DTTM_ALIAS]
         axis = next(
-            (name for name in candidates if name in join_keys and name in offset_df),
+            (
+                name
+                for name in candidates
+                if name in join_keys
+                and name in offset_df
+                and (
+                    dataframe_utils.is_datetime_series(df.get(name))
+                    or dataframe_utils.is_datetime_series(offset_df.get(name))
+                )
+            ),
             None,
         )
         if axis is None:

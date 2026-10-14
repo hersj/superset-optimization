@@ -36,6 +36,7 @@ import {
   formatBigNumberPeriodComparison,
   parseBigNumberPeriodValue,
   getBigNumberCustomPeriod,
+  getBigNumberPeriodLabel,
 } from '../customComparison';
 
 type ComparisonMode = 'previous' | 'year';
@@ -265,15 +266,20 @@ export default function transformProps(
     height,
     bigNumber,
     headerFormatter,
-    headerFontSize,
+    headerFontSize: customPeriod
+      ? Math.min(headerFontSize ?? 0.3, 0.35)
+      : headerFontSize,
     subheader: comparisonText || subheader || '',
-    subheaderFontSize,
-    subtitleFontSize: formattedSubtitleFontSize,
+    subheaderFontSize: customPeriod ? 0.25 : subheaderFontSize,
+    subtitleFontSize: customPeriod ? 0.125 : formattedSubtitleFontSize,
     subtitle: customPeriod
+      ? getBigNumberPeriodLabel(customPeriod)
+      : formattedSubtitle,
+    subtitleTooltip: customPeriod
       ? [formatCustomPeriodComparisonLabel(customPeriod), formattedSubtitle]
           .filter(Boolean)
           .join(' | ')
-      : formattedSubtitle,
+      : undefined,
     onContextMenu,
     refs,
     colorThresholdFormatters,

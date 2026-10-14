@@ -402,3 +402,41 @@ test('custom total card parses both period values through the existing metric pa
   expect(result.subheader).toContain('差额 $-18000');
   expect(result.subheader).toContain('变化率 -58.1%');
 });
+
+test.each([
+  { width: 222, height: 158 },
+  { width: 640, height: 300 },
+])(
+  'custom card fits a compact comparison and keeps full period tooltip at $width × $height',
+  ({ width, height }) => {
+    const result = transformProps({
+      width,
+      height,
+      formData: {
+        metric: 'value',
+        headerFontSize: 0.4,
+        comparisonEnabled: false,
+      },
+      rawFormData: { extra_form_data: customExtra },
+      queriesData: [
+        { data: [{ value: 13000 }], coltypes: [] },
+        { data: [{ value: 31000 }] },
+      ],
+      hooks: {},
+      datasource: {},
+    } as unknown as BigNumberTotalChartProps);
+    expect(result.subheader?.split('\n')).toHaveLength(2);
+    expect(result.subtitle).not.toContain('2026-');
+    expect(result.subtitle).toContain('13 天');
+    expect(result.subtitle).toContain('31 天');
+    expect(result.subtitleTooltip).toContain('2026-10-01');
+    expect(result.subtitleTooltip).toContain('2026-08-05');
+    expect(result.subtitleTooltip).toContain('按完整期间总量比较');
+    const rowBudget =
+      (result.headerFontSize +
+        result.subheaderFontSize +
+        result.subtitleFontSize) *
+      height;
+    expect(rowBudget + 3 * 8 + 10).toBeLessThanOrEqual(height);
+  },
+);

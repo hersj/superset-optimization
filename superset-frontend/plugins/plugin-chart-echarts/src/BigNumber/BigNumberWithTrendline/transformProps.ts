@@ -47,6 +47,7 @@ import {
   formatBigNumberPeriodComparison,
   parseBigNumberPeriodValue,
   getBigNumberCustomPeriod,
+  getBigNumberPeriodLabel,
 } from '../customComparison';
 
 const formatPercentChange = getNumberFormatter(
@@ -418,14 +419,17 @@ export default function transformProps(
     metricName: originalLabel,
     showMetricName,
     metricNameFontSize,
-    headerFontSize,
-    subtitleFontSize,
-    subtitle: customPeriod
+    headerFontSize: customPeriod
+      ? Math.min(headerFontSize ?? 0.3, 0.35)
+      : headerFontSize,
+    subtitleFontSize: customPeriod ? 0.125 : subtitleFontSize,
+    subtitle: customPeriod ? getBigNumberPeriodLabel(customPeriod) : subtitle,
+    subtitleTooltip: customPeriod
       ? [formatCustomPeriodComparisonLabel(customPeriod), subtitle]
           .filter(Boolean)
           .join(' | ')
-      : subtitle,
-    subheaderFontSize,
+      : undefined,
+    subheaderFontSize: customPeriod ? 0.25 : subheaderFontSize,
     mainColor,
     showTimestamp,
     showTrendLine,

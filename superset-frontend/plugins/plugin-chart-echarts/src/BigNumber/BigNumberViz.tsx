@@ -64,6 +64,36 @@ function BigNumberVis({
 }: BigNumberVizProps) {
   const theme = useTheme();
 
+  const customComparison = Boolean(props.subtitleTooltip);
+  const textHeight =
+    props.height * (showTrendLine ? 1 - PROPORTION.TRENDLINE : 1);
+  const metricVisible = showMetricName && Boolean(props.metricName);
+  const kickerVisible = showTimestamp && props.timestamp != null;
+  const visibleRows =
+    1 +
+    Number(metricVisible) +
+    Number(kickerVisible) +
+    Number(Boolean(subheader)) +
+    Number(Boolean(props.subtitle));
+  const requestedHeight =
+    textHeight *
+    (headerFontSize +
+      (metricVisible ? metricNameFontSize : 0) +
+      (kickerVisible ? kickerFontSize : 0) +
+      (subheader ? subheaderFontSize : 0) +
+      (props.subtitle ? subtitleFontSize : 0));
+  // Reserve margins and padding before fitting custom comparison text.
+  const heightScale =
+    customComparison && requestedHeight > 0
+      ? Math.min(
+          1,
+          Math.max(0, textHeight - visibleRows * theme.sizeUnit * 2 - 10) /
+            requestedHeight,
+        )
+      : 1;
+  const fitHeight = (height: number) =>
+    customComparison ? Math.max(1, height * heightScale) : height;
+
   // Convert state to hooks
   const [elementsRendered, setElementsRendered] = useState(false);
 
@@ -121,7 +151,8 @@ function BigNumberVis({
     );
   };
 
-  const renderMetricName = (maxHeight: number) => {
+  const renderMetricName = (availableHeight: number) => {
+    const maxHeight = fitHeight(availableHeight);
     const { metricName, width } = props;
     if (!showMetricName || !metricName) return null;
 
@@ -152,7 +183,8 @@ function BigNumberVis({
     );
   };
 
-  const renderKicker = (maxHeight: number) => {
+  const renderKicker = (availableHeight: number) => {
+    const maxHeight = fitHeight(availableHeight);
     const { timestamp, width } = props;
     if (
       !formatTime ||
@@ -190,7 +222,8 @@ function BigNumberVis({
     );
   };
 
-  const renderHeader = (maxHeight: number) => {
+  const renderHeader = (availableHeight: number) => {
+    const maxHeight = fitHeight(availableHeight);
     const { bigNumber, width, colorThresholdFormatters, onContextMenu } = props;
     // Format bigNumber based on its type: null/undefined -> "No data", number -> format, else -> string
     let text: string;
@@ -260,7 +293,8 @@ function BigNumberVis({
     );
   };
 
-  const rendermetricComparisonSummary = (maxHeight: number) => {
+  const rendermetricComparisonSummary = (availableHeight: number) => {
+    const maxHeight = fitHeight(availableHeight);
     const { width } = props;
     let fontSize = 0;
 
@@ -270,13 +304,18 @@ function BigNumberVis({
       const container = createTemporaryContainer();
       document.body.append(container);
       try {
-        fontSize = computeMaxFontSize({
-          text,
-          maxWidth: width * 0.9,
-          maxHeight,
-          className: 'subheader-line',
-          container,
-        });
+        const lines = customComparison ? text.split('\n') : [text];
+        fontSize = Math.min(
+          ...lines.map(line =>
+            computeMaxFontSize({
+              text: line,
+              maxWidth: width * 0.9,
+              maxHeight: maxHeight / lines.length,
+              className: 'subheader-line',
+              container,
+            }),
+          ),
+        );
       } finally {
         container.remove();
       }
@@ -288,6 +327,7 @@ function BigNumberVis({
           style={{
             fontSize,
             height: maxHeight,
+            ...(customComparison ? { whiteSpace: 'pre-line' as const } : {}),
           }}
         >
           {text}
@@ -297,7 +337,8 @@ function BigNumberVis({
     return null;
   };
 
-  const renderSubtitle = (maxHeight: number) => {
+  const renderSubtitle = (availableHeight: number) => {
+    const maxHeight = fitHeight(availableHeight);
     const { subtitle, width, bigNumber, bigNumberFallback } = props;
     let fontSize = 0;
 
@@ -331,6 +372,7 @@ function BigNumberVis({
           <div
             ref={subtitleRef}
             className="subtitle-line subheader-line"
+            title={props.subtitleTooltip}
             style={{
               fontSize: `${fontSize}px`,
               height: maxHeight,

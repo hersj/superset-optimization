@@ -79,7 +79,7 @@ class Contract(unittest.TestCase):
         class Cache:
             def __init__(self, key):
                 self.key = key
-                self.is_loaded = key in cache_values
+                self.is_loaded = bool(key) and key in cache_values
                 if self.is_loaded:
                     self.df = cache_values[key]["df"].copy()
                     self.query = cache_values[key]["query"]
@@ -356,6 +356,48 @@ class Contract(unittest.TestCase):
                     output["metric__2026-08-05 : 2026-08-08"].tolist(), [10, 20]
                 )
                 self.assertEqual(output["__timestamp"].tolist(), list(a))
+
+    def test_categorical_axis_with_time_grain_pairs_business_keys_without_summing(self):
+        obj = query(axis="shop")
+        current = pd.DataFrame({"shop": ["SW1-UK", "A-only"], "metric": [0.12, 0.20]})
+        comparison = pd.DataFrame(
+            {"shop": ["SW1-UK", "B-only"], "metric": [0.10, 0.30]}
+        )
+        output = self.run_offset(current, comparison, obj).set_index("shop")
+        baseline = "metric__2026-08-05 : 2026-08-08"
+        self.assertEqual(set(output.index), {"SW1-UK", "A-only", "B-only"})
+        self.assertEqual(output.loc["SW1-UK", "metric"], 0.12)
+        self.assertEqual(output.loc["SW1-UK", baseline], 0.10)
+        self.assertTrue(pd.isna(output.loc["A-only", baseline]))
+        self.assertTrue(pd.isna(output.loc["B-only", "metric"]))
+        self.assertEqual(output.loc["B-only", baseline], 0.30)
+
+    def test_categorical_date_like_strings_are_not_temporal_buckets(self):
+        obj = query(axis="shop")
+        current = pd.DataFrame({"shop": ["2026-10-01"], "metric": [0.12]})
+        comparison = pd.DataFrame({"shop": ["2026-10-01"], "metric": [0.10]})
+        output = self.run_offset(current, comparison, obj)
+        self.assertEqual(output["shop"].tolist(), ["2026-10-01"])
+        self.assertEqual(output["metric__2026-08-05 : 2026-08-08"].tolist(), [0.10])
+
+    def test_empty_current_and_both_empty_categorical_axes_keep_business_keys(self):
+        obj = query(axis="shop")
+        current = pd.DataFrame(
+            {"shop": pd.Series(dtype="object"), "metric": pd.Series(dtype="float")}
+        )
+        comparison = pd.DataFrame({"shop": ["SW1-UK"], "metric": [0.10]})
+        output = self.run_offset(current, comparison, obj)
+        self.assertEqual(output["shop"].tolist(), ["SW1-UK"])
+        self.assertTrue(pd.isna(output["metric"].iloc[0]))
+        self.assertEqual(output["metric__2026-08-05 : 2026-08-08"].tolist(), [0.10])
+        empty_baseline = self.run_offset(comparison, current.copy(), obj)
+        self.assertEqual(empty_baseline["shop"].tolist(), ["SW1-UK"])
+        self.assertTrue(
+            pd.isna(empty_baseline["metric__2026-08-05 : 2026-08-08"].iloc[0])
+        )
+        both_empty = self.run_offset(current, current.copy(), obj)
+        self.assertTrue(both_empty.empty)
+        self.assertIn("shop", both_empty.columns)
 
     def test_no_axis_ratio_is_not_summed(self):
         obj = query()
