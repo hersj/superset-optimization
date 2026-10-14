@@ -10,6 +10,7 @@ import {
   getPeriodDayCount,
 } from '@superset-ui/core';
 import { useTheme } from '@apache-superset/core/theme';
+import dayjs from 'dayjs';
 import {
   DEFAULT_PRESETS,
   TIME_GRAIN_OPTIONS,
@@ -541,6 +542,7 @@ function getCustomComparisonDraft(
   range: string,
   mode: SelectionMode,
   state: CustomComparisonDraft,
+  grain: string,
 ) {
   if (state.customComparisonMode !== 'custom')
     return { period: null, error: undefined };
@@ -551,13 +553,53 @@ function getCustomComparisonDraft(
   if (!isValidIsoDate(state.comparisonStartDate))
     return { period: null, error: '请选择有效的对比开始日期。' };
   try {
-    // Date-only arithmetic keeps periods equally long across month/year boundaries.
+    // Validate finite half-open dates before deriving calendar progress.
     const days = getPeriodDayCount(range);
+    let endExclusive = addDays(state.comparisonStartDate, days);
+    if (['month', 'quarter', 'year', 'fiscal_year'].includes(grain)) {
+      const { start, endExclusive: currentEnd } = parseRange(range);
+      const fiscal =
+        grain === 'fiscal_year' ? getRestoredFiscalYearRange(range) : null;
+      if (fiscal) {
+        // Preserve the existing March 31 exclusive FY cutoff, including its one-day shortfall.
+        endExclusive = subtractDays(
+          dayjs(state.comparisonStartDate)
+            .add((fiscal.end - fiscal.start + 1) * 12, 'month')
+            .format('YYYY-MM-DD'),
+          1,
+        );
+      } else {
+        const [startYear, startMonth] = start.split('-').map(Number);
+        const [endYear, endMonth] = currentEnd.split('-').map(Number);
+        let months = (endYear - startYear) * 12 + endMonth - startMonth;
+        let anchor = dayjs(start).add(months, 'month').format('YYYY-MM-DD');
+        if (anchor > currentEnd) {
+          months -= 1;
+          anchor = dayjs(start).add(months, 'month').format('YYYY-MM-DD');
+        }
+        // A partial unit retains its actual remainder rather than expanding the current period.
+        const remainingDays =
+          anchor === currentEnd
+            ? 0
+            : getPeriodDayCount(`${anchor} : ${currentEnd}`);
+        const comparisonAnchor = dayjs(state.comparisonStartDate)
+          .add(months, 'month')
+          .format('YYYY-MM-DD');
+        endExclusive = addDays(comparisonAnchor, remainingDays);
+        // A partial month must not spill beyond the corresponding shorter B month.
+        const nextComparisonAnchor = dayjs(state.comparisonStartDate)
+          .add(months + 1, 'month')
+          .format('YYYY-MM-DD');
+        if (endExclusive > nextComparisonAnchor) {
+          endExclusive = nextComparisonAnchor;
+        }
+      }
+    }
     return {
       period: createCustomPeriodComparison(
         range,
         state.comparisonStartDate,
-        addDays(state.comparisonStartDate, days - 1),
+        subtractDays(endExclusive, 1),
       ),
       error: undefined,
     };
@@ -660,7 +702,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       : getRestoredFiscalYearRange(savedRange);
   const initialGrain = getEffectiveGrain(
     filterState?.value,
-    (ownState.activeGrain as string | undefined) ||
+    (enableCustomComparison
+      ? (filterState?.grain as string | undefined)
+      : undefined) ||
+      (ownState.activeGrain as string | undefined) ||
       (filterState?.grain as string | undefined) ||
       defaultGrain,
     savedRange,
@@ -898,6 +943,7 @@ export default function CustomTimeFilterPlugin(props: any) {
         timeRange,
         mode,
         comparisonState,
+        grainKey,
       );
       const customPeriod = comparisonDraft.period
         ? { ...comparisonDraft.period, ...(timeColumn ? { timeColumn } : {}) }
@@ -2418,6 +2464,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     visibleRange,
     selectionMode,
     { customComparisonMode, comparisonStartDate },
+    activeGrain,
   );
   const changeComparison = (next: CustomComparisonDraft) => {
     setCustomComparisonMode(next.customComparisonMode);
@@ -2428,7 +2475,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     comparisonDraft.period?.comparisonTimeRange || '',
   );
   const comparisonLabel = comparisonDraft.period
-    ? `对比：${comparisonBounds.start} ～ ${subtractDays(comparisonBounds.endExclusive, 1)}（${getPeriodDayCount(comparisonDraft.period.comparisonTimeRange)}天）`
+    ? `对比：${comparisonBounds.start} ～ ${subtractDays(comparisonBounds.endExclusive, 1)}（${getPeriodDayCount(comparisonDraft.period.comparisonTimeRange)}天） · 当前${getPeriodDayCount(comparisonDraft.period.currentTimeRange)}天`
     : '';
   const comparisonStatus =
     enableCustomComparison &&
@@ -2498,7 +2545,19 @@ export default function CustomTimeFilterPlugin(props: any) {
                 width={props.width}
               />
               <div style={styles.hint}>
-                只需选择对比开始日期；天数随当前期间自动同步。
+                只需选择对比开始日期；
+                {(
+                  {
+                    month: '月数',
+                    quarter: '季度数',
+                    year: '年数',
+                    fiscal_year: '财年数',
+                  } as Record<string, string>
+                )[activeGrain] || '天数'}
+                随当前期间自动同步。
+                {['month', 'quarter', 'year', 'fiscal_year'].includes(
+                  activeGrain,
+                ) && '局部期间按相同日期进度，实际天数可能不同。'}
               </div>
               {comparisonDraft.error && (
                 <div role="alert">{comparisonDraft.error}</div>

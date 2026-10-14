@@ -464,6 +464,163 @@ class Contract(unittest.TestCase):
         self.assertTrue(both_empty.empty)
         self.assertIn("shop", both_empty.columns)
 
+    def test_calendar_month_and_quarter_units_keep_independent_ranges_without_tail(
+        self,
+    ):
+        for grain, current_dates, comparison_dates in [
+            (
+                "P1M",
+                ["2026-07-01", "2026-08-01", "2026-09-01"],
+                ["2026-04-01", "2026-05-01", "2026-06-01"],
+            ),
+            ("P3M", ["2026-07-01"], ["2026-04-01"]),
+            ("P3M_FISCAL", ["2026-07-01"], ["2026-04-01"]),
+        ]:
+            with self.subTest(grain=grain):
+                obj = query(
+                    grain=grain,
+                    start="2026-07-01",
+                    end="2026-10-01",
+                    offsets=["2026-04-01 : 2026-07-01"],
+                )
+                expected = list(range(1, len(comparison_dates) + 1))
+                output = self.run_offset(
+                    frame(current_dates, [100] * len(current_dates)),
+                    frame([*comparison_dates, "2026-07-01"], [*expected, 999]),
+                    obj,
+                )
+                self.assertEqual(len(output), len(current_dates))
+                self.assertEqual(
+                    output["metric__2026-04-01 : 2026-07-01"].tolist(), expected
+                )
+                request = self.calls[-1]
+                self.assertEqual(request["from_dttm"], datetime(2026, 4, 1))
+                self.assertEqual(request["to_dttm"], datetime(2026, 7, 1))
+                self.assertEqual(request["time_range"], "2026-04-01 : 2026-07-01")
+                self.assertEqual(request["granularity"], "event_date")
+                self.assertEqual(request["columns"], obj.columns)
+                self.assertIsNone(request["inner_from_dttm"])
+                self.assertIsNone(request["inner_to_dttm"])
+                self.assertEqual(
+                    [f["val"] for f in request["filter"] if f["col"] == "event_date"],
+                    ["2026-04-01 00:00:00 : 2026-07-01 00:00:00"],
+                )
+                self.assertIn(obj.filter[0], request["filter"])
+
+    def test_calendar_year_and_fiscal_year_do_not_extend_shorter_baseline(self):
+        for grain, start, end, b_start, b_end in [
+            ("P1Y", "2024-01-01", "2025-01-01", "2023-01-01", "2024-01-01"),
+            ("P1Y_FISCAL", "2023-04-01", "2024-03-31", "2022-04-01", "2023-03-31"),
+        ]:
+            with self.subTest(grain=grain):
+                offset = f"{b_start} : {b_end}"
+                obj = query(grain=grain, start=start, end=end, offsets=[offset])
+                expected = 0.10
+                if grain == "P1Y_FISCAL":
+                    # Model the SQL boundary before its one-row fiscal-year aggregation.
+                    records = frame(
+                        [b_start, "2023-03-30", b_end, "2023-04-01"],
+                        [10, 20, 999, 9999],
+                    )
+
+                    def execute(params, records=records, b_start=b_start):
+                        self.calls.append(copy.deepcopy(params))
+                        selected = records.copy()
+                        for condition in params["filter"]:
+                            if (
+                                condition["col"] == "event_date"
+                                and condition["op"] == "TEMPORAL_RANGE"
+                            ):
+                                low, high = bounds(condition["val"])
+                                selected = selected[
+                                    (selected["__timestamp"] >= low)
+                                    & (selected["__timestamp"] < high)
+                                ]
+                        result = frame([b_start], [selected["metric"].sum()])
+                        return SimpleNamespace(
+                            df=result,
+                            query="SELECT SUM(metric) ... WHERE existing_rls",
+                            status="success",
+                        )
+
+                    self.source.query = execute
+                    expected = 30
+                output = self.run_offset(
+                    frame([start], [0.12]), frame([b_start, b_end], [0.10, 999]), obj
+                )
+                self.assertEqual(len(output), 1)
+                self.assertEqual(output[f"metric__{offset}"].tolist(), [expected])
+                self.assertEqual(self.calls[-1]["time_range"], offset)
+                self.assertEqual(
+                    self.calls[-1]["to_dttm"], datetime.fromisoformat(b_end)
+                )
+
+    def test_daily_month_selection_preserves_92_current_and_only_91_baseline_days(self):
+        obj = query(
+            start="2026-07-01", end="2026-10-01", offsets=["2026-04-01 : 2026-07-01"]
+        )
+        output = self.run_offset(
+            frame(pd.date_range("2026-07-01", "2026-09-30"), [100] * 92),
+            frame(pd.date_range("2026-04-01", "2026-07-01"), [*range(1, 92), 999]),
+            obj,
+        ).sort_values("__timestamp")
+        baseline = output["metric__2026-04-01 : 2026-07-01"]
+        self.assertEqual(len(output), 92)
+        self.assertEqual(baseline.iloc[:-1].tolist(), list(range(1, 92)))
+        self.assertTrue(pd.isna(baseline.iloc[-1]))
+        self.assertNotIn(999, baseline.tolist())
+        self.assertEqual(self.calls[-1]["to_dttm"], datetime(2026, 7, 1))
+
+    def test_daily_leap_year_differences_preserve_real_buckets_not_extra_end_dates(
+        self,
+    ):
+        for start, end, b_start, b_end, a_days, b_days in [
+            ("2024-01-01", "2025-01-01", "2023-01-01", "2024-01-01", 366, 365),
+            ("2023-01-01", "2024-01-01", "2024-01-01", "2025-01-01", 365, 366),
+        ]:
+            with self.subTest(current_days=a_days):
+                offset = f"{b_start} : {b_end}"
+                obj = query(start=start, end=end, offsets=[offset])
+                current_dates = pd.date_range(start, end, inclusive="left")
+                comparison_dates = pd.date_range(b_start, b_end, inclusive="both")
+                output = self.run_offset(
+                    frame(current_dates, [100] * a_days),
+                    frame(comparison_dates, [*range(1, b_days + 1), 999]),
+                    obj,
+                ).sort_values("__timestamp")
+                baseline = output[f"metric__{offset}"]
+                self.assertEqual(len(output), max(a_days, b_days))
+                self.assertEqual(baseline.dropna().tolist(), list(range(1, b_days + 1)))
+                self.assertNotIn(999, baseline.tolist())
+                missing_column = "metric" if b_days > a_days else f"metric__{offset}"
+                self.assertTrue(pd.isna(output[missing_column].iloc[-1]))
+                self.assertEqual(
+                    self.calls[-1]["to_dttm"], datetime.fromisoformat(b_end)
+                )
+
+    def test_calendar_categories_keep_whole_period_ratios_by_business_key(self):
+        obj = query(
+            axis="shop_name",
+            grain="P1M",
+            start="2026-07-01",
+            end="2026-10-01",
+            offsets=["2026-04-01 : 2026-07-01"],
+        )
+        current = pd.DataFrame(
+            {"shop_name": ["SW1-UK", "A-only"], "metric": [0.12, 0.20]}
+        )
+        comparison = pd.DataFrame(
+            {"shop_name": ["SW1-UK", "B-only"], "metric": [0.10, 0.30]}
+        )
+        output = self.run_offset(current, comparison, obj).set_index("shop_name")
+        baseline = "metric__2026-04-01 : 2026-07-01"
+        self.assertEqual(set(output.index), {"SW1-UK", "A-only", "B-only"})
+        self.assertEqual(output.loc["SW1-UK", baseline], 0.10)
+        self.assertEqual(output.loc["B-only", baseline], 0.30)
+        self.assertTrue(pd.isna(output.loc["A-only", baseline]))
+        self.assertTrue(pd.isna(output.loc["B-only", "metric"]))
+        self.assertEqual(self.calls[-1]["to_dttm"], datetime(2026, 7, 1))
+
     def test_no_axis_ratio_is_not_summed(self):
         obj = query()
         obj.columns = []

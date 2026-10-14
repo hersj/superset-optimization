@@ -26,15 +26,15 @@ import CustomTimeFilterPlugin from './CustomTimeFilterPlugin';
 import { checkIsApplyDisabled } from 'src/dashboard/components/nativeFilters/FilterBar/utils';
 
 const range = '2026-10-01 : 2026-10-14';
-function mount(enabled = true, currentRange = range) {
+function mount(enabled = true, currentRange = range, grain = 'day') {
   const setDataMask = jest.fn();
   const props = {
     formData: {
       groupby: ['biz_date'],
-      defaultGrain: 'day',
+      defaultGrain: grain,
       enableCustomComparison: enabled,
     },
-    filterState: { value: currentRange, grain: 'day' },
+    filterState: { value: currentRange, grain },
     ownState: {},
     setDataMask,
     width: 215,
@@ -381,4 +381,152 @@ test('fiscal comparison explains start-only selection while current retains rang
   expect(
     current.getByText(/继续单击第二个财年选择连续区间/),
   ).toBeInTheDocument();
+});
+
+test.each([
+  ['month', '2026-07-01 : 2026-10-01', '2026-04-01', '2026-07-01'],
+  ['quarter', '2026-07-01 : 2026-10-01', '2026-04-01', '2026-07-01'],
+  ['month', '2025-11-01 : 2026-02-01', '2024-12-01', '2025-03-01'],
+  ['year', '2026-01-01 : 2027-01-01', '2024-01-01', '2025-01-01'],
+  ['year', '2024-01-01 : 2025-01-01', '2025-01-01', '2026-01-01'],
+  ['fiscal_year', '2026-04-01 : 2027-03-31', '2023-04-01', '2024-03-31'],
+  ['fiscal_year', '2024-04-01 : 2026-03-31', '2022-04-01', '2024-03-31'],
+  ['fiscal_year', '2026-04-01 : 2027-03-31', '2023-05-15', '2024-05-14'],
+  ['month', '2026-01-31 : 2026-02-28', '2024-01-31', '2024-02-29'],
+  ['month', '2024-01-31 : 2024-02-29', '2025-01-31', '2025-02-28'],
+  ['month', '2026-01-01 : 2026-01-13', '2025-02-20', '2025-03-04'],
+  ['month', '2026-01-01 : 2026-01-31', '2025-02-01', '2025-03-01'],
+  ['year', '2026-01-01 : 2026-01-31', '2024-02-01', '2024-03-01'],
+  ['year', '2026-01-01 : 2026-01-31', '2025-02-01', '2025-03-01'],
+  ['year', '2024-01-01 : 2024-02-29', '2025-01-01', '2025-03-01'],
+  ['year', '2025-01-01 : 2025-02-28', '2024-01-01', '2024-02-28'],
+  ['year', '2026-01-01 : 2026-10-13', '2024-01-01', '2024-10-13'],
+  ['quarter', '2026-07-01 : 2026-09-13', '2024-04-01', '2024-06-13'],
+  ['fiscal_year', '2026-04-01 : 2026-10-13', '2024-04-01', '2024-10-13'],
+  ['day', '2026-07-01 : 2026-10-01', '2026-04-01', '2026-07-02'],
+  ['week', '2026-08-02 : 2026-08-16', '2026-07-05', '2026-07-19'],
+])(
+  'A %s %s derives calendar end from B %s',
+  (grain, currentRange, start, end) => {
+    const { setDataMask } = mount(true, currentRange, grain);
+    chooseCustom();
+    startDate(start);
+    const mask = lastMask(setDataMask);
+    expect(
+      mask.extraFormData.custom_form_data.custom_period_comparison,
+    ).toEqual({
+      currentTimeRange: currentRange,
+      comparisonTimeRange: `${start} : ${end}`,
+      timeColumn: 'biz_date',
+    });
+    expect(mask.filterState.value).toBe(currentRange);
+    expect(mask.filterState.grain).toBe(grain);
+    const [aStart, aEnd] = currentRange.split(' : ');
+    const aDays = (Date.parse(aEnd) - Date.parse(aStart)) / 86400000;
+    const bDays = (Date.parse(end) - Date.parse(start)) / 86400000;
+    expect(screen.getByRole('status')).toHaveTextContent(`（${bDays}天）`);
+    expect(screen.getByRole('status')).toHaveTextContent(`当前${aDays}天`);
+  },
+);
+
+test('A month calendar rule ignores B navigation grain and uses newly applied A grain', () => {
+  const { setDataMask } = mount(true, '2026-07-01 : 2026-10-01', 'month');
+  chooseCustom();
+  startDate('2026-04-01');
+  const picker = within(screen.getByRole('group', { name: '对比开始日期' }));
+  fireEvent.click(picker.getByRole('button', { name: '按财年' }));
+  fireEvent.click(picker.getByRole('button', { name: '2026财年' }));
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison.comparisonTimeRange,
+  ).toBe('2026-04-01 : 2026-07-01');
+  expect(lastMask(setDataMask).filterState.grain).toBe('month');
+  expect(screen.getByRole('group', { name: '对比期间' })).toHaveTextContent(
+    '月数随当前期间',
+  );
+  const current = within(screen.getByRole('group', { name: '当前期间' }));
+  fireEvent.click(current.getByRole('button', { name: '按天' }));
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison.comparisonTimeRange,
+  ).toBe('2026-04-01 : 2026-07-02');
+  expect(screen.getByRole('group', { name: '对比期间' })).toHaveTextContent(
+    '天数随当前期间',
+  );
+});
+
+test('calendar restore ignores an old equal-days end and tracks external A period changes', () => {
+  const setDataMask = jest.fn();
+  const formData = { groupby: ['biz_date'], enableCustomComparison: true };
+  const custom = {
+    customComparisonMode: 'custom',
+    comparisonStartDate: '2026-04-01',
+    comparisonEndDate: '2026-07-01',
+  };
+  const { rerender } = render(
+    <CustomTimeFilterPlugin
+      formData={formData}
+      filterState={{
+        value: '2026-07-01 : 2026-10-01',
+        grain: 'quarter',
+        ...custom,
+      }}
+      setDataMask={setDataMask}
+      width={215}
+    />,
+  );
+  expect(lastMask(setDataMask).filterState.comparisonEndDate).toBe(
+    '2026-06-30',
+  );
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison.comparisonTimeRange,
+  ).toBe('2026-04-01 : 2026-07-01');
+  rerender(
+    <CustomTimeFilterPlugin
+      formData={formData}
+      filterState={{
+        value: '2026-07-01 : 2027-01-01',
+        grain: 'month',
+        ...custom,
+      }}
+      setDataMask={setDataMask}
+      width={215}
+    />,
+  );
+  expect(lastMask(setDataMask).filterState.comparisonEndDate).toBe(
+    '2026-09-30',
+  );
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison.comparisonTimeRange,
+  ).toBe('2026-04-01 : 2026-10-01');
+  expect(screen.getByRole('status')).toHaveTextContent(
+    '2026-04-01 ～ 2026-09-30',
+  );
+});
+
+test('restored calendar grain wins over stale ownState and matches the published range', () => {
+  const setDataMask = jest.fn();
+  render(
+    <CustomTimeFilterPlugin
+      formData={{ groupby: ['biz_date'], enableCustomComparison: true }}
+      filterState={{
+        value: '2026-07-01 : 2026-10-01',
+        grain: 'month',
+        customComparisonMode: 'custom',
+        comparisonStartDate: '2026-04-01',
+      }}
+      ownState={{ activeGrain: 'day' }}
+      setDataMask={setDataMask}
+      width={215}
+    />,
+  );
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison.comparisonTimeRange,
+  ).toBe('2026-04-01 : 2026-07-01');
+  expect(screen.getByRole('status')).toHaveTextContent(
+    '2026-04-01 ～ 2026-06-30（91天）',
+  );
 });

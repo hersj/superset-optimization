@@ -1073,7 +1073,9 @@ test.each([
     const comparisonKey = legend.data.find(name => name.includes(offset));
     expect(comparisonKey).toBeDefined();
     if (!comparisonKey) throw new Error('Missing comparison legend');
-    expect(legend.formatter(comparisonKey)).toBe('对比期间');
+    expect(legend.formatter(comparisonKey)).toBe(
+      grain === 'P1M' ? '对比 2026-08-05 ～ 09-17' : '对比 2026-08-12 ～ 08-15',
+    );
     const selected = transformed.echartOptions.legend as {
       selected: Record<string, boolean>;
     };
@@ -1110,11 +1112,51 @@ test.each([
         value: [timestamp, 80],
       },
     ]);
-    expect(html).toContain(currentDate);
-    expect(html).toContain(comparisonDate);
+    const tooltipDOM = document.createElement('div');
+    tooltipDOM.innerHTML = html;
+    expect(tooltipDOM.querySelectorAll('thead th')).toHaveLength(3);
+    expect(tooltipDOM.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(html.match(/配送销售额/g)).toHaveLength(1);
+    expect(html).not.toContain(offset);
+    expect(tooltipDOM.querySelectorAll('thead th')[1].textContent).toContain(
+      grain === 'P1M' ? '2026年10月' : currentDate,
+    );
+    expect(tooltipDOM.querySelectorAll('thead th')[2].textContent).toContain(
+      grain === 'P1M' ? '2026年8月' : comparisonDate,
+    );
     expect(html).toContain(`${currentDays} 天`);
     expect(html).toContain(`${comparisonDays} 天`);
     expect(html).toContain('期间长度不同');
+    const offProps = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...chartProps.rawFormData,
+        extra_form_data: {
+          ...chartProps.rawFormData.extra_form_data,
+          time_compare: [],
+        },
+      } as EchartsMixedTimeseriesFormData,
+      queriesData: [
+        createTestQueryData([{ 配送销售额: 100, ds: timestamp }]),
+        createTestQueryData([{ 毛利率: 0.2, ds: timestamp }]),
+      ],
+    });
+    offProps.queriesData.forEach(query => {
+      query.colnames = ['ds'];
+      query.coltypes = [GenericDataType.Temporal];
+    });
+    const offTooltip = transformProps(offProps).echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    const offDOM = document.createElement('div');
+    offDOM.innerHTML = offTooltip.formatter([
+      { seriesId: '配送销售额', marker: '', value: [timestamp, 100] },
+    ]);
+    expect(offDOM.querySelector('thead')).toBeNull();
+    expect(offDOM.textContent).not.toContain('对比');
   },
 );
 
@@ -1174,5 +1216,86 @@ test.each([
     expect(legend.data).toHaveLength(1);
     const [comparisonKey] = legend.data;
     expect(legend.selected[comparisonKey]).toBe(true);
+    const tooltip = result.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    const tooltipDOM = document.createElement('div');
+    tooltipDOM.innerHTML = tooltip.formatter([
+      {
+        seriesId: `配送销售额__${offset}`,
+        marker: '',
+        value: [1785859200000, 20],
+      },
+      {
+        seriesId: `毛利率__${offset}`,
+        marker: '',
+        value: [1785859200000, 0.1],
+      },
+    ]);
+    const label = {
+      values: '对比',
+      difference: '差额',
+      percentage: '变化率',
+      ratio: '比值',
+    }[style];
+    expect(tooltipDOM.querySelectorAll('thead th')[2].textContent).toContain(
+      label,
+    );
+    expect(tooltipDOM.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(tooltipDOM.querySelectorAll('tbody td')[1].textContent).toBe('—');
+    expect(tooltipDOM.innerHTML).not.toContain(offset);
+  },
+);
+
+test.each([
+  ['P1D', '2026-12-31T16:00:00Z', '2027-01-01'],
+  ['P1M', '2026-12-31T16:00:00Z', '2027年1月'],
+  ['P3M', '2026-06-30T16:00:00Z', '2026年7–9月'],
+  ['P1Y', '2026-12-31T16:00:00Z', '2027年'],
+  ['P1Y_FISCAL', '2026-03-31T16:00:00Z', '2026财年'],
+])(
+  'mixed CustomTime OFF uses %s units for axis and current tooltip in UTC+8',
+  (grain, instant, label) => {
+    const timestamp = Date.parse(instant);
+    const chartProps = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...formData,
+        metrics: ['配送销售额'],
+        metricsB: ['毛利率'],
+        groupby: [],
+        groupbyB: [],
+        richTooltip: true,
+        xAxisTimeFormat: '%Y/%m',
+        x_axis_time_format: '%Y/%m',
+        time_compare: [],
+        time_compare_b: [],
+        extra_form_data: { time_grain_sqla: grain, time_compare: [] },
+      } as EchartsMixedTimeseriesFormData,
+      queriesData: [
+        createTestQueryData([{ ds: timestamp, 配送销售额: 100 }]),
+        createTestQueryData([{ ds: timestamp, 毛利率: 0.2 }]),
+      ],
+    });
+    chartProps.queriesData.forEach(query => {
+      query.colnames = ['ds'];
+      query.coltypes = [GenericDataType.Temporal];
+    });
+    const result = transformProps(chartProps);
+    const axis = result.echartOptions.xAxis as {
+      axisLabel: { formatter: (value: number, index: number) => string };
+    };
+    expect(axis.axisLabel.formatter(timestamp, 0)).toBe(label);
+    const tooltip = result.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    const html = tooltip.formatter([
+      { seriesId: '配送销售额', marker: '', value: [timestamp, 100] },
+    ]);
+    expect(html).toContain(label);
+    expect(html).not.toContain('<thead>');
   },
 );

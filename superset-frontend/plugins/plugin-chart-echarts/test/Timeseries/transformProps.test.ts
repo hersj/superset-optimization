@@ -1563,7 +1563,7 @@ test('custom period legend retains its full key while tooltip shows real compari
   const comparisonKey = legend.data.find(name => name.includes(offset));
   expect(comparisonKey).toBeDefined();
   if (!comparisonKey) throw new Error('Missing comparison legend');
-  expect(legend.formatter(comparisonKey)).toBe('对比期间');
+  expect(legend.formatter(comparisonKey)).toBe('对比 2026-08-12 ～ 08-15');
   const selected = transformed.echartOptions.legend as {
     selected: Record<string, boolean>;
   };
@@ -1597,9 +1597,125 @@ test('custom period legend retains its full key while tooltip shows real compari
       value: [1785859200000, 80],
     },
   ]);
+  const tooltipDOM = document.createElement('div');
+  tooltipDOM.innerHTML = html;
+  expect(tooltipDOM.querySelectorAll('thead th')).toHaveLength(3);
+  expect(tooltipDOM.querySelectorAll('tbody tr')).toHaveLength(1);
+  expect(html.match(/配送销售额/g)).toHaveLength(1);
+  expect(html).not.toContain(offset);
   expect(html).toContain('2026-08-05');
   expect(html).toContain('2026-08-12');
   expect(html).toContain('3 天');
   expect(html).toContain('4 天');
   expect(html).toContain('期间长度不同');
+  const itemProps = createTestChartProps({
+    formData: {
+      ...chartProps.rawFormData,
+      richTooltip: false,
+      rich_tooltip: false,
+    },
+    queriesData: chartProps.queriesData,
+  });
+  const itemTooltip = transformProps(itemProps).echartOptions.tooltip as {
+    formatter: (params: unknown) => string;
+  };
+  const itemDOM = document.createElement('div');
+  itemDOM.innerHTML = itemTooltip.formatter({
+    seriesId: `配送销售额__${offset}`,
+    marker: '',
+    value: [1785859200000, 80],
+  });
+  expect(
+    [...itemDOM.querySelectorAll('tbody td')].map(cell => cell.textContent),
+  ).toEqual(['配送销售额', '100', '80']);
+  const offProps = createTestChartProps({
+    formData: {
+      ...chartProps.rawFormData,
+      time_compare: [offset],
+      richTooltip: true,
+      extra_form_data: {
+        ...chartProps.rawFormData.extra_form_data,
+        time_compare: [],
+      },
+    },
+    queriesData: [
+      createTestQueryData([{ 配送销售额: 100, ds: 1785859200000 }]),
+    ],
+  });
+  offProps.queriesData[0].colnames = ['ds'];
+  offProps.queriesData[0].coltypes = [GenericDataType.Temporal];
+  const offTooltip = transformProps(offProps).echartOptions.tooltip as {
+    formatter: (params: unknown) => string;
+  };
+  const offDOM = document.createElement('div');
+  offDOM.innerHTML = offTooltip.formatter([
+    { seriesId: '配送销售额', marker: '', value: [1785859200000, 100] },
+  ]);
+  expect(offDOM.querySelector('thead')).toBeNull();
+  expect(offDOM.textContent).not.toContain('对比');
+});
+
+test.each([
+  ['P1D', '2026-12-31T16:00:00Z', '2027-01-01'],
+  ['P1M', '2026-12-31T16:00:00Z', '2027年1月'],
+  ['P3M', '2026-06-30T16:00:00Z', '2026年7–9月'],
+  ['P1Y', '2026-12-31T16:00:00Z', '2027年'],
+  ['P1Y_FISCAL', '2026-03-31T16:00:00Z', '2026财年'],
+])(
+  'CustomTime OFF keeps %s axis and current tooltip units in UTC+8',
+  (grain, instant, label) => {
+    const timestamp = Date.parse(instant);
+    const chartProps = createTestChartProps({
+      formData: {
+        ...timeCompareFormData,
+        x_axis: 'ds',
+        metrics: ['配送销售额'],
+        groupby: [],
+        richTooltip: true,
+        xAxisTimeFormat: '%Y/%m',
+        x_axis_time_format: '%Y/%m',
+        time_compare: [],
+        extra_form_data: { time_grain_sqla: grain, time_compare: [] },
+      },
+      queriesData: [createTestQueryData([{ ds: timestamp, 配送销售额: 100 }])],
+    });
+    chartProps.queriesData[0].colnames = ['ds'];
+    chartProps.queriesData[0].coltypes = [GenericDataType.Temporal];
+    const result = transformProps(chartProps);
+    const axis = result.echartOptions.xAxis as {
+      axisLabel: { formatter: (value: number, index: number) => string };
+    };
+    expect(axis.axisLabel.formatter(timestamp, 0)).toBe(label);
+    const tooltip = result.echartOptions.tooltip as {
+      formatter: (params: unknown) => string;
+    };
+    const html = tooltip.formatter([
+      { seriesId: '配送销售额', marker: '', value: [timestamp, 100] },
+    ]);
+    expect(html).toContain(label);
+    expect(html).not.toContain('<thead>');
+  },
+);
+
+test('ordinary explicit d3 axis format is preserved without the CustomTime comparison key', () => {
+  const timestamp = Date.parse('2026-12-31T16:00:00Z');
+  const chartProps = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      x_axis: 'ds',
+      metrics: ['配送销售额'],
+      groupby: [],
+      xAxisTimeFormat: '%Y/%m',
+      x_axis_time_format: '%Y/%m',
+      time_compare: [],
+      extra_form_data: { time_grain_sqla: 'P1M' },
+    },
+    queriesData: [createTestQueryData([{ ds: timestamp, 配送销售额: 100 }])],
+  });
+  chartProps.queriesData[0].colnames = ['ds'];
+  chartProps.queriesData[0].coltypes = [GenericDataType.Temporal];
+  const axis = transformProps(chartProps).echartOptions.xAxis as {
+    axisLabel: { formatter: (value: number, index: number) => string };
+  };
+  expect(axis.axisLabel.formatter(timestamp, 0)).toBe('2026/12');
 });

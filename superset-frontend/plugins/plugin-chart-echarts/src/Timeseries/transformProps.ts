@@ -113,6 +113,11 @@ import {
 } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import {
+  formatCustomPeriodTooltip,
+  getCustomTimeControlledFormatter,
+  formatCustomPeriodLegendLabel,
+} from '../utils/customPeriodTooltip';
+import {
   getPercentFormatter,
   getTooltipTimeFormatter,
   getXAxisFormatter,
@@ -707,13 +712,18 @@ export default function transformProps(
   const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
     ? selectedPeriod
     : undefined;
+  const controlledTimeFormatter = getCustomTimeControlledFormatter(
+    chartProps.rawFormData.extra_form_data,
+  );
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod)
+      ? (controlledTimeFormatter ??
+        getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod))
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getXAxisFormatter(xAxisTimeFormat, timeGrainSqla)
+      ? (controlledTimeFormatter ??
+        getXAxisFormatter(xAxisTimeFormat, timeGrainSqla))
       : xAxisDataType === GenericDataType.Numeric
         ? getNumberFormatter(xAxisNumberFormat)
         : String;
@@ -755,7 +765,7 @@ export default function transformProps(
    * - 状态与副作用：只生成客户端 ECharts 选项并回传图例状态，不写看板数据库、接口或浏览器存储；点击提示框聚焦逻辑保持不变。
    * - 外部依赖：依赖 chart-controls 的时间偏移解析、ECharts legend 事件和 ChartRenderer 的按图表实例状态保存。
    * - 异常与边界：缺失 groupby 时回退 rawFormData；无法匹配指标标签时使用去偏移系列名；colorByPrimaryAxis 不进入逻辑分组。
-   * - 不变量与约束：图例代表值必须是实际 series.name；查询刷新和比较开关切换不能清除仍存在的隐藏状态；tooltip、数字显示、颜色、注释和分页保持不变。
+   * - 不变量与约束：图例代表值必须是实际 series.name；查询刷新和比较开关切换不能清除仍存在的隐藏状态；普通 tooltip、数字显示、颜色、注释和分页保持不变；自定义期间 tooltip 按对齐桶显示当前和对比列。
    * - 验证方式：Timeseries transform/component 单测覆盖标准图、维度、多个 offset、父组关闭、全选和无对比回归。
    */
   const shouldGroupLogicalLegends =
@@ -1037,6 +1047,27 @@ export default function transformProps(
           keys.includes(selectedTooltipSeries)
             ? selectedTooltipSeries
             : null;
+        if (customPeriod && !isForecast) {
+          const tooltipPoints = sortedKeys.flatMap(key =>
+            forecastValue.filter(point => String(point.seriesId) === key),
+          );
+          return formatCustomPeriodTooltip({
+            params: stack ? tooltipPoints.reverse() : tooltipPoints,
+            series: echartOptions.series as SeriesOption[],
+            period: customPeriod,
+            timeGrain: timeGrainSqla,
+            temporalAxis: xAxisDataType === GenericDataType.Temporal,
+            xIndex,
+            yIndex,
+            itemTooltip: !richTooltip,
+            legendState: groupedLegendState,
+            focusedSeries,
+            selectedSeries: selectedSeriesName,
+            formatterForSeries: () => formatter,
+            comparisonTypeForSeries: () =>
+              String(chartProps.rawFormData.comparison_type ?? 'values'),
+          });
+        }
         const isTooltipSeriesSelected = selectedSeriesName !== null;
         const showPercentage =
           allowTotal &&
@@ -1109,8 +1140,9 @@ export default function transformProps(
       ...(shouldGroupLogicalLegends
         ? {
             formatter: (name: string) =>
-              legendGroups.labels[name] === customPeriod?.comparisonTimeRange
-                ? '对比期间'
+              customPeriod &&
+              legendGroups.labels[name] === customPeriod.comparisonTimeRange
+                ? formatCustomPeriodLegendLabel(customPeriod)
                 : (legendGroups.labels[name] ?? name),
           }
         : {}),

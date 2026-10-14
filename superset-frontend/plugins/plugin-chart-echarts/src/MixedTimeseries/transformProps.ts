@@ -47,6 +47,7 @@ import { GenericDataType } from '@apache-superset/core/common';
 import { getOriginalSeries, getTimeOffset } from '@superset-ui/chart-controls';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { SeriesOption } from 'echarts';
+import type { CallbackDataParams } from 'echarts/types/src/util/types';
 import {
   DEFAULT_FORM_DATA,
   EchartsMixedTimeseriesChartTransformedProps,
@@ -100,6 +101,11 @@ import {
 import { TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import {
+  formatCustomPeriodTooltip,
+  getCustomTimeControlledFormatter,
+  formatCustomPeriodLegendLabel,
+} from '../utils/customPeriodTooltip';
+import {
   getTooltipTimeFormatter,
   getXAxisFormatter,
   getYAxisFormatter,
@@ -137,7 +143,7 @@ export default function transformProps(
    * - 状态与副作用：只生成客户端选项并回传图例状态，不修改看板数据库、后端接口或 localStorage；无对比路径不改变既有维度图例。
    * - 外部依赖：依赖 chart-controls 的时间偏移解析、ECharts legend 事件和 ChartRenderer 状态合并；支持两组 offset 配置。
    * - 异常与边界：任一 offset 配置为空时只处理另一组；无父当前组的对比线仍属于 offset 组；注释图例不参与业务分组。
-   * - 不变量与约束：图例 key 必须是实际 series.name；查询、tooltip、数字显示、颜色、注释、分页和主副轴 formatter 行为保持不变。
+   * - 不变量与约束：图例 key 必须是实际 series.name；查询、普通 tooltip、数字显示、颜色、注释、分页和主副轴 formatter 行为保持不变；自定义期间 tooltip 配对当前与对比桶，并注明派生值单位。
    * - 验证方式：MixedTimeseries transform/component 单测覆盖 Query A/B、维度、offset、父组关闭、全选、无对比回归和次要轴自动边界。
    */
   const {
@@ -652,13 +658,18 @@ export default function transformProps(
   )
     ? selectedPeriod
     : undefined;
+  const controlledTimeFormatter = getCustomTimeControlledFormatter(
+    chartProps.rawFormData.extra_form_data,
+  );
   const tooltipFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod)
+      ? (controlledTimeFormatter ??
+        getTooltipTimeFormatter(tooltipTimeFormat, timeGrainSqla, customPeriod))
       : String;
   const xAxisFormatter =
     xAxisDataType === GenericDataType.Temporal
-      ? getXAxisFormatter(xAxisTimeFormat, timeGrainSqla)
+      ? (controlledTimeFormatter ??
+        getXAxisFormatter(xAxisTimeFormat, timeGrainSqla))
       : String;
 
   const addYAxisTitleOffset =
@@ -855,6 +866,53 @@ export default function transformProps(
         const forecastValues =
           extractForecastValuesFromTooltipParams(forecastValue);
 
+        if (
+          customPeriod &&
+          !Object.values(forecastValues).some(
+            value =>
+              value.forecastTrend || value.forecastLower || value.forecastUpper,
+          )
+        ) {
+          return formatCustomPeriodTooltip({
+            params: sortedKeys.flatMap(key =>
+              forecastValue.filter(
+                (point: CallbackDataParams) => String(point.seriesId) === key,
+              ),
+            ),
+            series: dedupedSeries,
+            period: customPeriod,
+            timeGrain: timeGrainSqla,
+            temporalAxis: xAxisDataType === GenericDataType.Temporal,
+            itemTooltip: !richTooltip,
+            legendState: legendStateWithTimeCompare,
+            focusedSeries,
+            formatterForSeries: key => {
+              const isPrimary = primarySeries.has(key);
+              const originalKey = getOriginalSeries(key, allTimeCompare);
+              const groups = isPrimary ? groupby : groupbyB;
+              const labels = isPrimary ? labelMap : labelMapB;
+              const formatterKey =
+                groups.length === 0
+                  ? inverted[originalKey]
+                  : (labels[key]?.[0] ?? labels[originalKey]?.[0]);
+              return getFormatter(
+                isPrimary ? customFormatters : customFormattersSecondary,
+                isPrimary ? formatter : formatterSecondary,
+                isPrimary ? metrics : metricsB,
+                formatterKey,
+                !!contributionMode,
+              );
+            },
+            comparisonTypeForSeries: key =>
+              String(
+                chartProps.rawFormData[
+                  primarySeries.has(key)
+                    ? 'comparison_type'
+                    : 'comparison_type_b'
+                ] ?? 'values',
+              ),
+          });
+        }
         const keys = Object.keys(forecastValues);
         let focusedRow;
         sortedKeys
@@ -912,8 +970,9 @@ export default function transformProps(
       ),
       formatter: hasTimeCompare
         ? (name: string) =>
-            legendGroups.labels[name] === customPeriod?.comparisonTimeRange
-              ? '对比期间'
+            customPeriod &&
+            legendGroups.labels[name] === customPeriod.comparisonTimeRange
+              ? formatCustomPeriodLegendLabel(customPeriod)
               : (legendGroups.labels[name] ?? name)
         : metricLegendFormatter,
       data: (hasTimeCompare
