@@ -569,10 +569,16 @@ function getCustomComparisonDraft(
   }
 }
 
+const ignorePickerDataMask = () => {};
+
 export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { formData, filterState, ownState = {}, setDataMask } = props;
+  // Internal start-only entry reuses navigation and grids without publishing a filter.
+  const onSelectStart = props.onSelectStart as
+    | ((date: string) => void)
+    | undefined;
   // 恢复配置与用户点击分开取值：历史配置没有模式字段，不能借用上一帧点选状态。
   const restoredSelection = useMemo(
     () => ({
@@ -734,8 +740,13 @@ export default function CustomTimeFilterPlugin(props: any) {
           1
         : currentYear),
   );
-  const [collapsed, setCollapsed] = useState(true);
-  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
+  const [collapsed, setCollapsed] = useState(!enableCustomComparison);
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(() => {
+    if (!onSelectStart || !isValidIsoDate(parsedSavedRange.start)) return 0;
+    const [year, month] = parsedSavedRange.start.split('-').map(Number);
+    const [baseYear, baseMonth] = getDataEndDate().split('-').map(Number);
+    return (year - baseYear) * 12 + month - baseMonth;
+  });
   const [monthYearOffset, setMonthYearOffset] = useState(0);
   const [quarterYearOffset, setQuarterYearOffset] = useState(0);
   const [yearDecadeOffset, setYearDecadeOffset] = useState(0);
@@ -1258,6 +1269,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handlePresetClick = (preset: TimePreset) => {
+    if (onSelectStart) {
+      onSelectStart(parseRange(getPresetTimeRange(preset.key)).start);
+      return;
+    }
     const isFiscalPreset = preset.key === 'this_fiscal_year';
     const fiscalYear = isFiscalPreset
       ? fiscalYearStartFromDate(getDataEndDate())
@@ -1317,6 +1332,12 @@ export default function CustomTimeFilterPlugin(props: any) {
       );
       return;
     }
+    if (onSelectStart) {
+      onSelectStart(
+        getProfitFiscalYearRange(fiscalYear).timeRange.substring(0, 10),
+      );
+      return;
+    }
     clearNonFiscalPendingSelections();
     setActivePreset(null);
     setActiveGrain('fiscal_year');
@@ -1335,6 +1356,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   };
 
   const handleGrainClick = (grain: TimeGrainOption) => {
+    if (onSelectStart) {
+      setActiveGrain(grain.key);
+      return;
+    }
     clearPendingSelections();
     if (selectionMode === 'points') {
       setActiveGrain(grain.key);
@@ -1376,6 +1401,11 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const handleCalendarDayClick = (val: string) => {
     if (val < minimumCalendarDate || val > getDataEndDate()) {
+      return;
+    }
+
+    if (onSelectStart) {
+      onSelectStart(val);
       return;
     }
 
@@ -1462,6 +1492,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     if (weekStart < minimumCalendarDate || weekStart > getDataEndDate()) {
       return;
     }
+    if (onSelectStart) {
+      onSelectStart(weekStart);
+      return;
+    }
     if (selectionMode === 'points') {
       selectPoint(`${weekStart} : ${addDays(weekStart, 7)}`);
       return;
@@ -1505,6 +1539,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       monthStartFromMonth(month) < minimumCalendarDate ||
       monthStartFromMonth(month) > getDataEndDate()
     ) {
+      return;
+    }
+    if (onSelectStart) {
+      onSelectStart(monthStartFromMonth(month));
       return;
     }
     if (selectionMode === 'points') {
@@ -1557,6 +1595,10 @@ export default function CustomTimeFilterPlugin(props: any) {
     ) {
       return;
     }
+    if (onSelectStart) {
+      onSelectStart(quarterRange.start);
+      return;
+    }
     if (selectionMode === 'points') {
       selectPoint(`${quarterRange.start} : ${quarterRange.end}`);
       return;
@@ -1600,6 +1642,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       fmtDate(year, 1, 1) < minimumCalendarDate ||
       fmtDate(year, 1, 1) > getDataEndDate()
     ) {
+      return;
+    }
+    if (onSelectStart) {
+      onSelectStart(fmtDate(year, 1, 1));
       return;
     }
     if (selectionMode === 'points') {
@@ -1935,9 +1981,11 @@ export default function CustomTimeFilterPlugin(props: any) {
     <>
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
-        {selectionMode === 'points'
-          ? '逐项点选，再次点击取消；中间未选日期不参与查询。'
-          : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
+        {onSelectStart
+          ? '单击选择对比开始；结束自动按当前期间计算。'
+          : selectionMode === 'points'
+            ? '逐项点选，再次点击取消；中间未选日期不参与查询。'
+            : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
       </div>
       <div
         style={{
@@ -1956,7 +2004,9 @@ export default function CustomTimeFilterPlugin(props: any) {
     <>
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
-        点击任意日期会自动选择该日期所在的周日-周六整周。
+        {onSelectStart
+          ? '单击选择所在周的周日起点；结束自动按当前期间计算。'
+          : '点击任意日期会自动选择该日期所在的周日-周六整周。'}
       </div>
       <div
         style={{
@@ -2310,6 +2360,51 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
   };
 
+  const renderGrainButtons = () => (
+    <div style={styles.grainColumn}>
+      <div style={styles.grainGrid}>
+        {TIME_GRAIN_OPTIONS.filter(
+          g => g.key !== 'fiscal_year' || enableCustomRange,
+        ).map(g => (
+          <button
+            key={g.key}
+            type="button"
+            style={activeGrain === g.key ? styles.grainActive : styles.grainBtn}
+            onClick={() => handleGrainClick(g)}
+          >
+            {getGrainDisplayLabel(g.label)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+  const renderPresetButtons = () => (
+    <div style={styles.presetColumn}>
+      <div style={styles.grid}>
+        {DEFAULT_PRESETS.filter(p => p.key !== 'this_fiscal_year').map(p => (
+          <button
+            key={p.key}
+            type="button"
+            style={activePreset === p.key ? styles.btnActive : styles.btn}
+            onClick={() => handlePresetClick(p)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+  // A picker instance terminates here, so it cannot create another comparison picker.
+  if (onSelectStart) {
+    return (
+      <div role="group" aria-label="对比开始日期" style={styles.container}>
+        {enableTimeGrain && renderGrainButtons()}
+        {enablePresets && renderPresetButtons()}
+        <div style={styles.panel}>{renderExpandedSelector()}</div>
+      </div>
+    );
+  }
+
   // External restores render before applyFilter updates the local draft range ref.
   const visibleRange =
     filterState?.value !== prevFSValue.current
@@ -2348,62 +2443,78 @@ export default function CustomTimeFilterPlugin(props: any) {
       ? `${currentBounds.start} ～ ${subtractDays(currentBounds.endExclusive, 1)}`
       : currentLabel;
   const comparisonControls = enableCustomComparison && (
-    <div role="group" aria-label="对比期间" style={styles.grainColumn}>
-      <div>
-        <strong>对比期间</strong>
-      </div>
-      <label>
-        对比方式{' '}
-        <select
-          aria-label="对比方式"
-          value={customComparisonMode}
-          onChange={event =>
-            changeComparison({
-              customComparisonMode: event.target
-                .value as CustomComparisonDraft['customComparisonMode'],
-              comparisonStartDate,
-            })
-          }
-        >
-          <option value="original">原有对比</option>
-          <option value="custom">自定义期间</option>
-        </select>
-      </label>
-      {customComparisonMode === 'custom' && (
-        <>
-          <div>
-            <label>
-              <span style={{ display: 'block' }}>对比开始日期</span>
-              <input
-                type="date"
-                aria-label="对比开始日期"
-                style={{ maxWidth: '100%' }}
-                value={comparisonStartDate}
-                onChange={event =>
+    <section role="group" aria-label="对比期间">
+      <details aria-label="对比期间选择器">
+        <summary style={styles.grainColumn}>
+          <strong>对比期间</strong>
+          {comparisonLabel && (
+            <div role="status" style={styles.hint}>
+              {comparisonLabel}
+            </div>
+          )}
+        </summary>
+        <div style={styles.grainColumn}>
+          <label>
+            对比方式{' '}
+            <select
+              aria-label="对比方式"
+              value={customComparisonMode}
+              onChange={event =>
+                changeComparison({
+                  customComparisonMode: event.target
+                    .value as CustomComparisonDraft['customComparisonMode'],
+                  comparisonStartDate,
+                })
+              }
+            >
+              <option value="original">原有对比</option>
+              <option value="custom">自定义期间</option>
+            </select>
+          </label>
+          {customComparisonMode === 'custom' && (
+            <>
+              <CustomTimeFilterPlugin
+                formData={{
+                  ...formData,
+                  enableCustomComparison: false,
+                  defaultPreset: '',
+                  defaultGrain: 'day',
+                }}
+                filterState={{
+                  value: isValidIsoDate(comparisonStartDate)
+                    ? `${comparisonStartDate} : ${addDays(comparisonStartDate, 1)}`
+                    : null,
+                }}
+                ownState={{}}
+                setDataMask={ignorePickerDataMask}
+                onSelectStart={(date: string) =>
                   changeComparison({
                     customComparisonMode,
-                    comparisonStartDate: event.target.value,
+                    comparisonStartDate: date,
                   })
                 }
+                width={props.width}
               />
-            </label>
-          </div>
+              <div style={styles.hint}>
+                只需选择对比开始日期；天数随当前期间自动同步。
+              </div>
+              {comparisonDraft.error && (
+                <div role="alert">{comparisonDraft.error}</div>
+              )}
+            </>
+          )}
           <div style={styles.hint}>
-            只需选择对比开始日期；天数随当前期间自动同步。
+            自定义期间控制作用范围内图表原有的时间比较，并用于大数字、表格和透视表。
+            请打开看板右上角“时间比较”；关闭时仅显示当前期间。
           </div>
-          {comparisonStatus}
-        </>
-      )}
-      <div style={styles.hint}>
-        自定义期间控制作用范围内图表原有的时间比较，并用于大数字、表格和透视表。
-        请打开看板右上角“时间比较”；关闭时仅显示当前期间。
-      </div>
-      {customComparisonMode === 'original' && (
-        <div style={styles.hint}>
-          按现有时间粒度的原有策略对比；选择自定义期间后通过侧栏“应用筛选”提交。
+          {customComparisonMode === 'original' && (
+            <div style={styles.hint}>
+              按现有时间粒度的原有策略对比；选择自定义期间后通过侧栏“应用筛选”提交。
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </details>
+    </section>
   );
 
   if (collapsed) {
@@ -2451,7 +2562,7 @@ export default function CustomTimeFilterPlugin(props: any) {
             <strong>当前期间</strong>
             <div style={styles.hint}>{currentPeriodLabel}</div>
           </div>
-          <details open={enableCustomComparison ? undefined : true}>
+          <details open aria-label="当前期间选择器">
             <summary style={styles.grainColumn}>修改当前期间</summary>
             {enableCustomRange && (
               <div style={styles.grainColumn}>
@@ -2487,48 +2598,8 @@ export default function CustomTimeFilterPlugin(props: any) {
                 )}
               </div>
             )}
-            {enableTimeGrain && (
-              <div style={styles.grainColumn}>
-                <div style={styles.grainGrid}>
-                  {TIME_GRAIN_OPTIONS.filter(
-                    g => g.key !== 'fiscal_year' || enableCustomRange,
-                  ).map(g => (
-                    <button
-                      key={g.key}
-                      type="button"
-                      style={
-                        activeGrain === g.key
-                          ? styles.grainActive
-                          : styles.grainBtn
-                      }
-                      onClick={() => handleGrainClick(g)}
-                    >
-                      {getGrainDisplayLabel(g.label)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {enablePresets && (
-              <div style={styles.presetColumn}>
-                <div style={styles.grid}>
-                  {DEFAULT_PRESETS.filter(
-                    p => p.key !== 'this_fiscal_year',
-                  ).map(p => (
-                    <button
-                      key={p.key}
-                      type="button"
-                      style={
-                        activePreset === p.key ? styles.btnActive : styles.btn
-                      }
-                      onClick={() => handlePresetClick(p)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {enableTimeGrain && renderGrainButtons()}
+            {enablePresets && renderPresetButtons()}
             <div style={styles.panel}>
               {enableCustomRange && renderExpandedSelector()}
             </div>
