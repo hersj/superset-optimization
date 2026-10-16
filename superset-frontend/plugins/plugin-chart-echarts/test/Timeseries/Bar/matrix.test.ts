@@ -294,6 +294,7 @@ test('the saved second-axis field is recognized through real ChartProps normaliz
   expect(
     barTransformProps({
       ...chartProps,
+      queriesData: sample.queriesData,
       formData: chartProps.formData as EchartsTimeseriesFormData,
     }).matrixDimensions,
   ).toEqual(['month', 'shop']);
