@@ -283,6 +283,20 @@ function createAxisControl(axis: 'x' | 'y'): ControlSetRow[] {
 }
 
 const config: ControlPanelConfig = {
+  controlOverrides: {
+    x_axis: {
+      label: ({ controls, form_data }) =>
+        !controls.y_axis_dimension?.value &&
+        form_data.orientation === OrientationType.Horizontal
+          ? t('Y-axis')
+          : t('X-axis'),
+      description: ({ controls, form_data }) =>
+        !controls.y_axis_dimension?.value &&
+        form_data.orientation === OrientationType.Horizontal
+          ? t('Dimension to use on y-axis.')
+          : t('Dimension to use on x-axis.'),
+    },
+  },
   controlPanelSections: [
     {
       ...sections.echartsTimeSeriesQueryWithXAxisSort,

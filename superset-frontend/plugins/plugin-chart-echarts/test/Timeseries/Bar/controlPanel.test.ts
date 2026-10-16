@@ -72,6 +72,22 @@ test('bar chart exposes an optional second categorical axis', () => {
   ]);
 });
 
+test('horizontal matrix keeps the first dimension labeled as X-axis', () => {
+  const axis: any = config.controlOverrides?.x_axis;
+  const state = {
+    form_data: { orientation: 'horizontal' },
+    controls: { y_axis_dimension: { value: 'shop' } },
+  };
+  expect(axis.label(state)).toBe('X-axis');
+  expect(axis.description(state)).toBe('Dimension to use on x-axis.');
+  const ordinaryBar = {
+    ...state,
+    controls: { y_axis_dimension: { value: null } },
+  };
+  expect(axis.label(ordinaryBar)).toBe('Y-axis');
+  expect(axis.description(ordinaryBar)).toBe('Dimension to use on y-axis.');
+});
+
 test('should have correct default value for x_axis_time_format', () => {
   const timeFormatControl: any = getControl('x_axis_time_format');
   expect(timeFormatControl).toBeDefined();
