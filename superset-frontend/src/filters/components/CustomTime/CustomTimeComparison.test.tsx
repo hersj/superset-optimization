@@ -60,6 +60,14 @@ function startDate(start: string) {
   });
   fireEvent.click(picker.getByRole('button', { name: start }));
 }
+function endDate(end: string) {
+  fireEvent.click(screen.getByRole('button', { name: '修改对比结束日期' }));
+  const picker = within(screen.getByRole('group', { name: '对比结束日期' }));
+  fireEvent.change(picker.getByLabelText('快速跳转月份'), {
+    target: { value: `${end.substring(0, 7)}-01` },
+  });
+  fireEvent.click(picker.getByRole('button', { name: end }));
+}
 function lastMask(mock: jest.Mock) {
   return mock.mock.calls[mock.mock.calls.length - 1][0];
 }
@@ -69,25 +77,24 @@ test('existing CustomTime hides the opt-in comparison controls by default', () =
   expect(screen.queryByLabelText('对比方式')).not.toBeInTheDocument();
 });
 
-test('current period selection precedes comparison and explains the existing chart switch', () => {
+test('current period precedes comparison with concise controls', () => {
   mount();
   const current = screen.getByRole('group', { name: '当前期间' });
   const comparison = screen.getByRole('group', { name: '对比期间' });
   expect(current.compareDocumentPosition(comparison) & 4).toBeTruthy();
   expect(current).toHaveTextContent('2026-10-01 ～ 2026-10-13');
-  expect(comparison).toHaveTextContent('右上角');
-  expect(comparison).toHaveTextContent('图表原有');
-  expect(comparison).toHaveTextContent('大数字');
+  expect(within(comparison).getByLabelText('对比方式')).toHaveValue('original');
+  expect(comparison).not.toHaveTextContent('请打开看板');
 });
 
-test('custom comparison needs only a start and has no editable end field', () => {
+test('custom comparison derives an end until the user edits it', () => {
   const { setDataMask } = mount();
   chooseCustom();
   expect(lastMask(setDataMask).filterState.validateStatus).toBe('error');
   expect(screen.queryByLabelText('对比结束日期')).not.toBeInTheDocument();
-  expect(screen.getByRole('group', { name: '对比期间' })).toHaveTextContent(
-    '天数随当前期间',
-  );
+  expect(
+    screen.getByRole('button', { name: '修改对比结束日期' }),
+  ).toHaveTextContent('自动');
   startDate('2026-08-05');
   const mask = lastMask(setDataMask);
   expect(mask.extraFormData.custom_form_data.custom_period_comparison).toEqual({
@@ -104,6 +111,134 @@ test('custom comparison needs only a start and has no editable end field', () =>
   expect(
     screen.queryByRole('button', { name: '应用对比' }),
   ).not.toBeInTheDocument();
+});
+
+test('a longer manual comparison keeps its real bounds without extending the current query', () => {
+  const { setDataMask } = mount(true, '2026-09-01 : 2026-09-08');
+  chooseCustom();
+  startDate('2025-09-01');
+  endDate('2025-09-30');
+  const mask = lastMask(setDataMask);
+  expect(mask.extraFormData.time_range).toBe('2026-09-01 : 2026-09-08');
+  expect(mask.extraFormData.custom_form_data.custom_period_comparison).toEqual({
+    currentTimeRange: '2026-09-01 : 2026-09-08',
+    comparisonTimeRange: '2025-09-01 : 2025-10-01',
+    timeColumn: 'biz_date',
+    comparisonEndMode: 'manual',
+  });
+  expect(mask.filterState).toMatchObject({
+    comparisonEndMode: 'manual',
+    comparisonEndDate: '2025-09-30',
+  });
+  expect(mask.ownState.comparisonEndMode).toBe('manual');
+  expect(screen.getByRole('status')).toHaveTextContent('（30天） · 当前7天');
+});
+
+test('choosing the same calculated end still makes the manual intent applicable', () => {
+  const { setDataMask } = mount(true, '2026-09-01 : 2026-09-08');
+  chooseCustom();
+  startDate('2025-09-01');
+  const automatic = lastMask(setDataMask);
+  endDate('2025-09-07');
+  const manual = lastMask(setDataMask);
+  expect(
+    manual.extraFormData.custom_form_data.custom_period_comparison
+      .comparisonTimeRange,
+  ).toBe(
+    automatic.extraFormData.custom_form_data.custom_period_comparison
+      .comparisonTimeRange,
+  );
+  expect(checkIsApplyDisabled({ f: manual }, { f: automatic }, [])).toBe(false);
+});
+
+test('manual comparison survives current-period edits and can resume automatic following', () => {
+  const { setDataMask } = mount();
+  chooseCustom();
+  startDate('2025-09-01');
+  endDate('2025-09-30');
+  const current = within(screen.getByRole('group', { name: '当前期间' }));
+  fireEvent.click(current.getByRole('button', { name: '最近7天' }));
+  expect(lastMask(setDataMask).filterState).toMatchObject({
+    comparisonEndMode: 'manual',
+    comparisonStartDate: '2025-09-01',
+    comparisonEndDate: '2025-09-30',
+  });
+  fireEvent.click(screen.getByRole('button', { name: '恢复跟随当前期间' }));
+  expect(lastMask(setDataMask).filterState).toMatchObject({
+    comparisonEndMode: 'auto',
+    comparisonEndDate: '2025-09-07',
+  });
+});
+
+test('a restored manual end is retained when current dates are restored externally', () => {
+  const setDataMask = jest.fn();
+  const filterState = {
+    value: '2026-09-01 : 2026-09-08',
+    grain: 'day',
+    customComparisonMode: 'custom',
+    comparisonStartDate: '2025-09-01',
+    comparisonEndDate: '2025-09-30',
+    comparisonEndMode: 'manual',
+  };
+  const props = {
+    formData: { groupby: ['biz_date'], enableCustomComparison: true },
+    ownState: {},
+    setDataMask,
+    width: 215,
+  };
+  const { rerender } = render(
+    <CustomTimeFilterPlugin {...props} filterState={filterState} />,
+  );
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison,
+  ).toMatchObject({ comparisonTimeRange: '2025-09-01 : 2025-10-01' });
+  rerender(
+    <CustomTimeFilterPlugin
+      {...props}
+      filterState={{ ...filterState, value: '2026-09-01 : 2026-09-16' }}
+    />,
+  );
+  expect(lastMask(setDataMask).filterState.comparisonEndDate).toBe(
+    '2025-09-30',
+  );
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison,
+  ).toMatchObject({
+    currentTimeRange: '2026-09-01 : 2026-09-16',
+    comparisonTimeRange: '2025-09-01 : 2025-10-01',
+  });
+});
+
+test('a manual end before the start blocks applying rather than silently rewriting the range', () => {
+  const { setDataMask } = mount();
+  chooseCustom();
+  startDate('2025-09-05');
+  endDate('2025-09-01');
+  expect(lastMask(setDataMask).filterState.validateStatus).toBe('error');
+  expect(
+    lastMask(setDataMask).extraFormData.custom_form_data
+      .custom_period_comparison,
+  ).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    '对比结束日期不能早于开始日期',
+  );
+});
+
+test('month buttons choose the actual last day for a manual comparison end', () => {
+  const { setDataMask } = mount(true, '2026-07-01 : 2026-10-01', 'month');
+  chooseCustom();
+  startDate('2025-04-01');
+  fireEvent.click(screen.getByRole('button', { name: '修改对比结束日期' }));
+  const picker = within(screen.getByRole('group', { name: '对比结束日期' }));
+  fireEvent.click(picker.getByRole('button', { name: '按月' }));
+  fireEvent.click(picker.getByRole('button', { name: '< 2025年' }));
+  fireEvent.click(picker.getByRole('button', { name: '2025-08' }));
+  expect(lastMask(setDataMask).filterState.comparisonEndDate).toBe(
+    '2025-08-31',
+  );
+  expect(lastMask(setDataMask).filterState.grain).toBe('month');
 });
 
 test.each([
@@ -373,9 +508,7 @@ test('fiscal comparison explains start-only selection while current retains rang
   chooseCustom();
   const picker = within(screen.getByRole('group', { name: '对比开始日期' }));
   fireEvent.click(picker.getByRole('button', { name: '按财年' }));
-  expect(
-    picker.getByText('单击选择财年开始；结束自动按当前期间计算。'),
-  ).toBeInTheDocument();
+  expect(picker.getByText('选择开始财年。')).toBeInTheDocument();
   const current = within(screen.getByRole('group', { name: '当前期间' }));
   fireEvent.click(current.getByRole('button', { name: '按财年' }));
   expect(
@@ -441,18 +574,18 @@ test('A month calendar rule ignores B navigation grain and uses newly applied A 
       .custom_period_comparison.comparisonTimeRange,
   ).toBe('2026-04-01 : 2026-07-01');
   expect(lastMask(setDataMask).filterState.grain).toBe('month');
-  expect(screen.getByRole('group', { name: '对比期间' })).toHaveTextContent(
-    '月数随当前期间',
-  );
+  expect(
+    screen.getByRole('button', { name: '修改对比结束日期' }),
+  ).toHaveTextContent('2026-06-30 · 自动');
   const current = within(screen.getByRole('group', { name: '当前期间' }));
   fireEvent.click(current.getByRole('button', { name: '按天' }));
   expect(
     lastMask(setDataMask).extraFormData.custom_form_data
       .custom_period_comparison.comparisonTimeRange,
   ).toBe('2026-04-01 : 2026-07-02');
-  expect(screen.getByRole('group', { name: '对比期间' })).toHaveTextContent(
-    '天数随当前期间',
-  );
+  expect(
+    screen.getByRole('button', { name: '修改对比结束日期' }),
+  ).toHaveTextContent('自动');
 });
 
 test('calendar restore ignores an old equal-days end and tracks external A period changes', () => {

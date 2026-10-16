@@ -1861,7 +1861,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         join_keys: list[str],
         query_object: QueryObject | None,
     ) -> pd.DataFrame:
-        """Match absolute periods by selected bucket ordinal, never sum ratio rows."""
+        """Align absolute periods, preserving history beyond the current query end."""
         candidates = (
             list(get_base_axis_labels(query_object.columns)) if query_object else []
         )
@@ -1911,7 +1911,10 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         current_from, current_to = get_since_until_from_query_object(query_object)
         offset_from, offset_to = get_since_until_from_time_range(time_range=offset)
         if (
-            not all([current_from, current_to, offset_from, offset_to])
+            current_from is None
+            or current_to is None
+            or offset_from is None
+            or offset_to is None
             or current_from >= current_to
         ):
             raise QueryObjectValidationError(
@@ -1963,6 +1966,30 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             ordinals(left[axis], current_starts),
             ordinals(right[axis], offset_starts),
         )
+        if (
+            grain == "P1D"
+            and (current_from.month, current_from.day)
+            == (offset_from.month, offset_from.day)
+            and current_from.year != offset_from.year
+        ):
+            years = current_from.year - offset_from.year
+
+            def yearly_position(value: pd.Timestamp) -> float:
+                try:
+                    mapped = value.replace(year=value.year + years).normalize()
+                except ValueError:
+                    # Leap-day history has no point on a non-leap calendar axis.
+                    return np.nan
+                return (mapped - pd.Timestamp(current_starts[0])).days
+
+            # Retain only dates actually selected in the historical query.
+            right[key] = (
+                business_dates(right[axis])
+                .where(right[key].notna())
+                .map(
+                    lambda value: yearly_position(value) if pd.notna(value) else np.nan
+                )
+            )
         left, right = left.dropna(subset=[key]), right.dropna(subset=[key])
         try:
             result = left.merge(

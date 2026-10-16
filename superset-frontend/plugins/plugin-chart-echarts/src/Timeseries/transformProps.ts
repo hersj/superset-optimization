@@ -118,6 +118,7 @@ import {
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
+  maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
   getPercentFormatter,
@@ -282,7 +283,6 @@ export default function transformProps(
     return { ...acc, [entry[0]]: entry[1] };
   }, {});
   const colorScale = CategoricalColorNamespace.getScale(colorScheme as string);
-  const rebasedData = rebaseForecastDatum(data, verboseMap);
   let xAxisLabel = getXAxisLabel(chartProps.rawFormData) as string;
   if (
     isPhysicalColumn(chartProps.rawFormData?.x_axis) &&
@@ -290,6 +290,23 @@ export default function transformProps(
   ) {
     xAxisLabel = verboseMap[xAxisLabel];
   }
+  const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
+  const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
+  const array = ensureIsArray(
+    chartProps.rawFormData?.extra_form_data?.time_compare ??
+      chartProps.rawFormData?.time_compare,
+  );
+  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
+  const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
+    ? selectedPeriod
+    : undefined;
+  const rebasedData = maskCustomPeriodCurrentData(
+    rebaseForecastDatum(data, verboseMap),
+    xAxisLabel,
+    xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
+    timeGrainSqla,
+    String(chartProps.rawFormData.comparison_type ?? 'values'),
+  );
   const isHorizontal = orientation === OrientationType.Horizontal;
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
     rebasedData,
@@ -305,13 +322,12 @@ export default function transformProps(
   );
 
   const isMultiSeries = groupBy.length || metrics?.length > 1;
-  const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
-  const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
 
   const [rawSeries, sortedTotalValues, minPositiveValue] = extractSeries(
     rebasedData,
     {
-      fillNeighborValue: stack && !forecastEnabled ? 0 : undefined,
+      fillNeighborValue:
+        stack && !forecastEnabled && !customPeriod ? 0 : undefined,
       xAxis: xAxisLabel,
       extraMetricLabels,
       stack,
@@ -365,10 +381,6 @@ export default function transformProps(
     currencyCodeColumn,
   );
 
-  const array = ensureIsArray(
-    (chartProps.rawFormData as any)?.extra_form_data?.time_compare ??
-      chartProps.rawFormData?.time_compare,
-  );
   const effectiveRawFormData = {
     ...chartProps.rawFormData,
     time_compare: array,
@@ -493,7 +505,7 @@ export default function transformProps(
       colorScaleKey,
       {
         area,
-        connectNulls: derivedSeries,
+        connectNulls: customPeriod ? false : derivedSeries,
         filterState,
         seriesContexts,
         markerEnabled,
@@ -711,10 +723,6 @@ export default function transformProps(
     }
   }
 
-  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
-  const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
-    ? selectedPeriod
-    : undefined;
   const controlledTimeFormatter = getCustomTimeControlledFormatter(
     chartProps.rawFormData.extra_form_data,
   );

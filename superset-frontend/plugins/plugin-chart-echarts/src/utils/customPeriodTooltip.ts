@@ -21,6 +21,7 @@ import {
   ComparisonType,
   CustomPeriodComparison,
   CurrencyFormatter,
+  DataRecord,
   getCustomComparisonBucketDate,
   getNumberFormatter,
   getPeriodDayCount,
@@ -65,6 +66,40 @@ const comparisonLabels: Record<string, string> = {
   [ComparisonType.Percentage]: '变化率',
   [ComparisonType.Ratio]: '比值',
 };
+
+/** Keep resampling/rolling values inside their actual selected period bounds. */
+export function maskCustomPeriodCurrentData(
+  data: DataRecord[],
+  xAxis: string,
+  period: CustomPeriodComparison | undefined,
+  timeGrain = 'P1D',
+  comparisonType: string = ComparisonType.Values,
+): DataRecord[] {
+  if (!period) return data;
+  const current = { ...period, comparisonTimeRange: period.currentTimeRange };
+  return data.map(row => {
+    const hasCurrent =
+      row[xAxis] != null &&
+      Boolean(getCustomComparisonBucketDate(row[xAxis], current, timeGrain));
+    const hasComparison =
+      row[xAxis] != null &&
+      Boolean(getCustomComparisonBucketDate(row[xAxis], period, timeGrain));
+    if (hasCurrent && hasComparison) return row;
+    const result = { ...row };
+    Object.keys(result).forEach(key => {
+      const historicalValue =
+        key === period.comparisonTimeRange ||
+        Boolean(getTimeOffset({ name: key }, [period.comparisonTimeRange]));
+      const selected = historicalValue
+        ? hasComparison &&
+          (hasCurrent || comparisonType === ComparisonType.Values)
+        : hasCurrent;
+      if (key !== xAxis && typeof result[key] === 'number' && !selected)
+        result[key] = null;
+    });
+    return result;
+  });
+}
 
 /** Shared calendar labels use business dates, independent of browser timezone. */
 export function getCustomTimeUnitFormatter(timeGrain: string): TimeFormatter {
@@ -238,6 +273,17 @@ export function formatCustomPeriodTooltip({
     labels.size <= 1 ? ([...labels][0] ?? '对比') : '对比结果';
   const dateLabel = (comparisonTimeRange: string) => {
     if (!temporalAxis) return '整期';
+    if (comparisonTimeRange === period.currentTimeRange) {
+      const currentDate =
+        xValue instanceof Date
+          ? xValue
+          : typeof xValue === 'number' || typeof xValue === 'string'
+            ? new Date(xValue)
+            : undefined;
+      return currentDate && Number.isFinite(currentDate.getTime())
+        ? getCustomTimeUnitFormatter(timeGrain)(currentDate)
+        : '—';
+    }
     const date = getCustomComparisonBucketDate(
       xValue,
       { ...period, comparisonTimeRange },
@@ -300,5 +346,5 @@ export function formatCustomPeriodTooltip({
   return sanitizeTooltipHtml(`<div style="background-color:#fff;color:#1f2937;">${category}<table style="border-collapse:collapse;">
     <thead><tr><th style="text-align:left;">指标</th><th style="text-align:right;padding-left:16px;">${header('当前', dateLabel(period.currentTimeRange))}</th><th style="text-align:right;padding-left:16px;">${header(comparisonLabel, dateLabel(offset))}</th></tr></thead>
     <tbody>${rows.join('')}</tbody></table>
-    <div style="max-width:360px;white-space:normal;font-size:11px;line-height:1.5;opacity:0.7;margin-top:8px;">${periodLine('当前', period.currentTimeRange, currentDays)}${periodLine('对比', offset, comparisonDays)}<div>完整期间总量${currentDays !== comparisonDays ? ' · 期间长度不同' : ''}</div></div></div>`);
+    <div style="max-width:360px;white-space:normal;font-size:11px;line-height:1.5;opacity:0.7;margin-top:8px;">${periodLine('当前', period.currentTimeRange, currentDays)}${periodLine('对比', offset, comparisonDays)}<div>完整期间总量${currentDays !== comparisonDays ? ' · 期间长度不同' : ''}${temporalAxis ? ' · 历史参考' : ''}</div></div></div>`);
 }

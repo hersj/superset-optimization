@@ -35,6 +35,7 @@ import {
   getCustomTimeUnitFormatter,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
+  maskCustomPeriodCurrentData,
 } from '../../src/utils/customPeriodTooltip';
 
 const offset = '2026-08-05 : 2026-08-08';
@@ -75,6 +76,49 @@ function render(
   element.innerHTML = formatCustomPeriodTooltip({ ...input, ...overrides });
   return element;
 }
+
+test('imputed current values outside the selected period never become future actuals', () => {
+  const future = Date.parse('2026-09-20T00:00:00+08:00');
+  const history = '2025-09-01 : 2025-10-01';
+  const period = {
+    currentTimeRange: '2026-09-01 : 2026-09-08',
+    comparisonTimeRange: history,
+  };
+  const data = [
+    { ds: future, sales: 100, [`sales__${history}`]: 80, currency: 'USD' },
+  ];
+  expect(maskCustomPeriodCurrentData(data, 'ds', period)).toEqual([
+    { ds: future, sales: null, [`sales__${history}`]: 80, currency: 'USD' },
+  ]);
+  expect(
+    maskCustomPeriodCurrentData(
+      data,
+      'ds',
+      period,
+      'P1D',
+      ComparisonType.Percentage,
+    ),
+  ).toEqual([
+    { ds: future, sales: null, [`sales__${history}`]: null, currency: 'USD' },
+  ]);
+  expect(data[0].sales).toBe(100);
+  expect(maskCustomPeriodCurrentData(data, 'ds', undefined)).toBe(data);
+});
+
+test('imputed comparison values do not leak past the shorter selected history', () => {
+  const date = Date.parse('2026-09-20T00:00:00+08:00');
+  const period = {
+    currentTimeRange: '2026-09-01 : 2026-10-01',
+    comparisonTimeRange: offset,
+  };
+  expect(
+    maskCustomPeriodCurrentData(
+      [{ ds: date, sales: 20, [`sales__${offset}`]: 80 }],
+      'ds',
+      period,
+    ),
+  ).toEqual([{ ds: date, sales: 20, [`sales__${offset}`]: null }]);
+});
 
 test('pairs A/B into one metric row with marker, formatted values and inclusive period footer', () => {
   const element = render();
@@ -169,6 +213,27 @@ test('missing B remains a dash rather than zero', () => {
   expect(
     [...element.querySelectorAll('tbody td')].map(cell => cell.textContent),
   ).toEqual(['销售额', '100', '—']);
+});
+
+test('history-only future buckets show the current-axis date and real historical date', () => {
+  const future = Date.parse('2026-09-20T00:00:00+08:00');
+  const history = '2025-09-01 : 2025-10-01';
+  const element = render({
+    period: {
+      currentTimeRange: '2026-09-01 : 2026-09-08',
+      comparisonTimeRange: history,
+    },
+    params: [{ seriesId: `销售额__${history}`, value: [future, 80] }],
+    series: [{ id: `销售额__${history}`, data: [[future, 80]] }],
+  });
+  expect(
+    [...element.querySelectorAll('thead th')].map(cell => cell.textContent),
+  ).toEqual(['指标', '当前2026-09-20', '对比2025-09-20']);
+  expect(
+    [...element.querySelectorAll('tbody td')].map(cell => cell.textContent),
+  ).toEqual(['销售额', '—', '80']);
+  expect(element.textContent).toContain('历史参考');
+  expect(element.textContent).toContain('（7 天）');
 });
 
 test('escapes metric labels and formatter output while preserving the color marker', () => {

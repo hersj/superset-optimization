@@ -156,6 +156,57 @@ const queriesData: ChartDataResponseResult[] = [
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
 ];
 
+test('custom history leaves future current values empty on both mixed chart axes', () => {
+  const offset = '2025-09-01 : 2025-10-01';
+  const dates = [1, 7, 8, 30].map(day =>
+    Date.parse(`2026-09-${String(day).padStart(2, '0')}T00:00:00+08:00`),
+  );
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      metrics: ['sales'],
+      metricsB: ['margin'],
+      groupby: [],
+      groupbyB: [],
+      stack: true,
+      stackB: true,
+      time_compare: [offset],
+      time_compare_b: [offset],
+      extra_form_data: {
+        time_grain_sqla: 'P1D',
+        time_compare: [offset],
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-09-01 : 2026-09-08',
+            comparisonTimeRange: offset,
+          },
+        },
+      },
+    } as EchartsMixedTimeseriesFormData,
+    queriesData: ['sales', 'margin'].map(metric =>
+      createTestQueryData(
+        dates.map(ds => ({
+          ds,
+          [metric]: 100,
+          [`${metric}__${offset}`]: 80,
+        })),
+        { colnames: ['ds'], coltypes: [GenericDataType.Temporal] },
+      ),
+    ),
+  });
+  const output = transformProps(props);
+  const entries = output.echartOptions.series as SeriesOption[];
+  for (const metric of ['sales', 'margin']) {
+    const actual = entries.find(entry => entry.name === metric);
+    expect(actual?.data?.[2]).toEqual([dates[2], null]);
+    expect(actual?.data?.[3]).toEqual([dates[3], null]);
+  }
+});
+
 test('dashboard weekly grain aligns mixed bars and lines without changing temporal drill values', () => {
   const dates = Array.from(
     { length: 13 },

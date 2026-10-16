@@ -98,6 +98,27 @@ function customForm(
   };
 }
 
+test('manual-end intent stays in custom metadata rather than query controls or extras', () => {
+  const input = customForm('P1D');
+  input.extra_form_data = {
+    ...input.extra_form_data,
+    custom_form_data: {
+      custom_period_comparison: { ...period, comparisonEndMode: 'manual' },
+    },
+  };
+  for (const build of [timeseriesBuildQuery, mixedBuildQuery]) {
+    for (const query of build(input).queries) {
+      expect(query.time_offsets).toEqual([period.comparisonTimeRange]);
+      expect(query).not.toHaveProperty('comparisonEndMode');
+      expect(query.extras).not.toHaveProperty('comparisonEndMode');
+      expect(query.custom_form_data).toMatchObject({
+        custom_period_comparison: { comparisonEndMode: 'manual' },
+      });
+      expect(query.extras).not.toHaveProperty('time_compare');
+    }
+  }
+});
+
 test.each([
   'P1D',
   'P1W',

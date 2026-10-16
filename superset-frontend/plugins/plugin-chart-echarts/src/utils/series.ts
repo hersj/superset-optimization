@@ -608,7 +608,8 @@ export function extractSeries(
           value = fillNeighborValue;
         } else if (
           stack === StackControlsValue.Expand &&
-          totalStackedValue !== undefined
+          totalStackedValue !== undefined &&
+          (isDefined(value) || fillNeighborValue !== undefined)
         ) {
           value = ((value || 0) as number) / totalStackedValue;
         }

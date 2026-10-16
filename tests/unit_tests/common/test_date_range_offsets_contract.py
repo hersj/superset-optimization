@@ -269,6 +269,126 @@ class Contract(unittest.TestCase):
         )
         self.assertTrue(pd.isna(indexed.loc[pd.Timestamp("2026-10-03"), "metric"]))
 
+    def test_longer_history_extends_current_axis_without_expanding_current_query(self):
+        offset = "2025-09-01 : 2025-10-01"
+        obj = query(start="2026-09-01", end="2026-09-08", offsets=[offset])
+        original = copy.deepcopy(obj.to_dict())
+        output = self.run_offset(
+            frame(["2026-09-01", "2026-09-07"], [100, 700]),
+            frame(["2025-09-01", "2025-09-07", "2025-09-30"], [10, 70, 300]),
+            obj,
+        ).set_index("__timestamp")
+        self.assertEqual(
+            output.loc[pd.Timestamp("2026-09-30"), f"metric__{offset}"], 300
+        )
+        self.assertTrue(pd.isna(output.loc[pd.Timestamp("2026-09-30"), "metric"]))
+        self.assertEqual(output["metric"].sum(), 800)
+        self.assertEqual(obj.to_dict(), original)
+        self.assertEqual(self.calls[0]["time_range"], offset)
+
+    def test_yearly_history_uses_month_day_without_shifting_march_by_leap_day(self):
+        offset = "2023-02-27 : 2023-03-04"
+        obj = query(start="2024-02-27", end="2024-03-02", offsets=[offset])
+        output = self.run_offset(
+            frame(
+                ["2024-02-27", "2024-02-28", "2024-02-29", "2024-03-01"], [1, 2, 3, 4]
+            ),
+            frame(
+                ["2023-02-27", "2023-02-28", "2023-03-01", "2023-03-03"],
+                [10, 20, 40, 60],
+            ),
+            obj,
+        ).set_index("__timestamp")
+        self.assertTrue(
+            pd.isna(output.loc[pd.Timestamp("2024-02-29"), f"metric__{offset}"])
+        )
+        self.assertEqual(
+            output.loc[pd.Timestamp("2024-03-01"), f"metric__{offset}"], 40
+        )
+        self.assertEqual(
+            output.loc[pd.Timestamp("2024-03-03"), f"metric__{offset}"], 60
+        )
+        self.assertTrue(pd.isna(output.loc[pd.Timestamp("2024-03-03"), "metric"]))
+
+    def test_longer_history_extends_each_calendar_grain_by_real_periods(self):
+        for grain, start, end, offset, history_dates, expected in [
+            (
+                "P1W_SUN",
+                "2026-09-06",
+                "2026-09-13",
+                "2025-09-07 : 2025-09-28",
+                ["2025-09-07", "2025-09-14", "2025-09-21"],
+                ["2026-09-06", "2026-09-13", "2026-09-20"],
+            ),
+            (
+                "P1M",
+                "2026-09-01",
+                "2026-10-01",
+                "2025-09-01 : 2025-12-01",
+                ["2025-09-01", "2025-10-01", "2025-11-01"],
+                ["2026-09-01", "2026-10-01", "2026-11-01"],
+            ),
+            (
+                "P3M_FISCAL",
+                "2026-04-01",
+                "2026-07-01",
+                "2025-04-01 : 2026-01-01",
+                ["2025-04-01", "2025-07-01", "2025-10-01"],
+                ["2026-04-01", "2026-07-01", "2026-10-01"],
+            ),
+            (
+                "P1Y",
+                "2026-01-01",
+                "2027-01-01",
+                "2023-01-01 : 2026-01-01",
+                ["2023-01-01", "2024-01-01", "2025-01-01"],
+                ["2026-01-01", "2027-01-01", "2028-01-01"],
+            ),
+            (
+                "P1Y_FISCAL",
+                "2026-04-01",
+                "2027-03-31",
+                "2023-04-01 : 2026-03-31",
+                ["2023-04-01", "2024-04-01", "2025-04-01"],
+                ["2026-04-01", "2027-04-01", "2028-04-01"],
+            ),
+        ]:
+            with self.subTest(grain=grain):
+                obj = query(grain=grain, start=start, end=end, offsets=[offset])
+                output = self.run_offset(
+                    frame([start], [100]),
+                    frame(history_dates, [10, 20, 30]),
+                    obj,
+                ).sort_values("__timestamp")
+                self.assertEqual(
+                    output["__timestamp"].tolist(), list(pd.to_datetime(expected))
+                )
+                self.assertEqual(output[f"metric__{offset}"].tolist(), [10, 20, 30])
+                self.assertTrue(output["metric"].iloc[1:].isna().all())
+                self.assertEqual(obj.time_range, f"{start} : {end}")
+
+    def test_historical_leap_day_is_not_merged_into_february_28_or_march_1(self):
+        offset = "2024-02-27 : 2024-03-03"
+        obj = query(start="2025-02-27", end="2025-03-02", offsets=[offset])
+        output = self.run_offset(
+            frame(["2025-02-27", "2025-02-28", "2025-03-01"], [1, 2, 3]),
+            frame(
+                ["2024-02-27", "2024-02-28", "2024-02-29", "2024-03-01", "2024-03-02"],
+                [10, 20, 999, 30, 40],
+            ),
+            obj,
+        ).set_index("__timestamp")
+        self.assertEqual(
+            output.loc[pd.Timestamp("2025-02-28"), f"metric__{offset}"], 20
+        )
+        self.assertEqual(
+            output.loc[pd.Timestamp("2025-03-01"), f"metric__{offset}"], 30
+        )
+        self.assertEqual(
+            output.loc[pd.Timestamp("2025-03-02"), f"metric__{offset}"], 40
+        )
+        self.assertNotIn(999, output[f"metric__{offset}"].tolist())
+
     def test_series_dimensions_do_not_cross_join(self):
         output = self.run_offset(
             frame(
@@ -589,11 +709,16 @@ class Contract(unittest.TestCase):
                     obj,
                 ).sort_values("__timestamp")
                 baseline = output[f"metric__{offset}"]
-                self.assertEqual(len(output), max(a_days, b_days))
-                self.assertEqual(baseline.dropna().tolist(), list(range(1, b_days + 1)))
+                self.assertEqual(len(output), a_days)
+                expected = [
+                    index + 1
+                    for index, date in enumerate(comparison_dates[:-1])
+                    if not (b_days > a_days and date.month == 2 and date.day == 29)
+                ]
+                self.assertEqual(baseline.dropna().tolist(), expected)
                 self.assertNotIn(999, baseline.tolist())
-                missing_column = "metric" if b_days > a_days else f"metric__{offset}"
-                self.assertTrue(pd.isna(output[missing_column].iloc[-1]))
+                self.assertEqual(int(baseline.isna().sum()), int(a_days > b_days))
+                self.assertEqual(baseline.iloc[-1], b_days)
                 self.assertEqual(
                     self.calls[-1]["to_dttm"], datetime.fromisoformat(b_end)
                 )

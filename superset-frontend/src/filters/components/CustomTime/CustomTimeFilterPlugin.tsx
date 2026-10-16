@@ -536,6 +536,8 @@ function getConfiguredTimeColumn(formData: any): string | undefined {
 type CustomComparisonDraft = {
   customComparisonMode: 'original' | 'custom';
   comparisonStartDate: string;
+  comparisonEndDate: string;
+  comparisonEndMode: 'auto' | 'manual';
 };
 
 function getCustomComparisonDraft(
@@ -552,7 +554,27 @@ function getCustomComparisonDraft(
     return { period: null, error: '自定义期间总量对比请使用连续区间。' };
   if (!isValidIsoDate(state.comparisonStartDate))
     return { period: null, error: '请选择有效的对比开始日期。' };
+  if (state.comparisonEndMode === 'manual') {
+    if (!isValidIsoDate(state.comparisonEndDate))
+      return { period: null, error: '请选择有效的对比结束日期。' };
+    if (state.comparisonEndDate < state.comparisonStartDate)
+      return { period: null, error: '对比结束日期不能早于开始日期。' };
+  }
   try {
+    if (state.comparisonEndMode === 'manual') {
+      return {
+        period: {
+          ...createCustomPeriodComparison(
+            range,
+            state.comparisonStartDate,
+            state.comparisonEndDate,
+          ),
+          // Keep the manual intent applicable even when it equals the generated end.
+          comparisonEndMode: 'manual' as const,
+        },
+        error: undefined,
+      };
+    }
     // Validate finite half-open dates before deriving calendar progress.
     const days = getPeriodDayCount(range);
     let endExclusive = addDays(state.comparisonStartDate, days);
@@ -617,10 +639,11 @@ export default function CustomTimeFilterPlugin(props: any) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { formData, filterState, ownState = {}, setDataMask } = props;
-  // Internal start-only entry reuses navigation and grids without publishing a filter.
+  // Internal boundary picker reuses navigation and grids without publishing a filter.
   const onSelectStart = props.onSelectStart as
-    | ((date: string) => void)
+    | ((start: string, end?: string) => void)
     | undefined;
+  const selectingComparisonEnd = props.selectionBoundary === 'end';
   // 恢复配置与用户点击分开取值：历史配置没有模式字段，不能借用上一帧点选状态。
   const restoredSelection = useMemo(
     () => ({
@@ -670,8 +693,20 @@ export default function CustomTimeFilterPlugin(props: any) {
         typeof filterState?.comparisonStartDate === 'string'
           ? filterState.comparisonStartDate
           : '',
+      comparisonEndDate:
+        typeof filterState?.comparisonEndDate === 'string'
+          ? filterState.comparisonEndDate
+          : '',
+      // Older states contain a derived end, so only an explicit mode restores a manual end.
+      comparisonEndMode:
+        filterState?.comparisonEndMode === 'manual' ? 'manual' : 'auto',
     }),
-    [filterState?.customComparisonMode, filterState?.comparisonStartDate],
+    [
+      filterState?.customComparisonMode,
+      filterState?.comparisonStartDate,
+      filterState?.comparisonEndDate,
+      filterState?.comparisonEndMode,
+    ],
   );
   const [customComparisonMode, setCustomComparisonMode] = useState(
     restoredComparison.customComparisonMode,
@@ -679,9 +714,20 @@ export default function CustomTimeFilterPlugin(props: any) {
   const [comparisonStartDate, setComparisonStartDate] = useState(
     restoredComparison.comparisonStartDate,
   );
+  const [comparisonEndDate, setComparisonEndDate] = useState(
+    restoredComparison.comparisonEndDate,
+  );
+  const [comparisonEndMode, setComparisonEndMode] = useState(
+    restoredComparison.comparisonEndMode,
+  );
+  const [comparisonBoundary, setComparisonBoundary] = useState<'start' | 'end'>(
+    'start',
+  );
   useEffect(() => {
     setCustomComparisonMode(restoredComparison.customComparisonMode);
     setComparisonStartDate(restoredComparison.comparisonStartDate);
+    setComparisonEndDate(restoredComparison.comparisonEndDate);
+    setComparisonEndMode(restoredComparison.comparisonEndMode);
   }, [restoredComparison]);
 
   const currentYear = Number(getDataEndDate().substring(0, 4));
@@ -788,7 +834,10 @@ export default function CustomTimeFilterPlugin(props: any) {
   const [collapsed, setCollapsed] = useState(!enableCustomComparison);
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(() => {
     if (!onSelectStart || !isValidIsoDate(parsedSavedRange.start)) return 0;
-    const [year, month] = parsedSavedRange.start.split('-').map(Number);
+    const focusDate = selectingComparisonEnd
+      ? savedEndDate
+      : parsedSavedRange.start;
+    const [year, month] = focusDate.split('-').map(Number);
     const [baseYear, baseMonth] = getDataEndDate().split('-').map(Number);
     return (year - baseYear) * 12 + month - baseMonth;
   });
@@ -826,7 +875,12 @@ export default function CustomTimeFilterPlugin(props: any) {
       return {
         activePreset,
         ...(enableCustomComparison
-          ? { customComparisonMode, comparisonStartDate }
+          ? {
+              customComparisonMode,
+              comparisonStartDate,
+              comparisonEndDate,
+              comparisonEndMode,
+            }
           : {}),
         fiscalYear: activeFiscalYear,
         fiscalYearEnd: activeFiscalYearEnd,
@@ -854,6 +908,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       enableCustomComparison,
       customComparisonMode,
       comparisonStartDate,
+      comparisonEndDate,
+      comparisonEndMode,
       activeFiscalYear,
       activeFiscalYearEnd,
       activeGrain,
@@ -938,6 +994,13 @@ export default function CustomTimeFilterPlugin(props: any) {
         comparisonStartDate:
           (stateOverrides.comparisonStartDate as string | undefined) ??
           comparisonStartDate,
+        comparisonEndDate:
+          (stateOverrides.comparisonEndDate as string | undefined) ??
+          comparisonEndDate,
+        comparisonEndMode:
+          (stateOverrides.comparisonEndMode as
+            | CustomComparisonDraft['comparisonEndMode']
+            | undefined) ?? comparisonEndMode,
       };
       const comparisonDraft = getCustomComparisonDraft(
         timeRange,
@@ -948,12 +1011,15 @@ export default function CustomTimeFilterPlugin(props: any) {
       const customPeriod = comparisonDraft.period
         ? { ...comparisonDraft.period, ...(timeColumn ? { timeColumn } : {}) }
         : null;
-      const derivedComparisonEndDate = customPeriod
-        ? subtractDays(
-            parseRange(customPeriod.comparisonTimeRange).endExclusive,
-            1,
-          )
-        : '';
+      const derivedComparisonEndDate =
+        comparisonState.comparisonEndMode === 'manual'
+          ? comparisonState.comparisonEndDate
+          : customPeriod
+            ? subtractDays(
+                parseRange(customPeriod.comparisonTimeRange).endExclusive,
+                1,
+              )
+            : '';
       setDataMask({
         extraFormData: {
           ...(timeColumn
@@ -1023,6 +1089,8 @@ export default function CustomTimeFilterPlugin(props: any) {
       enableCustomComparison,
       customComparisonMode,
       comparisonStartDate,
+      comparisonEndDate,
+      comparisonEndMode,
     ],
   );
 
@@ -1316,7 +1384,11 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const handlePresetClick = (preset: TimePreset) => {
     if (onSelectStart) {
-      onSelectStart(parseRange(getPresetTimeRange(preset.key)).start);
+      const presetBounds = parseRange(getPresetTimeRange(preset.key));
+      onSelectStart(
+        presetBounds.start,
+        subtractDays(presetBounds.endExclusive, 1),
+      );
       return;
     }
     const isFiscalPreset = preset.key === 'this_fiscal_year';
@@ -1379,8 +1451,12 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (onSelectStart) {
+      const fiscalBounds = parseRange(
+        getProfitFiscalYearRange(fiscalYear).timeRange,
+      );
       onSelectStart(
-        getProfitFiscalYearRange(fiscalYear).timeRange.substring(0, 10),
+        fiscalBounds.start,
+        subtractDays(fiscalBounds.endExclusive, 1),
       );
       return;
     }
@@ -1451,7 +1527,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     }
 
     if (onSelectStart) {
-      onSelectStart(val);
+      onSelectStart(val, val);
       return;
     }
 
@@ -1539,7 +1615,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (onSelectStart) {
-      onSelectStart(weekStart);
+      onSelectStart(weekStart, subtractDays(addDays(weekStart, 7), 1));
       return;
     }
     if (selectionMode === 'points') {
@@ -1588,7 +1664,10 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (onSelectStart) {
-      onSelectStart(monthStartFromMonth(month));
+      onSelectStart(
+        monthStartFromMonth(month),
+        subtractDays(nextMonthStart(month), 1),
+      );
       return;
     }
     if (selectionMode === 'points') {
@@ -1642,7 +1721,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (onSelectStart) {
-      onSelectStart(quarterRange.start);
+      onSelectStart(quarterRange.start, subtractDays(quarterRange.end, 1));
       return;
     }
     if (selectionMode === 'points') {
@@ -1691,7 +1770,7 @@ export default function CustomTimeFilterPlugin(props: any) {
       return;
     }
     if (onSelectStart) {
-      onSelectStart(fmtDate(year, 1, 1));
+      onSelectStart(fmtDate(year, 1, 1), fmtDate(year, 12, 31));
       return;
     }
     if (selectionMode === 'points') {
@@ -2028,7 +2107,9 @@ export default function CustomTimeFilterPlugin(props: any) {
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
         {onSelectStart
-          ? '单击选择对比开始；结束自动按当前期间计算。'
+          ? selectingComparisonEnd
+            ? '请选择对比结束日期。'
+            : '请选择对比开始日期。'
           : selectionMode === 'points'
             ? '逐项点选，再次点击取消；中间未选日期不参与查询。'
             : '单击选择一天；继续单击第二个日期选择范围。范围完成后再次单击会重新开始。'}
@@ -2051,7 +2132,9 @@ export default function CustomTimeFilterPlugin(props: any) {
       {renderCalendarNavigation()}
       <div style={{ ...styles.hint }}>
         {onSelectStart
-          ? '单击选择所在周的周日起点；结束自动按当前期间计算。'
+          ? selectingComparisonEnd
+            ? '结束日期取该周周六。'
+            : '开始日期取该周周日。'
           : '点击任意日期会自动选择该日期所在的周日-周六整周。'}
       </div>
       <div
@@ -2353,7 +2436,9 @@ export default function CustomTimeFilterPlugin(props: any) {
       </div>
       <div style={{ ...styles.hint }}>
         {onSelectStart
-          ? '单击选择财年开始；结束自动按当前期间计算。'
+          ? selectingComparisonEnd
+            ? '选择结束财年。'
+            : '选择开始财年。'
           : selectionMode === 'points'
             ? '逐项选择财年，再次点击取消；不自动包含中间财年。'
             : '单击选择一个财年；继续单击第二个财年选择连续区间。范围完成后再次单击会重新开始。'}
@@ -2445,7 +2530,11 @@ export default function CustomTimeFilterPlugin(props: any) {
   // A picker instance terminates here, so it cannot create another comparison picker.
   if (onSelectStart) {
     return (
-      <div role="group" aria-label="对比开始日期" style={styles.container}>
+      <div
+        role="group"
+        aria-label={selectingComparisonEnd ? '对比结束日期' : '对比开始日期'}
+        style={styles.container}
+      >
         {enableTimeGrain && renderGrainButtons()}
         {enablePresets && renderPresetButtons()}
         <div style={styles.panel}>{renderExpandedSelector()}</div>
@@ -2463,12 +2552,19 @@ export default function CustomTimeFilterPlugin(props: any) {
   const comparisonDraft = getCustomComparisonDraft(
     visibleRange,
     selectionMode,
-    { customComparisonMode, comparisonStartDate },
+    {
+      customComparisonMode,
+      comparisonStartDate,
+      comparisonEndDate,
+      comparisonEndMode,
+    },
     activeGrain,
   );
   const changeComparison = (next: CustomComparisonDraft) => {
     setCustomComparisonMode(next.customComparisonMode);
     setComparisonStartDate(next.comparisonStartDate);
+    setComparisonEndDate(next.comparisonEndDate);
+    setComparisonEndMode(next.comparisonEndMode);
     applyFilter(lastRangeRef.current, activeGrain, activePreset, next);
   };
   const comparisonBounds = parseRange(
@@ -2510,9 +2606,11 @@ export default function CustomTimeFilterPlugin(props: any) {
               value={customComparisonMode}
               onChange={event =>
                 changeComparison({
+                  comparisonStartDate,
+                  comparisonEndDate,
+                  comparisonEndMode,
                   customComparisonMode: event.target
                     .value as CustomComparisonDraft['customComparisonMode'],
-                  comparisonStartDate,
                 })
               }
             >
@@ -2522,7 +2620,40 @@ export default function CustomTimeFilterPlugin(props: any) {
           </label>
           {customComparisonMode === 'custom' && (
             <>
+              <div style={{ display: 'grid', gap: 6, margin: '8px 0' }}>
+                <button
+                  type="button"
+                  aria-label="修改对比开始日期"
+                  aria-pressed={comparisonBoundary === 'start'}
+                  style={
+                    comparisonBoundary === 'start'
+                      ? styles.btnActive
+                      : styles.btn
+                  }
+                  onClick={() => setComparisonBoundary('start')}
+                >
+                  开始：{comparisonStartDate || '请选择'}
+                </button>
+                <button
+                  type="button"
+                  aria-label="修改对比结束日期"
+                  aria-pressed={comparisonBoundary === 'end'}
+                  style={
+                    comparisonBoundary === 'end' ? styles.btnActive : styles.btn
+                  }
+                  onClick={() => setComparisonBoundary('end')}
+                >
+                  结束：
+                  {comparisonEndMode === 'manual'
+                    ? comparisonEndDate || '请选择'
+                    : comparisonBounds.endExclusive
+                      ? subtractDays(comparisonBounds.endExclusive, 1)
+                      : '自动计算'}
+                  {comparisonEndMode === 'auto' ? ' · 自动' : ' · 手动'}
+                </button>
+              </div>
               <CustomTimeFilterPlugin
+                key={comparisonBoundary}
                 formData={{
                   ...formData,
                   enableCustomComparison: false,
@@ -2530,48 +2661,53 @@ export default function CustomTimeFilterPlugin(props: any) {
                   defaultGrain: 'day',
                 }}
                 filterState={{
-                  value: isValidIsoDate(comparisonStartDate)
-                    ? `${comparisonStartDate} : ${addDays(comparisonStartDate, 1)}`
-                    : null,
+                  value:
+                    comparisonDraft.period?.comparisonTimeRange ||
+                    (isValidIsoDate(comparisonStartDate)
+                      ? `${comparisonStartDate} : ${addDays(comparisonStartDate, 1)}`
+                      : null),
                 }}
                 ownState={{}}
                 setDataMask={ignorePickerDataMask}
-                onSelectStart={(date: string) =>
+                selectionBoundary={comparisonBoundary}
+                onSelectStart={(date: string, end: string = date) =>
                   changeComparison({
                     customComparisonMode,
-                    comparisonStartDate: date,
+                    comparisonStartDate:
+                      comparisonBoundary === 'start'
+                        ? date
+                        : comparisonStartDate,
+                    comparisonEndDate:
+                      comparisonBoundary === 'end' ? end : comparisonEndDate,
+                    comparisonEndMode:
+                      comparisonBoundary === 'end'
+                        ? 'manual'
+                        : comparisonEndMode,
                   })
                 }
                 width={props.width}
               />
-              <div style={styles.hint}>
-                只需选择对比开始日期；
-                {(
-                  {
-                    month: '月数',
-                    quarter: '季度数',
-                    year: '年数',
-                    fiscal_year: '财年数',
-                  } as Record<string, string>
-                )[activeGrain] || '天数'}
-                随当前期间自动同步。
-                {['month', 'quarter', 'year', 'fiscal_year'].includes(
-                  activeGrain,
-                ) && '局部期间按相同日期进度，实际天数可能不同。'}
-              </div>
+              {comparisonEndMode === 'manual' && (
+                <button
+                  type="button"
+                  style={styles.btn}
+                  onClick={() => {
+                    setComparisonBoundary('start');
+                    changeComparison({
+                      customComparisonMode,
+                      comparisonStartDate,
+                      comparisonEndDate,
+                      comparisonEndMode: 'auto',
+                    });
+                  }}
+                >
+                  恢复跟随当前期间
+                </button>
+              )}
               {comparisonDraft.error && (
                 <div role="alert">{comparisonDraft.error}</div>
               )}
             </>
-          )}
-          <div style={styles.hint}>
-            自定义期间控制作用范围内图表原有的时间比较，并用于大数字、表格和透视表。
-            请打开看板右上角“时间比较”；关闭时仅显示当前期间。
-          </div>
-          {customComparisonMode === 'original' && (
-            <div style={styles.hint}>
-              按现有时间粒度的原有策略对比；选择自定义期间后通过侧栏“应用筛选”提交。
-            </div>
           )}
         </div>
       </details>

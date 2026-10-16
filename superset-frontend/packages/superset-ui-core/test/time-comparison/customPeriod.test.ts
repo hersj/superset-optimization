@@ -474,7 +474,7 @@ test.each([
     '2024-02-27 : 2024-03-02',
     '2025-02-27 : 2025-03-02',
     '2024-02-29',
-    '2025-03-01',
+    null,
   ],
 ])(
   'custom tooltip bucket %s maps from actual selected starts, retaining partial buckets',
@@ -485,6 +485,22 @@ test.each([
         { currentTimeRange, comparisonTimeRange },
         grain,
       ),
+    ).toBe(expected);
+  },
+);
+
+test.each([
+  ['2024-02-29', null],
+  ['2024-03-01', '2023-03-01'],
+  ['2024-03-03', '2023-03-03'],
+])(
+  'yearly comparison maps %s by calendar date beyond the current range',
+  (value, expected) => {
+    expect(
+      getCustomComparisonBucketDate(value, {
+        currentTimeRange: '2024-02-27 : 2024-03-02',
+        comparisonTimeRange: '2023-02-27 : 2023-03-04',
+      }),
     ).toBe(expected);
   },
 );

@@ -27,6 +27,7 @@ export interface CustomPeriodComparison {
   currentTimeRange: string;
   comparisonTimeRange: string;
   timeColumn?: string;
+  comparisonEndMode?: 'manual';
 }
 
 function dateValue(value: string): number {
@@ -88,7 +89,10 @@ export function getCustomPeriodComparison(
   if (
     typeof candidate.currentTimeRange !== 'string' ||
     typeof candidate.comparisonTimeRange !== 'string' ||
-    (candidate.timeColumn != null && typeof candidate.timeColumn !== 'string')
+    (candidate.timeColumn != null &&
+      typeof candidate.timeColumn !== 'string') ||
+    (candidate.comparisonEndMode != null &&
+      candidate.comparisonEndMode !== 'manual')
   ) {
     throw new Error('Invalid custom comparison');
   }
@@ -234,8 +238,31 @@ export function getCustomComparisonBucketDate(
   period: CustomPeriodComparison,
   timeGrain = 'P1D',
 ): string | null {
-  const ordinal = bucket(value, bounds(period.currentTimeRange)[0], timeGrain);
+  const [currentStart] = bounds(period.currentTimeRange);
   const [start, end] = bounds(period.comparisonTimeRange);
+  const currentOrigin = new Date(currentStart);
+  const comparisonOrigin = new Date(start);
+  if (
+    timeGrain === 'P1D' &&
+    currentOrigin.getUTCMonth() === comparisonOrigin.getUTCMonth() &&
+    currentOrigin.getUTCDate() === comparisonOrigin.getUTCDate() &&
+    currentOrigin.getUTCFullYear() !== comparisonOrigin.getUTCFullYear()
+  ) {
+    const date = new Date(dateValue(normalizeDate(value)));
+    const month = date.getUTCMonth();
+    date.setUTCFullYear(
+      date.getUTCFullYear() +
+        comparisonOrigin.getUTCFullYear() -
+        currentOrigin.getUTCFullYear(),
+    );
+    // A missing leap day has no counterpart; it must not become March 1.
+    return date.getUTCMonth() === month &&
+      date.getTime() >= start &&
+      date.getTime() < end
+      ? date.toISOString().slice(0, 10)
+      : null;
+  }
+  const ordinal = bucket(value, currentStart, timeGrain);
   const date = new Date(start);
   const monthStep = timeGrain.startsWith('P1Y')
     ? 12

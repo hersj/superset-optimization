@@ -106,6 +106,7 @@ import {
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
+  maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
   getTooltipTimeFormatter,
@@ -266,7 +267,36 @@ export default function transformProps(
     xAxisLabel = verboseMap[xAxisLabel];
   }
 
-  const rebasedDataA = rebaseForecastDatum(data1, verboseMap);
+  const dataTypes = getColtypesMapping(queriesData[0]);
+  const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
+  const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
+  const nativeTimeCompare =
+    chartProps.rawFormData?.extra_form_data?.time_compare;
+  const array = ensureIsArray(
+    nativeTimeCompare ?? chartProps.rawFormData?.time_compare,
+  );
+  const arrayB = ensureIsArray(
+    nativeTimeCompare ?? chartProps.rawFormData?.time_compare_b,
+  );
+  const allTimeCompare = Array.from(new Set([...array, ...arrayB]));
+  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
+  const customPeriod = allTimeCompare.includes(
+    selectedPeriod?.comparisonTimeRange ?? '',
+  )
+    ? selectedPeriod
+    : undefined;
+  const timeGrainSqla =
+    (formData as any).extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.time_grain_sqla ||
+    _timeGrainSqla;
+  const rebasedDataA = maskCustomPeriodCurrentData(
+    rebaseForecastDatum(data1, verboseMap),
+    xAxisLabel,
+    xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
+    timeGrainSqla,
+    String(chartProps.rawFormData.comparison_type ?? 'values'),
+  );
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
     rebasedDataA,
     {
@@ -302,12 +332,8 @@ export default function transformProps(
     );
   };
 
-  const dataTypes = getColtypesMapping(queriesData[0]);
-  const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
-  const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
-
   const [rawSeriesA, sortedTotalValuesA] = extractSeries(rebasedDataA, {
-    fillNeighborValue: stack ? 0 : undefined,
+    fillNeighborValue: stack && !customPeriod ? 0 : undefined,
     xAxis: xAxisLabel,
     sortSeriesType,
     sortSeriesAscending,
@@ -315,7 +341,13 @@ export default function transformProps(
     totalStackedValues,
     xAxisType,
   });
-  const rebasedDataB = rebaseForecastDatum(data2, verboseMap);
+  const rebasedDataB = maskCustomPeriodCurrentData(
+    rebaseForecastDatum(data2, verboseMap),
+    xAxisLabel,
+    xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
+    timeGrainSqla,
+    String(chartProps.rawFormData.comparison_type_b ?? 'values'),
+  );
   const {
     totalStackedValues: totalStackedValuesB,
     thresholdValues: thresholdValuesB,
@@ -325,7 +357,7 @@ export default function transformProps(
     xAxisCol: xAxisLabel,
   });
   const [rawSeriesB, sortedTotalValuesB] = extractSeries(rebasedDataB, {
-    fillNeighborValue: stackB ? 0 : undefined,
+    fillNeighborValue: stackB && !customPeriod ? 0 : undefined,
     xAxis: xAxisLabel,
     sortSeriesType: sortSeriesTypeB,
     sortSeriesAscending: sortSeriesAscendingB,
@@ -458,15 +490,6 @@ export default function transformProps(
     maxSecondary = undefined;
   }
 
-  const nativeTimeCompare = (chartProps.rawFormData as any)?.extra_form_data
-    ?.time_compare;
-  const array = ensureIsArray(
-    nativeTimeCompare ?? chartProps.rawFormData?.time_compare,
-  );
-  const arrayB = ensureIsArray(
-    nativeTimeCompare ?? (chartProps.rawFormData as any)?.time_compare_b,
-  );
-  const allTimeCompare = Array.from(new Set([...array, ...arrayB]));
   const inverted = invert(verboseMap);
   const legendInputs: LegendGroupInput[] = [];
 
@@ -662,17 +685,6 @@ export default function transformProps(
     if (maxSecondary === undefined) maxSecondary = 1;
   }
 
-  const timeGrainSqla =
-    (formData as any).extra_form_data?.time_grain_sqla ||
-    (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
-    (chartProps as any).rawFormData?.time_grain_sqla ||
-    _timeGrainSqla;
-  const selectedPeriod = getCustomPeriodComparison(chartProps.rawFormData);
-  const customPeriod = allTimeCompare.includes(
-    selectedPeriod?.comparisonTimeRange ?? '',
-  )
-    ? selectedPeriod
-    : undefined;
   const controlledTimeFormatter = getCustomTimeControlledFormatter(
     chartProps.rawFormData.extra_form_data,
   );

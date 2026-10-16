@@ -1523,6 +1523,59 @@ test('dashboard fiscal grain aligns the standard timeseries axis with actual Apr
   });
 });
 
+test.each([StackControlsValue.Stack, StackControlsValue.Expand])(
+  'custom history keeps future current values empty in %s charts',
+  stack => {
+    const offset = '2025-09-01 : 2025-10-01';
+    const dates = [1, 7, 8, 30].map(day =>
+      Date.parse(`2026-09-${String(day).padStart(2, '0')}T00:00:00+08:00`),
+    );
+    const chartProps = createTestChartProps({
+      formData: {
+        ...timeCompareFormData,
+        x_axis: 'ds',
+        metrics: ['sales'],
+        groupby: [],
+        stack,
+        time_compare: [offset],
+        extra_form_data: {
+          time_grain_sqla: 'P1D',
+          time_compare: [offset],
+          custom_form_data: {
+            custom_period_comparison: {
+              currentTimeRange: '2026-09-01 : 2026-09-08',
+              comparisonTimeRange: offset,
+            },
+          },
+        },
+      },
+      queriesData: [
+        createTestQueryData(
+          dates.map(ds => ({
+            ds,
+            // Model a forward-fill postprocessor leaking past the current query end.
+            sales: 100,
+            [`sales__${offset}`]: 80,
+          })),
+          { colnames: ['ds'], coltypes: [GenericDataType.Temporal] },
+        ),
+      ],
+    });
+    const output = transformProps(chartProps);
+    const entries = output.echartOptions.series as SeriesOption[];
+    const actual = entries.find(entry => entry.name === 'sales');
+    expect(actual?.data).toHaveLength(4);
+    expect(actual?.data?.[2]).toEqual([dates[2], null]);
+    expect(actual?.data?.[3]).toEqual([dates[3], null]);
+    expect(
+      entries.find(entry => String(entry.name).includes(offset))?.data,
+    ).toHaveLength(4);
+    expect(
+      entries.find(entry => String(entry.name).includes(offset))?.data?.[3],
+    ).toEqual([dates[3], stack === StackControlsValue.Expand ? 1 : 80]);
+  },
+);
+
 test('custom period legend retains its full key while tooltip shows real comparison dates and unequal days', () => {
   const offset = '2026-08-12 : 2026-08-16';
   const period = {
