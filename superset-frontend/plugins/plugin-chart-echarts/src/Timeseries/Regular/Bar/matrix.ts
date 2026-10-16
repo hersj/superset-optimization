@@ -63,7 +63,12 @@ export function transformBarMatrix(
   chartProps: EchartsTimeseriesChartProps,
   base: TimeseriesChartTransformedProps,
 ): TimeseriesChartTransformedProps {
-  const { formData: inputFormData, theme, datasource, queriesData } = chartProps;
+  const {
+    formData: inputFormData,
+    theme,
+    datasource,
+    queriesData,
+  } = chartProps;
   const formData = { ...DEFAULT_FORM_DATA, ...inputFormData };
   const yColumn = formData.yAxisDimension!;
   const yLabel = getColumnLabel(yColumn);
