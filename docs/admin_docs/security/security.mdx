@@ -156,6 +156,13 @@ This feature is particularly useful for:
 
 ### SQL Execution Security Considerations
 
+SQL Lab database and table selectors only offer resources the user can access.
+This filtering does not replace query authorization: a manually entered query
+that references an unauthorized database or table is rejected with HTTP 403 before
+rendering or execution. Unavailable database IDs use the same response without
+disclosing whether they exist. Unexpected validation or execution failures remain
+server errors.
+
 Apache Superset includes features designed to provide safeguards when interacting with connected databases, such as the `DISALLOWED_SQL_FUNCTIONS` configuration setting. This aims to prevent the execution of potentially harmful database functions or system variables directly from Superset interfaces like SQL Lab.
 
 However, it is crucial to understand the following:

@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional, TYPE_CHECKING
 
-from flask_babel import gettext as __
 from sqlalchemy.exc import SQLAlchemyError
 
 from superset import db
@@ -30,7 +29,7 @@ from superset.errors import SupersetErrorType
 from superset.exceptions import (
     SupersetErrorException,
     SupersetErrorsException,
-    SupersetGenericErrorException,
+    SupersetSecurityException,
 )
 from superset.models.core import Database
 from superset.models.sql_lab import Query
@@ -117,9 +116,12 @@ class ExecuteSqlCommand(BaseCommand):
                 "status": status,
                 "payload": self._execution_context_convertor.serialize_payload(),
             }
-        except (SupersetErrorException, SupersetErrorsException):
-            # to make sure we raising the original
-            # SupersetErrorsException || SupersetErrorsException
+        except (
+            SupersetErrorException,
+            SupersetErrorsException,
+            QueryIsForbiddenToAccessException,
+        ):
+            # Preserve permission failures so the API can return HTTP 403.
             raise
         except Exception as ex:
             raise SqlLabException(self._execution_context, exception=ex) from ex
@@ -164,18 +166,10 @@ class ExecuteSqlCommand(BaseCommand):
 
     def _get_the_query_db(self) -> Database:
         mydb: Any = self._database_dao.find_by_id(self._execution_context.database_id)
-        self._validate_query_db(mydb)
+        if not mydb:
+            # Filtered and missing IDs share a response without disclosing existence.
+            raise QueryIsForbiddenToAccessException(self._execution_context)
         return mydb
-
-    @classmethod
-    def _validate_query_db(cls, database: Database | None) -> None:
-        if not database:
-            raise SupersetGenericErrorException(
-                __(
-                    "The database referenced in this query was not found. Please "
-                    "contact an administrator for further assistance or try again."
-                )
-            )
 
     def _save_new_query(self, query: Query) -> None:
         """
@@ -209,7 +203,7 @@ class ExecuteSqlCommand(BaseCommand):
     ) -> None:
         try:
             self._access_validator.validate(query, template_params)
-        except Exception as ex:
+        except SupersetSecurityException as ex:
             raise QueryIsForbiddenToAccessException(self._execution_context, ex) from ex
 
     def _set_query_limit_if_required(
