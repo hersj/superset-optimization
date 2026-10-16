@@ -73,7 +73,7 @@ export function transformBarMatrix(
   const yColumn = formData.yAxisDimension!;
   const yLabel = getColumnLabel(yColumn);
   const xColumn = getXAxisColumn(chartProps.rawFormData)!;
-  const metrics = formData.metrics;
+  const { metrics } = formData;
   const offsets = ensureIsArray(
     chartProps.rawFormData.extra_form_data?.time_compare ??
       chartProps.rawFormData.time_compare,

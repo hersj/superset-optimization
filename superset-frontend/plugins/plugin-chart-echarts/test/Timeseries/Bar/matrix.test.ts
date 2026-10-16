@@ -52,7 +52,23 @@ function props(
     'sales, B': ['sales', 'B'],
   },
 ) {
-  const query = {
+  const query: ChartDataResponseResult & {
+    label_map: Record<string, string[]>;
+  } = {
+    annotation_data: null,
+    cache_key: null,
+    cache_timeout: null,
+    cached_dttm: null,
+    queried_dttm: null,
+    error: null,
+    is_cached: false,
+    query: '',
+    rowcount: data.length,
+    sql_rowcount: data.length,
+    stacktrace: null,
+    status: 'success',
+    from_dttm: null,
+    to_dttm: null,
     data,
     colnames: Object.keys(data[0] ?? {}),
     coltypes: Object.keys(data[0] ?? {}).map(key =>
@@ -61,13 +77,13 @@ function props(
         : GenericDataType.Numeric,
     ),
     label_map: labelMap,
-  } as ChartDataResponseResult;
+  };
   return createEchartsTimeseriesTestChartProps<
     EchartsTimeseriesFormData,
     EchartsTimeseriesChartProps
   >({
     defaultFormData: DEFAULT_FORM_DATA,
-    defaultVizType: VizType.EchartsTimeseriesBar,
+    defaultVizType: VizType.Bar,
     formData: {
       x_axis: 'month',
       yAxisDimension: 'shop',
@@ -104,7 +120,7 @@ function rectangle(series: CustomSeriesOption, value: number) {
 test('bar query groups by both categorical axes in one query and leaves normal bars unchanged', () => {
   const form = {
     datasource: '3__table',
-    viz_type: VizType.EchartsTimeseriesBar,
+    viz_type: VizType.Bar,
     x_axis: 'month',
     metrics: ['sales'],
     groupby: ['old_dimension'],
@@ -197,13 +213,13 @@ test.each([OrientationType.Vertical, OrientationType.Horizontal])(
     const [series] = matrixSeries(result);
     const positive = rectangle(series, 200),
       negative = rectangle(series, -100);
-    if (orientation === OrientationType.Vertical) {
-      expect(positive.height).toBeCloseTo(negative.height * 2);
-      expect(negative.y).toBeCloseTo(positive.y + positive.height);
-    } else {
-      expect(positive.width).toBeCloseTo(negative.width * 2);
-      expect(positive.x).toBeCloseTo(negative.x + negative.width);
-    }
+    const horizontal = orientation === OrientationType.Horizontal;
+    const size = horizontal ? 'width' : 'height';
+    const position = horizontal ? 'x' : 'y';
+    const before = horizontal ? negative : positive;
+    const after = horizontal ? positive : negative;
+    expect(positive[size]).toBeCloseTo(negative[size] * 2);
+    expect(after[position]).toBeCloseTo(before[position] + before[size]);
   },
 );
 
@@ -269,15 +285,17 @@ test('the saved second-axis field is recognized through real ChartProps normaliz
     formData: {
       ...DEFAULT_FORM_DATA,
       datasource: '3__table',
-      viz_type: VizType.EchartsTimeseriesBar,
+      viz_type: VizType.Bar,
       x_axis: 'month',
       y_axis_dimension: 'shop',
       metrics: ['sales'],
     },
   });
   expect(
-    barTransformProps(chartProps as EchartsTimeseriesChartProps)
-      .matrixDimensions,
+    barTransformProps({
+      ...chartProps,
+      formData: chartProps.formData as EchartsTimeseriesFormData,
+    }).matrixDimensions,
   ).toEqual(['month', 'shop']);
 });
 
@@ -304,7 +322,7 @@ test('matrix queries and legends retain a configured time comparison', () => {
   const offset = '1 month ago';
   const { queries } = buildBarQuery({
     datasource: '3__table',
-    viz_type: VizType.EchartsTimeseriesBar,
+    viz_type: VizType.Bar,
     x_axis: 'month',
     y_axis_dimension: 'shop',
     metrics: ['sales'],
