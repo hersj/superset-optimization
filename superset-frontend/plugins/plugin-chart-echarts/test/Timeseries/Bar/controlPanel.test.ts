@@ -62,6 +62,16 @@ test('should include x_axis_time_format control in the panel', () => {
   expect(timeFormatControl).toBeDefined();
 });
 
+test('bar chart exposes an optional second categorical axis', () => {
+  expect(getControl('y_axis_dimension')?.config).toMatchObject({
+    multi: false,
+    default: null,
+  });
+  expect(config.controlPanelSections[0]?.controlSetRows?.[0]).toEqual([
+    'x_axis',
+  ]);
+});
+
 test('should have correct default value for x_axis_time_format', () => {
   const timeFormatControl: any = getControl('x_axis_time_format');
   expect(timeFormatControl).toBeDefined();

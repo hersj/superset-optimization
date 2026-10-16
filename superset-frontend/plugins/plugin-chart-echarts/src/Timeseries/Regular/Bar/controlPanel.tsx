@@ -284,10 +284,54 @@ function createAxisControl(axis: 'x' | 'y'): ControlSetRow[] {
 
 const config: ControlPanelConfig = {
   controlPanelSections: [
-    sections.echartsTimeSeriesQueryWithXAxisSort,
+    {
+      ...sections.echartsTimeSeriesQueryWithXAxisSort,
+      controlSetRows: [
+        ['x_axis'],
+        [
+          {
+            name: 'y_axis_dimension',
+            config: {
+              ...sharedControls.groupby,
+              label: t('Y 轴（分类维度）'),
+              multi: false,
+              includeTime: true,
+              default: null,
+              description: t(
+                '选择后按 X、Y 两个维度排列，每个交叉位置绘制指标柱条；清空后使用普通柱状图。',
+              ),
+            },
+          },
+        ],
+        ...sections.echartsTimeSeriesQueryWithXAxisSort
+          .controlSetRows!.slice(1)
+          .map(row =>
+            row.includes('groupby')
+              ? [
+                  {
+                    name: 'groupby',
+                    config: {
+                      ...sharedControls.groupby,
+                      visibility: ({ controls }: ControlPanelsContainerProps) =>
+                        !controls.y_axis_dimension?.value,
+                      disableStash: true,
+                      resetOnHide: false,
+                    },
+                  },
+                ]
+              : row,
+          ),
+      ],
+    },
     sections.advancedAnalyticsControls,
-    sections.annotationsAndLayersControls,
-    sections.forecastIntervalControls,
+    {
+      ...sections.annotationsAndLayersControls,
+      visibility: ({ controls }) => !controls.y_axis_dimension?.value,
+    },
+    {
+      ...sections.forecastIntervalControls,
+      visibility: ({ controls }) => !controls.y_axis_dimension?.value,
+    },
     {
       label: t('Chart Orientation'),
       expanded: true,

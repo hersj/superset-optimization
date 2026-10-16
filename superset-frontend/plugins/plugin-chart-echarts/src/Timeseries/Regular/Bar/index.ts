@@ -22,9 +22,10 @@ import {
   EchartsTimeseriesChartProps,
   EchartsTimeseriesFormData,
   EchartsTimeseriesSeriesType,
+  OrientationType,
 } from '../../types';
 import { EchartsChartPlugin } from '../../../types';
-import buildQuery from '../../buildQuery';
+import { buildBarQuery, transformBarMatrix } from './matrix';
 import controlPanel from './controlPanel';
 import transformProps from '../../transformProps';
 import thumbnail from './images/thumbnail.png';
@@ -36,14 +37,30 @@ import example2Dark from './images/Bar2-dark.png';
 import example3 from './images/Bar3.png';
 import example3Dark from './images/Bar3-dark.png';
 
-const barTransformProps = (chartProps: EchartsTimeseriesChartProps) =>
-  transformProps({
+export const barTransformProps = (chartProps: EchartsTimeseriesChartProps) => {
+  const yAxis = chartProps.formData.yAxisDimension;
+  const props = {
     ...chartProps,
+    rawFormData: {
+      ...chartProps.rawFormData,
+      ...(yAxis && { groupby: [yAxis] }),
+    },
     formData: {
       ...chartProps.formData,
       seriesType: EchartsTimeseriesSeriesType.Bar,
+      ...(yAxis && {
+        groupby: [yAxis],
+        orientation: OrientationType.Vertical,
+        stack: false,
+        annotationLayers: [],
+        forecastEnabled: false,
+        colorByPrimaryAxis: false,
+      }),
     },
-  });
+  };
+  const transformed = transformProps(props);
+  return yAxis ? transformBarMatrix(chartProps, transformed) : transformed;
+};
 
 export default class EchartsTimeseriesBarChartPlugin extends EchartsChartPlugin<
   EchartsTimeseriesFormData,
@@ -51,7 +68,7 @@ export default class EchartsTimeseriesBarChartPlugin extends EchartsChartPlugin<
 > {
   constructor() {
     super({
-      buildQuery,
+      buildQuery: buildBarQuery,
       controlPanel,
       loadChart: () => import('../../EchartsTimeseries'),
       metadata: {

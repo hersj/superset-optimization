@@ -21,6 +21,8 @@ import {
   AnnotationLayer,
   AxisType,
   ContributionType,
+  DataRecordValue,
+  QueryFormColumn,
   QueryFormData,
   QueryFormMetric,
   TimeFormatter,
@@ -100,6 +102,7 @@ export type EchartsTimeseriesFormData = QueryFormData & {
   percentageThreshold: number;
   colorByPrimaryAxis?: boolean;
   orientation?: OrientationType;
+  yAxisDimension?: QueryFormColumn;
 } & LegendFormData &
   TitleFormData;
 
@@ -121,4 +124,11 @@ export type TimeseriesChartTransformedProps =
       };
       onFocusedSeries: (series: string | null) => void;
       onTooltipSeriesClick: (series: string) => void;
+      matrixDimensions?: [QueryFormColumn, QueryFormColumn];
+      matrixTimeGrain?: TimeGranularity;
     };
+
+export interface MatrixBarDatum {
+  value: [number, number, number];
+  dimensionValues: [DataRecordValue, DataRecordValue];
+}

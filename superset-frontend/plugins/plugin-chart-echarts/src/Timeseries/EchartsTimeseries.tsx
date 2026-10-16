@@ -32,7 +32,7 @@ import type GlobalModel from 'echarts/types/src/model/Global';
 import type ComponentModel from 'echarts/types/src/model/Component';
 import { EchartsHandler, EventHandlers } from '../types';
 import Echart from '../components/Echart';
-import { TimeseriesChartTransformedProps } from './types';
+import { MatrixBarDatum, TimeseriesChartTransformedProps } from './types';
 import { formatSeriesName } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
@@ -67,6 +67,8 @@ export default function EchartsTimeseries({
   emitCrossFilters,
   coltypeMapping,
   onLegendScroll,
+  matrixDimensions,
+  matrixTimeGrain,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
@@ -231,6 +233,24 @@ export default function EchartsTimeseries({
     handleLegendBulkChange,
   } = useLegendDoubleClick(legendGroups, onLegendStateChanged);
 
+  const getMatrixFilters = (
+    datum: MatrixBarDatum,
+  ): BinaryQueryObjectFilterClause[] =>
+    matrixDimensions!.map((col, index) => ({
+      col,
+      op: '==',
+      val: datum.dimensionValues[index],
+      ...(index === 0 && matrixTimeGrain && { grain: matrixTimeGrain }),
+    }));
+  const getMatrixDataMask = (datum: MatrixBarDatum) => {
+    const key = JSON.stringify(datum.dimensionValues);
+    const selected = Object.values(selectedValues).includes(key);
+    return {
+      extraFormData: { filters: selected ? [] : getMatrixFilters(datum) },
+      filterState: { selectedValues: selected ? [] : [key] },
+    };
+  };
+
   /*
    * 功能审计（可重写规格）：标准时序图图例事件增量
    * - 功能目的与触发方式：处理标准 bar、line、smooth、scatter、step 图的用户图例事件。
@@ -247,6 +267,16 @@ export default function EchartsTimeseries({
    */
   const eventHandlers: EventHandlers = {
     click: props => {
+      if (matrixDimensions && props.data?.dimensionValues) {
+        if (clickTimer.current) clearTimeout(clickTimer.current);
+        if (emitCrossFilters) {
+          clickTimer.current = setTimeout(
+            () => setDataMask(getMatrixDataMask(props.data)),
+            TIMER_DURATION,
+          );
+        }
+        return;
+      }
       if (
         richTooltip &&
         shouldFocusTooltipSeries &&
@@ -301,6 +331,18 @@ export default function EchartsTimeseries({
         const drillToDetailFilters: BinaryQueryObjectFilterClause[] = [];
         const drillByFilters: BinaryQueryObjectFilterClause[] = [];
         const pointerEvent = eventParams.event.event;
+        if (matrixDimensions && data?.dimensionValues) {
+          onContextMenu(pointerEvent.clientX, pointerEvent.clientY, {
+            drillToDetail: getMatrixFilters(data),
+            crossFilter: {
+              dataMask: getMatrixDataMask(data),
+              isCurrentValueSelected: Object.values(selectedValues).includes(
+                JSON.stringify(data.dimensionValues),
+              ),
+            },
+          });
+          return;
+        }
         const values = [
           ...(eventParams.name ? [eventParams.name] : []),
           ...(labelMap[seriesName] ?? []),

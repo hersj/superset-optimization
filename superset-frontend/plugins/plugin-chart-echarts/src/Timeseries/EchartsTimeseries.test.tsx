@@ -217,6 +217,77 @@ function getLatestHeight() {
   return props.height;
 }
 
+test('matrix bar clicks filter both categorical dimensions and toggle the selected cell', async () => {
+  const setDataMask = jest.fn();
+  const datum = { value: [0, 0, 100], dimensionValues: ['Sep', 'A'] };
+  const { rerender } = render(
+    <EchartsTimeseries
+      {...defaultProps}
+      matrixDimensions={['month', 'shop']}
+      emitCrossFilters
+      setDataMask={setDataMask}
+    />,
+  );
+  let [chart] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  chart.eventHandlers!.click({ data: datum });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [
+            { col: 'month', op: '==', val: 'Sep' },
+            { col: 'shop', op: '==', val: 'A' },
+          ],
+        },
+      }),
+    ),
+  );
+  rerender(
+    <EchartsTimeseries
+      {...defaultProps}
+      matrixDimensions={['month', 'shop']}
+      emitCrossFilters
+      setDataMask={setDataMask}
+      selectedValues={{ 0: JSON.stringify(datum.dimensionValues) }}
+    />,
+  );
+  [chart] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  chart.eventHandlers!.click({ data: datum });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith({
+      extraFormData: { filters: [] },
+      filterState: { selectedValues: [] },
+    }),
+  );
+});
+
+test('matrix bar drill-down retains both raw dimensions and the temporal bucket grain', () => {
+  const onContextMenu = jest.fn();
+  render(
+    <EchartsTimeseries
+      {...defaultProps}
+      matrixDimensions={['date', 'shop']}
+      matrixTimeGrain="P1M"
+      onContextMenu={onContextMenu}
+    />,
+  );
+  const [chart] = mockEchart.mock.calls.at(-1) as [EchartsProps];
+  chart.eventHandlers!.contextmenu({
+    data: { value: [0, 0, 12], dimensionValues: [1725148800000, 'A'] },
+    event: { stop: jest.fn(), event: { clientX: 10, clientY: 20 } },
+  });
+  expect(onContextMenu).toHaveBeenCalledWith(
+    10,
+    20,
+    expect.objectContaining({
+      drillToDetail: [
+        { col: 'date', op: '==', val: 1725148800000, grain: 'P1M' },
+        { col: 'shop', op: '==', val: 'A' },
+      ],
+    }),
+  );
+});
+
 test('observes extra control height changes when ResizeObserver is available', async () => {
   const disconnectSpy = jest.fn();
   const observeSpy = jest.fn();

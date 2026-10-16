@@ -46,6 +46,19 @@ Then use it via `SuperChart`. See
 [storybook](https://apache-superset.github.io/superset-ui/?selectedKind=chart-plugins-plugin-chart-echarts)
 for more details.
 
+### Bar chart with two categorical axes
+
+In the existing Bar Chart, select **X-axis**, **Y 轴（分类维度）**, and one or
+more metrics. Selecting the Y dimension places a small bar at each X/Y
+intersection. For example, use month on X and shop on Y to compare monthly
+sales by shop. Clearing the Y dimension restores the ordinary bar chart.
+
+Each metric shares a zero-based scale across the chart. Negative bars extend
+below zero (or left for horizontal bars), while missing combinations stay
+empty. Hover for both dimensions and the metric value; click a bar to filter
+both dimensions, or open its context menu to view the matching records.
+The matrix uses one existing aggregated query, including configured comparisons.
+
 ```js
 <SuperChart
   chartType="echarts-ts"
