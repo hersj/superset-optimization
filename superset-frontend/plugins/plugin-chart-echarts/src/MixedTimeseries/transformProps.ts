@@ -1057,6 +1057,10 @@ export default function transformProps(
               ...legendProps.textStyle,
               color: CUSTOM_TIME_TEXT_COLOR,
             },
+            selectorLabel: {
+              ...legendProps.selectorLabel,
+              color: CUSTOM_TIME_TEXT_COLOR,
+            },
           }
         : {}),
       formatter: hasTimeCompare

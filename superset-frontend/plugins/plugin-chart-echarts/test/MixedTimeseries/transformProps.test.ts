@@ -1540,6 +1540,7 @@ test.each([false, true])(
       data: string[];
     };
     expect(legend.textStyle.color).toBe('#1f2937');
+    expect(legend).toMatchObject({ selectorLabel: { color: '#1f2937' } });
     expect(entries.some(entry => entry.name === offset)).toBe(true);
     const hidden = transformProps({
       ...props,

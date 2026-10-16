@@ -1617,6 +1617,7 @@ test('custom period legend retains its full key while tooltip shows real compari
   expect(comparisonKey).toBeDefined();
   if (!comparisonKey) throw new Error('Missing comparison legend');
   expect(legend.formatter(comparisonKey)).toBe('配送销售额 · 对比');
+  expect(legend).toMatchObject({ selectorLabel: { color: '#1f2937' } });
   const selected = transformed.echartOptions.legend as {
     selected: Record<string, boolean>;
   };
