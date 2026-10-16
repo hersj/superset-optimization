@@ -118,6 +118,7 @@ import {
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
+  styleCustomPeriodComparisonSeries,
   maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
@@ -791,6 +792,8 @@ export default function transformProps(
     ),
   ).sort((left, right) => right.length - left.length);
   const getCurrentLegendLabel = (seriesName: string): string => {
+    if (customPeriod && array.includes(seriesName) && metricLabels.length === 1)
+      return metricLabels[0];
     const originalName = getOriginalSeries(seriesName, array);
     if (groupBy.length === 0) return originalName;
     return (
@@ -810,7 +813,10 @@ export default function transformProps(
     .map(entry => ({
       name: String(entry.name || ''),
       currentLabel: getCurrentLegendLabel(String(entry.name || '')),
-      timeOffset: getTimeOffset(entry, array) || undefined,
+      timeOffset:
+        customPeriod && array.includes(String(entry.name))
+          ? String(entry.name)
+          : getTimeOffset(entry, array) || undefined,
     }));
   const emptyLegendMetadata: LegendGroupMetadata = {
     groups: {},
@@ -820,8 +826,10 @@ export default function transformProps(
     stateKeys: {},
   };
   const legendGroups = shouldGroupLogicalLegends
-    ? buildLegendGroupMetadata(legendInputs)
+    ? buildLegendGroupMetadata(legendInputs, Boolean(customPeriod))
     : emptyLegendMetadata;
+  if (customPeriod)
+    styleCustomPeriodComparisonSeries(series, colorScale, legendGroups);
   const groupedLegendState = shouldGroupLogicalLegends
     ? resolveLegendState(
         legendState,
@@ -1159,6 +1167,7 @@ export default function transformProps(
     },
     legend: {
       ...legendProps,
+      ...(customPeriod ? { itemWidth: 14, itemHeight: 9, itemGap: 16 } : {}),
       ...(controlledTimeFormatter || customPeriod
         ? {
             textStyle: {
@@ -1171,9 +1180,11 @@ export default function transformProps(
       ...(shouldGroupLogicalLegends
         ? {
             formatter: (name: string) =>
-              customPeriod &&
-              legendGroups.labels[name] === customPeriod.comparisonTimeRange
-                ? formatCustomPeriodLegendLabel(customPeriod)
+              customPeriod && legendGroups.kinds[name] === 'comparison'
+                ? formatCustomPeriodLegendLabel(
+                    customPeriod,
+                    legendGroups.labels[name],
+                  )
                 : (legendGroups.labels[name] ?? name),
           }
         : {}),

@@ -151,6 +151,92 @@ const defaultQueryRows = [
 ];
 const defaultLabelMap = { ds: ['ds'], boy: ['boy'], girl: ['girl'] };
 
+test.each([
+  [true, false],
+  [false, false],
+  [true, true],
+])(
+  'custom comparison legends identify each metric and never reuse current colors (timeShiftColor=%s, identifiers=%s)',
+  (timeShiftColor, showQueryIdentifiers) => {
+    const offset = '2026-03-01 : 2026-04-01';
+    const props = createEchartsTimeseriesTestChartProps<
+      EchartsMixedTimeseriesFormData,
+      EchartsMixedTimeseriesProps
+    >({
+      ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+      formData: {
+        ...formData,
+        groupby: [],
+        groupbyB: [],
+        metrics: ['毛利润', '配送销售额'],
+        metricsB: ['毛利率'],
+        seriesType: EchartsTimeseriesSeriesType.Bar,
+        seriesTypeB: EchartsTimeseriesSeriesType.Line,
+        timeShiftColor,
+        showQueryIdentifiers,
+        time_compare: [offset],
+        time_compare_b: [offset],
+        extra_form_data: {
+          time_compare: [offset],
+          custom_form_data: {
+            custom_period_comparison: {
+              currentTimeRange: '2026-10-01 : 2026-11-01',
+              comparisonTimeRange: offset,
+            },
+          },
+        },
+      },
+      queriesData: [
+        createTestQueryData([
+          {
+            ds: 1790784000000,
+            毛利润: 10,
+            配送销售额: 100,
+            [`毛利润__${offset}`]: 8,
+            [`配送销售额__${offset}`]: 80,
+          },
+        ]),
+        createTestQueryData([
+          { ds: 1790784000000, 毛利率: 0.1, [offset]: 0.08 },
+        ]),
+      ],
+    });
+    const transformed = transformProps(props);
+    const legend = transformed.echartOptions.legend as {
+      data: string[];
+      formatter: (name: string) => string;
+      selected: Record<string, boolean>;
+    };
+    const labels = ['毛利润', '配送销售额', '毛利率'].map((metric, index) =>
+      showQueryIdentifiers
+        ? `${metric} (Query ${index === 2 ? 'B' : 'A'})`
+        : metric,
+    );
+    expect(legend.data.map(legend.formatter).sort()).toEqual(
+      [...labels, ...labels.map(label => `${label} · 对比`)].sort(),
+    );
+    const series = transformed.echartOptions.series as {
+      name: string;
+      type: string;
+      itemStyle: { color: string };
+      lineStyle?: { type?: string };
+    }[];
+    const currentColors = series
+      .filter(entry => !entry.name.includes(offset))
+      .map(entry => entry.itemStyle.color);
+    const history = series.filter(entry => entry.name.includes(offset));
+    expect(history).toHaveLength(3);
+    expect(new Set(history.map(entry => entry.itemStyle.color)).size).toBe(3);
+    history.forEach(entry =>
+      expect(currentColors).not.toContain(entry.itemStyle.color),
+    );
+    expect(history.find(entry => entry.type === 'line')?.lineStyle?.type).toBe(
+      'dashed',
+    );
+    history.forEach(entry => expect(legend.selected[entry.name]).toBe(true));
+  },
+);
+
 const queriesData: ChartDataResponseResult[] = [
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
   createTestQueryData(defaultQueryRows, { label_map: defaultLabelMap }),
@@ -1127,9 +1213,7 @@ test.each([
     const comparisonKey = legend.data.find(name => name.includes(offset));
     expect(comparisonKey).toBeDefined();
     if (!comparisonKey) throw new Error('Missing comparison legend');
-    expect(legend.formatter(comparisonKey)).toBe(
-      grain === 'P1M' ? '对比 2026-08-05 ～ 09-17' : '对比 2026-08-12 ～ 08-15',
-    );
+    expect(legend.formatter(comparisonKey)).toBe('配送销售额 · 对比');
     const selected = transformed.echartOptions.legend as {
       selected: Record<string, boolean>;
     };
@@ -1154,7 +1238,9 @@ test.each([
       ).selected[comparisonKey],
     ).toBe(false);
     const metadata = transformed.legendGroups;
-    expect(metadata?.stateKeys[comparisonKey]).toBe(`comparison:${offset}`);
+    expect(metadata?.stateKeys[comparisonKey]).toBe(
+      `comparison:${offset}:配送销售额`,
+    );
     const tooltip = transformed.echartOptions.tooltip as {
       formatter: (params: unknown) => string;
     };
@@ -1267,7 +1353,7 @@ test.each([
       data: string[];
       selected: Record<string, boolean>;
     };
-    expect(legend.data).toHaveLength(1);
+    expect(legend.data).toHaveLength(2);
     const [comparisonKey] = legend.data;
     expect(legend.selected[comparisonKey]).toBe(true);
     const tooltip = result.echartOptions.tooltip as {
@@ -1468,6 +1554,9 @@ test.each([false, true])(
     const hiddenRate = [...element.querySelectorAll('tbody tr')].find(
       row => row.children[0].textContent === '毛利率',
     );
+    expect(hidden.echartOptions.legend).toMatchObject({
+      selected: { 毛利率: true },
+    });
     expect([...hiddenRate!.children].map(cell => cell.textContent)).toEqual([
       '毛利率',
       '23.43%',

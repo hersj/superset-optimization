@@ -63,6 +63,7 @@ export interface LegendGroupMetadata {
   kinds: Record<string, LegendGroupKind>;
   parents: Record<string, string>;
   stateKeys: Record<string, string>;
+  offsets?: Record<string, string>;
 }
 
 export interface LegendGroupInput {
@@ -75,9 +76,9 @@ export interface LegendGroupInput {
  * 功能审计（可重写规格）：时序图真实系列图例元数据
  * - 功能目的与触发方式：标准时序图和混合时序图在转换查询结果后调用，把真实 ECharts 系列合并为当前指标组和时间偏移组。
  * - 输入契约：每项提供唯一的真实系列 name、去除维度后的当前指标显示名，以及可选的 timeOffset；空偏移表示当前期。
- * - 输出契约：groups 的键和成员全部是真实系列 name；labels 为代表系列到显示文本的映射；kinds 区分当前组和对比组；parents 将对比系列映射到同一指标的当前代表系列；stateKeys 提供稳定的 current:<指标> 或 comparison:<offset> 状态键。
+ * - 输出契约：groups 使用真实系列名，parents 关联当前指标；自定义期间按指标拆分对比组，offsets 保留期间以兼容旧 comparison:<offset> 状态。
  * - 处理流程：先按当前指标或偏移建立桶并保留首次真实系列为代表值，再将当前组排在对比组之前，最后建立对比到当前的归属关系和稳定状态键。
- * - 业务规则：同一当前指标的多个维度只产生一个当前图例；同一 timeOffset 的所有指标和维度只产生一个对比图例；代表值永远不能是虚拟偏移名称。
+ * - 业务规则：同一指标的多个维度合并；普通时间偏移仍共用对比图例，自定义期间按指标独立显示和选择；代表值始终是真实系列名。
  * - 状态与副作用：纯函数，只生成内存元数据，不修改查询结果、图表配置、看板数据库或浏览器存储。
  * - 外部依赖：仅依赖调用方提供的已转换真实系列名；调用方负责使用 resolveLegendState 和 ECharts action 应用状态。
  * - 异常与边界：空输入返回五个空对象；缺失父当前组的对比系列仍保留在偏移组，只不建立 parents 映射。
@@ -86,11 +87,14 @@ export interface LegendGroupInput {
  */
 export function buildLegendGroupMetadata(
   inputs: LegendGroupInput[],
+  comparisonByMetric = false,
 ): LegendGroupMetadata {
   type Group = {
     kind: LegendGroupKind;
     label: string;
     members: string[];
+    offset?: string;
+    stateKey: string;
   };
 
   const groups = new Map<string, Group>();
@@ -101,12 +105,21 @@ export function buildLegendGroupMetadata(
     const member = String(name);
     const label = String(currentLabel ?? '');
     const kind: LegendGroupKind = timeOffset ? 'comparison' : 'current';
-    const groupLabel = kind === 'comparison' ? String(timeOffset) : label;
-    const key = `${kind}\u0000${groupLabel}`;
-    const group = groups.get(key) ?? { kind, label: groupLabel, members: [] };
+    const groupLabel = timeOffset && !comparisonByMetric ? timeOffset : label;
+    const stateKey =
+      timeOffset && comparisonByMetric
+        ? `comparison:${timeOffset}:${label}`
+        : `${kind}:${groupLabel}`;
+    const group = groups.get(stateKey) ?? {
+      kind,
+      label: groupLabel,
+      members: [],
+      offset: timeOffset,
+      stateKey,
+    };
 
     if (!group.members.includes(member)) group.members.push(member);
-    groups.set(key, group);
+    groups.set(stateKey, group);
     currentLabelByMember.set(member, label);
     if (kind === 'current' && !currentRepresentativeByLabel.has(label)) {
       currentRepresentativeByLabel.set(label, member);
@@ -129,10 +142,14 @@ export function buildLegendGroupMetadata(
     const [representative] = group.members;
     if (!representative) return;
     metadata.groups[representative] = group.members;
-    metadata.stateKeys[representative] = `${group.kind}:${group.label}`;
+    metadata.stateKeys[representative] = group.stateKey;
     metadata.labels[representative] = group.label;
     metadata.kinds[representative] = group.kind;
     if (group.kind === 'comparison') {
+      if (comparisonByMetric && group.offset) {
+        metadata.offsets ??= {};
+        metadata.offsets[representative] = group.offset;
+      }
       group.members.forEach(member => {
         const parent = currentRepresentativeByLabel.get(
           currentLabelByMember.get(member) ?? '',
@@ -172,8 +189,11 @@ export function resolveLegendState(
     const stateKey =
       metadata.stateKeys[representative] ?? `${kind}:${label ?? ''}`;
     const selectedByStateKey = input[stateKey];
+    const offset = metadata.offsets?.[representative];
+    const selectedByOffset = offset ? input[`comparison:${offset}`] : undefined;
     const selectedByRepresentative = input[representative];
-    const selectedByLabel = label !== undefined ? input[label] : undefined;
+    const selectedByLabel =
+      !offset && label !== undefined ? input[label] : undefined;
     const memberValues = members
       .map(member => input[member])
       .filter((value): value is boolean => value !== undefined);
@@ -186,11 +206,12 @@ export function resolveLegendState(
     const isSelected =
       selectedByStateKey ??
       selectedByRepresentative ??
+      selectedByOffset ??
       selectedByLabel ??
       legacyMemberState ??
       (kind !== 'comparison' ||
         (defaultComparisonOffset !== undefined &&
-          label === defaultComparisonOffset));
+          (offset ?? label) === defaultComparisonOffset));
 
     groupSelected[representative] = isSelected;
     state[stateKey] = isSelected;

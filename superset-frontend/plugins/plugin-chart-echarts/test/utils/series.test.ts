@@ -1345,6 +1345,54 @@ test('focuses one raw mixed-chart legend when time comparison is disabled', () =
   });
 });
 
+test('custom comparison metric groups retain legacy state and allow independent selection', () => {
+  const offset = '2026-03-01 : 2026-04-01';
+  const metadata = buildLegendGroupMetadata(
+    [
+      { name: 'sales', currentLabel: 'sales' },
+      { name: 'profit', currentLabel: 'profit' },
+      { name: 'sales history', currentLabel: 'sales', timeOffset: offset },
+      { name: 'profit history', currentLabel: 'profit', timeOffset: offset },
+    ],
+    true,
+  );
+  expect(Object.keys(metadata.groups)).toHaveLength(4);
+  const legacy = resolveLegendState(
+    { [`comparison:${offset}`]: false },
+    metadata,
+    offset,
+  );
+  expect(legacy['sales history']).toBe(false);
+  expect(legacy['profit history']).toBe(false);
+  const change = getLegendStateChange(
+    { ...legacy, 'sales history': true },
+    metadata,
+    'sales history',
+  );
+  const refreshed = resolveLegendState(
+    { ...legacy, ...change },
+    metadata,
+    offset,
+  );
+  expect(refreshed['sales history']).toBe(true);
+  expect(refreshed['profit history']).toBe(false);
+  expect(
+    resolveLegendState(
+      { ...refreshed, 'current:sales': false },
+      metadata,
+      offset,
+    )['sales history'],
+  ).toBe(false);
+  expect(
+    getLegendStateChange(refreshed, metadata, 'sales history', 'focus'),
+  ).toMatchObject({
+    sales: true,
+    profit: false,
+    'sales history': true,
+    'profit history': false,
+  });
+});
+
 test('keeps the matching current group visible when focus targets a comparison', () => {
   const metadata = buildLegendGroupMetadata([
     { name: 'orders, LED5', currentLabel: '订购数量' },

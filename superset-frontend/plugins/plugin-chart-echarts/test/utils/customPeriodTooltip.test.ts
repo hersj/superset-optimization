@@ -26,6 +26,7 @@ import {
 import { alignPeriodAxis } from '../../src/utils/periodAxis';
 import {
   ComparisonType,
+  CategoricalColorScale,
   CurrencyFormatter,
   getNumberFormatter,
   NumberFormatter,
@@ -36,10 +37,48 @@ import {
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
   maskCustomPeriodCurrentData,
+  styleCustomPeriodComparisonSeries,
 } from '../../src/utils/customPeriodTooltip';
+import { buildLegendGroupMetadata } from '../../src/utils/series';
+import type { LineSeriesOption } from 'echarts';
 
 const offset = '2026-08-05 : 2026-08-08';
 const timestamp = Date.parse('2026-09-01T00:00:00+08:00');
+
+test('historical colors avoid equivalent RGB current colors even with a one-color scheme', () => {
+  const series: LineSeriesOption[] = [
+    {
+      name: 'sales',
+      type: 'line',
+      data: [[1, 100]],
+      itemStyle: { color: 'rgb(23, 168, 196)' },
+    },
+    {
+      name: 'history',
+      type: 'line',
+      data: [[1, 80]],
+      itemStyle: { color: '#17a8c4', opacity: 0.5 },
+    },
+  ];
+  const data = series.map(entry => entry.data);
+  const metadata = buildLegendGroupMetadata(
+    [
+      { name: 'sales', currentLabel: 'sales' },
+      { name: 'history', currentLabel: 'sales', timeOffset: offset },
+    ],
+    true,
+  );
+  styleCustomPeriodComparisonSeries(
+    series,
+    new CategoricalColorScale(['#17a8c4']),
+    metadata,
+  );
+  expect(series[0].itemStyle?.color).toBe('rgb(23, 168, 196)');
+  expect(series[1].itemStyle?.color).not.toBe('#17a8c4');
+  expect(series[1].itemStyle?.opacity).toBe(0.5);
+  expect(series[1].lineStyle?.type).toBe('dashed');
+  expect(series.map(entry => entry.data)).toEqual(data);
+});
 const input = {
   period: {
     currentTimeRange: '2026-09-01 : 2026-09-04',

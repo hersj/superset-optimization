@@ -1616,7 +1616,7 @@ test('custom period legend retains its full key while tooltip shows real compari
   const comparisonKey = legend.data.find(name => name.includes(offset));
   expect(comparisonKey).toBeDefined();
   if (!comparisonKey) throw new Error('Missing comparison legend');
-  expect(legend.formatter(comparisonKey)).toBe('对比 2026-08-12 ～ 08-15');
+  expect(legend.formatter(comparisonKey)).toBe('配送销售额 · 对比');
   const selected = transformed.echartOptions.legend as {
     selected: Record<string, boolean>;
   };
@@ -1638,7 +1638,9 @@ test('custom period legend retains its full key while tooltip shows real compari
       .selected[comparisonKey],
   ).toBe(false);
   const metadata = transformed.legendGroups;
-  expect(metadata?.stateKeys[comparisonKey]).toBe(`comparison:${offset}`);
+  expect(metadata?.stateKeys[comparisonKey]).toBe(
+    `comparison:${offset}:配送销售额`,
+  );
   const tooltip = transformed.echartOptions.tooltip as {
     formatter: (params: unknown) => string;
   };
@@ -1706,6 +1708,51 @@ test('custom period legend retains its full key while tooltip shows real compari
   ]);
   expect(offDOM.querySelector('thead')).toBeNull();
   expect(offDOM.textContent).not.toContain('对比');
+});
+
+test('a standalone native date-range series is a distinct comparison legend', () => {
+  const offset = '2026-03-01 : 2026-04-01';
+  const props = createTestChartProps({
+    formData: {
+      ...timeCompareFormData,
+      x_axis: 'ds',
+      metrics: ['销售额'],
+      groupby: [],
+      time_compare: [offset],
+      extra_form_data: {
+        time_compare: [offset],
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: '2026-10-01 : 2026-11-01',
+            comparisonTimeRange: offset,
+          },
+        },
+      },
+    },
+    queriesData: [
+      createTestQueryData([{ ds: 1790784000000, 销售额: 100, [offset]: 80 }]),
+    ],
+  });
+  const result = transformProps(props);
+  const legend = result.echartOptions.legend as {
+    data: string[];
+    formatter: (name: string) => string;
+    selected: Record<string, boolean>;
+  };
+  expect(legend.data.map(legend.formatter)).toEqual([
+    '销售额',
+    '销售额 · 对比',
+  ]);
+  expect(legend.selected[offset]).toBe(true);
+  const series = result.echartOptions.series as {
+    name: string;
+    itemStyle: { color: string };
+  }[];
+  expect(new Set(series.map(entry => entry.itemStyle.color)).size).toBe(2);
+  expect(
+    transformProps({ ...props, legendState: { [offset]: false } }).echartOptions
+      .legend,
+  ).toMatchObject({ selected: { 销售额: true, [offset]: false } });
 });
 
 test.each([

@@ -106,6 +106,7 @@ import {
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
+  styleCustomPeriodComparisonSeries,
   maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
@@ -573,13 +574,17 @@ export default function transformProps(
       legendInputs.push({
         name: transformedName,
         currentLabel:
-          groupby.length > 0
+          groupby.length > 0 ||
+          (customPeriod && allTimeCompare.includes(entryName))
             ? showQueryIdentifiers
               ? `${MetricDisplayNameA} (Query A)`
               : MetricDisplayNameA
             : getOriginalSeries(transformedName, allTimeCompare),
         timeOffset:
-          getTimeOffset({ name: transformedName }, allTimeCompare) || undefined,
+          customPeriod && allTimeCompare.includes(entryName)
+            ? entryName
+            : getTimeOffset({ name: transformedName }, allTimeCompare) ||
+              undefined,
       });
     }
   });
@@ -666,13 +671,17 @@ export default function transformProps(
       legendInputs.push({
         name: transformedName,
         currentLabel:
-          groupbyB.length > 0
+          groupbyB.length > 0 ||
+          (customPeriod && allTimeCompare.includes(entryName))
             ? showQueryIdentifiers
               ? `${MetricDisplayNameB} (Query B)`
               : MetricDisplayNameB
             : getOriginalSeries(transformedName, allTimeCompare),
         timeOffset:
-          getTimeOffset({ name: transformedName }, allTimeCompare) || undefined,
+          customPeriod && allTimeCompare.includes(entryName)
+            ? entryName
+            : getTimeOffset({ name: transformedName }, allTimeCompare) ||
+              undefined,
       });
     }
   });
@@ -713,8 +722,13 @@ export default function transformProps(
     parents: {},
     stateKeys: {},
   };
-  const stateLegendGroups = buildLegendGroupMetadata(legendInputs);
+  const stateLegendGroups = buildLegendGroupMetadata(
+    legendInputs,
+    Boolean(customPeriod),
+  );
   const legendGroups = hasTimeCompare ? stateLegendGroups : emptyLegendMetadata;
+  if (customPeriod)
+    styleCustomPeriodComparisonSeries(series, colorScale, legendGroups);
   const legendStateWithTimeCompare = hasTimeCompare
     ? resolveLegendState(
         legendState,
@@ -1036,6 +1050,7 @@ export default function transformProps(
     },
     legend: {
       ...legendProps,
+      ...(customPeriod ? { itemWidth: 14, itemHeight: 9, itemGap: 16 } : {}),
       ...(controlledTimeFormatter || customPeriod
         ? {
             textStyle: {
@@ -1046,9 +1061,11 @@ export default function transformProps(
         : {}),
       formatter: hasTimeCompare
         ? (name: string) =>
-            customPeriod &&
-            legendGroups.labels[name] === customPeriod.comparisonTimeRange
-              ? formatCustomPeriodLegendLabel(customPeriod)
+            customPeriod && legendGroups.kinds[name] === 'comparison'
+              ? formatCustomPeriodLegendLabel(
+                  customPeriod,
+                  legendGroups.labels[name],
+                )
               : (legendGroups.labels[name] ?? name)
         : metricLegendFormatter,
       data: (hasTimeCompare
