@@ -359,8 +359,8 @@ APP_NAME = "Superset"
 APP_ICON = "/static/assets/images/superset-logo-horiz.png"
 
 # Specify where clicking the logo would take the user'
-# Default value of None will take you to '/superset/welcome'
-# You can also specify a relative URL e.g. '/superset/welcome' or '/dashboards/list'
+# Default value of None will take you to '/dashboard/list/'
+# You can also specify a relative URL e.g. '/superset/welcome' or '/dashboard/list/'
 # or you can specify a full URL e.g. 'https://foo.bar'
 LOGO_TARGET_PATH = None
 
@@ -931,7 +931,7 @@ THEME_DEFAULT: Theme = {
         "brandLogoAlt": "Apache Superset",
         "brandLogoUrl": APP_ICON,
         "brandLogoMargin": "18px 0",
-        "brandLogoHref": "/",
+        "brandLogoHref": "/dashboard/list/",
         "brandLogoHeight": "24px",
         # Spinner
         "brandSpinnerUrl": None,

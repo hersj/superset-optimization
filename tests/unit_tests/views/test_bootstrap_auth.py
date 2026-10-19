@@ -26,7 +26,11 @@ from flask_appbuilder.const import (
     AUTH_SAML,
 )
 
-from superset.views.base import cached_common_bootstrap_data, menu_data
+from superset.views.base import (
+    cached_common_bootstrap_data,
+    get_theme_bootstrap_data,
+    menu_data,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -52,6 +56,44 @@ def test_menu_locale_defaults_to_configured_babel_locale(
         payload = menu_data(g.user)
 
     assert payload["navbar_right"]["locale"] == "zh"
+
+
+@pytest.mark.parametrize("logo_source", ["menu", "theme"])
+def test_default_logo_returns_to_dashboard_list(
+    app_context: None,
+    monkeypatch: pytest.MonkeyPatch,
+    logo_source: str,
+) -> None:
+    """Logo navigation must not enter the permission-restricted activity page."""
+    from flask import current_app
+
+    monkeypatch.setitem(current_app.config, "LOGO_TARGET_PATH", None)
+    monkeypatch.setitem(current_app.config, "ENABLE_UI_THEME_ADMINISTRATION", False)
+    with current_app.test_request_context():
+        if logo_source == "menu":
+            target = menu_data(g.user)["brand"]["path"]
+        else:
+            themes = get_theme_bootstrap_data()["theme"]
+            target = themes["default"]["token"]["brandLogoHref"]
+            assert themes["dark"]["token"]["brandLogoHref"] == "/dashboard/list/"
+
+    assert target == "/dashboard/list/"
+
+
+@pytest.mark.parametrize(
+    "target", ["/superset/dashboard/54/", "https://portal.example.com"]
+)
+def test_menu_logo_preserves_configured_destination(
+    app_context: None,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    """An explicitly configured legacy logo target retains precedence."""
+    from flask import current_app
+
+    monkeypatch.setitem(current_app.config, "LOGO_TARGET_PATH", target)
+    with current_app.test_request_context():
+        assert menu_data(g.user)["brand"]["path"] == target
 
 
 def test_bootstrap_saml_providers(app_context: None) -> None:
