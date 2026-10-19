@@ -37,8 +37,8 @@ export const Styles = styled.div<{ isDashboardEditMode: boolean }>`
       background-color: ${theme.colorBgBase};
       position: ${isDashboardEditMode ? 'inherit' : 'sticky'};
       top: 0;
-      /* The entire sticky header must paint above frozen body cells (z=2). */
-      z-index: 3;
+      /* Keep the header above totals (z=3) and frozen body cells (z=2). */
+      z-index: 4;
     }
 
     table tbody tr {
@@ -57,6 +57,8 @@ export const Styles = styled.div<{ isDashboardEditMode: boolean }>`
     table.pvtTable tbody tr.pvtRowTotals {
       position: ${isDashboardEditMode ? 'inherit' : 'sticky'};
       bottom: 0;
+      /* The merged total label must cover frozen cells from ordinary rows. */
+      z-index: 3;
       background-color: ${theme.colorBgBase};
     }
 

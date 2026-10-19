@@ -54,6 +54,9 @@ for more details.
 />
 ```
 
+Sticky headers and bottom totals paint above frozen body cells, including the merged
+total label when the freeze boundary falls inside it.
+
 ### File structure generated
 
 ```
