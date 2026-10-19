@@ -29,6 +29,7 @@ import * as redux from 'redux';
 
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
+import { setPivotTemplateLibrary } from '../../../actions/personalChartLayout';
 import { setDashboardChartControls } from '../../../actions/dashboardState';
 import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../../../util/charts/getDashboardChartControls';
 import reducerIndex from 'spec/helpers/reducerIndex';
@@ -639,6 +640,7 @@ test('using a template persists before changing the rendered chart layout', asyn
       action: 'apply',
       chart_id: queryId,
       layout: rememberedLayout,
+      selection: 1,
     },
   });
   expect(capturedChartContainerProps.ownState).toEqual(
@@ -694,6 +696,7 @@ test('system default persists all current metrics with no hidden or frozen colum
       jsonPayload: {
         action: 'apply',
         chart_id: queryId,
+        selection: 'system-default',
         layout: {
           ...previousLayout,
           frozen_column_count: 0,
@@ -701,5 +704,68 @@ test('system default persists all current metrics with no hidden or frozen colum
         },
       },
     }),
+  );
+});
+
+test('reload restores the selected name even when another template has identical columns', async () => {
+  const store = createStore(defaultState, reducerIndex);
+  store.dispatch(
+    setPivotTemplateLibrary(
+      {
+        version: 2,
+        templates: [
+          {
+            slot: 1,
+            name: '第一模板',
+            is_default: false,
+            layout: rememberedLayout,
+          },
+          {
+            slot: 2,
+            name: '第二模板',
+            is_default: false,
+            layout: rememberedLayout,
+          },
+        ],
+        defaults: { [queryId]: rememberedLayout },
+        selections: { [queryId]: 2 },
+        legacy_layout: null,
+      },
+      true,
+    ),
+  );
+  const state = store.getState();
+  render(<Chart {...props} />, {
+    useRouter: true,
+    useRedux: true,
+    initialState: {
+      ...state,
+      charts: {
+        ...chartQueries,
+        [queryId]: {
+          ...chartQueries[queryId],
+          form_data: {
+            ...chartQueries[queryId].form_data,
+            viz_type: VizType.PivotTable,
+            metrics: ['sales', 'profit'],
+          },
+        },
+      },
+      sliceEntities: {
+        ...defaultState.sliceEntities,
+        slices: {
+          [queryId]: {
+            ...defaultState.sliceEntities.slices[queryId],
+            viz_type: VizType.PivotTable,
+          },
+        },
+      },
+    },
+  });
+  expect(
+    screen.getByRole('button', { name: '列模板：第二模板' }),
+  ).toBeInTheDocument();
+  expect(capturedChartContainerProps.ownState).toEqual(
+    expect.objectContaining({ pivot_table_metric_layout: rememberedLayout }),
   );
 });

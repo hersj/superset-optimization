@@ -34,11 +34,19 @@ export interface PersonalChartTemplate {
   layout: PersonalChartLayout;
 }
 
+export type PersonalChartTemplateSelection =
+  | 1
+  | 2
+  | 3
+  | 'system-default'
+  | null;
+
 export interface PivotTemplateLibrary {
   version: 2;
   templates: PersonalChartTemplate[];
   defaults: Record<string, PersonalChartLayout>;
   legacy_layout: PersonalChartLayout | null;
+  selections?: Record<string, PersonalChartTemplateSelection>;
 }
 export const SET_PIVOT_TEMPLATE_LIBRARY = 'SET_PIVOT_TEMPLATE_LIBRARY';
 export function setPivotTemplateLibrary(
@@ -64,7 +72,12 @@ export async function editPivotTemplateLibrary(
         chart_id?: number;
         template?: { name: string; layout: PersonalChartLayout };
       }
-    | { action: 'apply'; chart_id: number; layout: PersonalChartLayout },
+    | {
+        action: 'apply';
+        chart_id: number;
+        layout: PersonalChartLayout;
+        selection?: PersonalChartTemplateSelection;
+      },
 ): Promise<PivotTemplateLibrary> {
   const { json } = await SupersetClient.put({
     endpoint: `/api/v1/dashboard/${dashboardId}/pivot_templates`,
@@ -192,7 +205,7 @@ export function removePersonalChartTemplate(chartId: number, slot: number) {
 
 export function setPersonalChartTemplateActiveSlot(
   chartId: number,
-  slot: 1 | 2 | 3 | null,
+  slot: PersonalChartTemplateSelection,
 ) {
   return { type: SET_PERSONAL_CHART_TEMPLATE_ACTIVE_SLOT, chartId, slot };
 }

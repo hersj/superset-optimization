@@ -42,6 +42,7 @@ import Role from 'src/types/Role';
 import { TagType } from 'src/components/Tag/TagType';
 import type {
   PersonalChartLayout,
+  PersonalChartTemplateSelection,
   PersonalChartTemplate,
 } from './actions/personalChartLayout';
 import { ChartState } from '../explore/types';
@@ -176,7 +177,10 @@ export type DashboardState = {
   tabActivationTimes?: Record<string, number>;
   personalChartLayouts?: Record<string, PersonalChartLayout>;
   personalChartTemplates?: Record<string, PersonalChartTemplate[]>;
-  personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
+  personalChartTemplateActiveSlots?: Record<
+    string,
+    PersonalChartTemplateSelection
+  >;
   dashboardPivotLayout?: PersonalChartLayout | null;
   dashboardChartControls?: DashboardChartControls;
 };

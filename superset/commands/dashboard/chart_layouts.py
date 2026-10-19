@@ -56,7 +56,20 @@ class DashboardPivotLayoutCommand(BaseCommand):
         }
 
     def get_library(self) -> dict[str, Any]:
-        return self.library(self.run())
+        library = self.library(self.run())
+        selections = library.setdefault("selections", {})
+        # Older snapshots had no identity; recover it only for an unambiguous match.
+        for chart_id, layout in library["defaults"].items():
+            if chart_id not in selections:
+                matches = [
+                    item["slot"]
+                    for item in library["templates"]
+                    if {"frozen_column_count": 0, **item["layout"]}
+                    == {"frozen_column_count": 0, **layout}
+                ]
+                if len(matches) == 1:
+                    selections[chart_id] = matches[0]
+        return library
 
     @transaction()
     def edit_library(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +115,17 @@ class DashboardPivotLayoutCommand(BaseCommand):
                 raise ValueError("Chart is not part of dashboard")
             if action == "default" and template is None:
                 raise ValueError("Template slot does not exist")
+            selection = slot if action == "default" else payload.get("selection")
+            if not (
+                selection is None
+                or selection == "system-default"
+                or (
+                    type(selection) is int
+                    and any(item["slot"] == selection for item in library["templates"])
+                )
+            ):
+                raise ValueError("Invalid template selection")
+            library.setdefault("selections", {})[str(chart_id)] = selection
             # Remember an applied snapshot without overwriting any saved template.
             library["defaults"][str(chart_id)] = (
                 payload["layout"] if action == "apply" else template["layout"]

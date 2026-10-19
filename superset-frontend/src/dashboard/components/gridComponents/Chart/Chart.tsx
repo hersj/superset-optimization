@@ -846,16 +846,18 @@ const Chart = (props: ChartProps) => {
         }),
         hidden_metric_ids: [],
       };
+      const selection = layout ? slot : 'system-default';
       setIsSavingPersonalChartLayout(true);
       try {
         const updated = await editPivotTemplateLibrary(props.dashboardId, {
           action: 'apply',
           chart_id: props.id,
           layout: appliedLayout,
+          selection,
         });
         dispatch(setPivotTemplateLibrary(updated));
         dispatch(upsertPersonalChartLayout(props.id, appliedLayout));
-        dispatch(setPersonalChartTemplateActiveSlot(props.id, slot));
+        dispatch(setPersonalChartTemplateActiveSlot(props.id, selection));
       } catch {
         boundActionCreators.addDangerToast(t('个人列布局保存失败，请重试'));
         throw new Error('个人列布局保存失败');

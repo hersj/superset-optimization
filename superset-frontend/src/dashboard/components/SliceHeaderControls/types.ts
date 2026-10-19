@@ -19,6 +19,7 @@
 import { QueryFormData } from '@superset-ui/core';
 import type {
   PersonalChartLayout,
+  PersonalChartTemplateSelection,
   PersonalChartTemplate,
 } from 'src/dashboard/actions/personalChartLayout';
 
@@ -67,7 +68,7 @@ export interface SliceHeaderControlsProps {
   personalChartLayout?: PersonalChartLayout;
   dashboardPivotLayout?: PersonalChartLayout | null;
   personalChartTemplates?: PersonalChartTemplate[];
-  personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
+  personalChartTemplateActiveSlot?: PersonalChartTemplateSelection;
   onApplyPersonalChartLayout?: (
     layout: PersonalChartLayout | null,
     slot: 1 | 2 | 3 | null,

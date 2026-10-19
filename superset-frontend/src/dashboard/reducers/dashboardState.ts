@@ -79,6 +79,7 @@ import {
   UPSERT_PERSONAL_CHART_LAYOUT,
   UPSERT_PERSONAL_CHART_TEMPLATE,
   type PersonalChartTemplate,
+  type PersonalChartTemplateSelection,
   type PersonalChartTemplatesMap,
 } from '../actions/personalChartLayout';
 import { AutoRefreshStatus, ERROR_THRESHOLD_COUNT } from '../types/autoRefresh';
@@ -129,7 +130,10 @@ interface DashboardStateShape {
     string,
     import('../actions/personalChartLayout').PersonalChartTemplate[]
   >;
-  personalChartTemplateActiveSlots?: Record<string, 1 | 2 | 3 | null>;
+  personalChartTemplateActiveSlots?: Record<
+    string,
+    PersonalChartTemplateSelection
+  >;
   dashboardPivotLayout?:
     | import('../actions/personalChartLayout').PersonalChartLayout
     | null;
@@ -182,7 +186,7 @@ interface DashboardStateAction {
   library?: PivotTemplateLibrary | null;
   initialize?: boolean;
   template?: PersonalChartTemplate;
-  slot?: 1 | 2 | 3 | null;
+  slot?: PersonalChartTemplateSelection;
   status?: string;
   isPaused?: boolean;
   isPausedByTab?: boolean;
@@ -522,6 +526,16 @@ export default function dashboardStateReducer(
         pivotTemplateLibrary: action.library || null,
         ...(action.initialize
           ? {
+              personalChartTemplateActiveSlots: {
+                ...state.personalChartTemplateActiveSlots,
+                ...Object.fromEntries(
+                  Object.keys(action.library?.defaults || {}).map(chartId => [
+                    chartId,
+                    null,
+                  ]),
+                ),
+                ...(action.library?.selections || {}),
+              },
               personalChartLayouts: {
                 ...state.personalChartLayouts,
                 ...(action.library?.legacy_layout
@@ -557,8 +571,10 @@ export default function dashboardStateReducer(
     },
     [SET_PERSONAL_CHART_TEMPLATES](): DashboardStateShape {
       const personalChartLayouts: Record<string, JsonObject> = {};
-      const personalChartTemplateActiveSlots: Record<string, 1 | 2 | 3 | null> =
-        {};
+      const personalChartTemplateActiveSlots: Record<
+        string,
+        PersonalChartTemplateSelection
+      > = {};
       Object.entries(action.templates || {}).forEach(([chartId, templates]) => {
         const defaultTemplate = (templates as PersonalChartTemplate[]).find(
           template => template.is_default,

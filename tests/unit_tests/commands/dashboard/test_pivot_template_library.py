@@ -150,7 +150,7 @@ def test_apply_persists_snapshot_without_changing_template_or_other_chart(
     )
     assert result["templates"] == before["templates"]
     assert result["defaults"] == {**before["defaults"], "1": layout}
-    assert command.get_library() == result
+    assert command.get_library()["defaults"] == result["defaults"]
     assert save.call_args.args[:2] == (7, 44)
     query.options.return_value.filter_by.assert_called_with(user_id=7, dashboard_id=44)
 
@@ -366,3 +366,76 @@ def test_apply_commits_and_reloads_real_user_scoped_snapshots(
             assert session.query(DashboardPivotLayout).count() == 2
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("selection", [True, 0, 4, "1", [], {}])
+def test_invalid_selection_does_not_write(
+    personal_library: tuple[
+        DashboardPivotLayoutCommand, SimpleNamespace, MagicMock, MagicMock
+    ],
+    selection: Any,
+) -> None:
+    command, row, save, _ = personal_library
+    before = row.layout_json
+    with pytest.raises(ValueError, match="Invalid template selection"):
+        DashboardPivotLayoutCommand.edit_library.__wrapped__(
+            command,
+            {"action": "apply", "chart_id": 1, "layout": {}, "selection": selection},
+        )
+    assert row.layout_json == before
+    save.assert_not_called()
+
+
+def test_selected_identity_survives_reload_with_identical_templates(
+    personal_library: tuple[
+        DashboardPivotLayoutCommand, SimpleNamespace, MagicMock, MagicMock
+    ],
+) -> None:
+    command, row, _, _ = personal_library
+    library = json.loads(row.layout_json)
+    layout = library["templates"][0]["layout"]
+    library["templates"].append(
+        {**library["templates"][0], "slot": 2, "name": "Second"}
+    )
+    row.layout_json = json.dumps(library)
+    DashboardPivotLayoutCommand.edit_library.__wrapped__(
+        command, {"action": "apply", "chart_id": 1, "layout": layout, "selection": 2}
+    )
+    restored = command.get_library()
+    assert restored["selections"]["1"] == 2
+    assert restored["defaults"]["1"] == layout
+
+
+def test_old_snapshot_recovers_only_an_unambiguous_template_without_writing(
+    personal_library: tuple[
+        DashboardPivotLayoutCommand, SimpleNamespace, MagicMock, MagicMock
+    ],
+) -> None:
+    command, row, save, _ = personal_library
+    assert command.get_library()["selections"] == {"2": 1}
+    library = json.loads(row.layout_json)
+    library["templates"].append(
+        {**library["templates"][0], "slot": 2, "name": "Second"}
+    )
+    row.layout_json = json.dumps(library)
+    assert command.get_library()["selections"] == {}
+    save.assert_not_called()
+
+
+def test_system_default_choice_survives_reload(
+    personal_library: tuple[
+        DashboardPivotLayoutCommand, SimpleNamespace, MagicMock, MagicMock
+    ],
+) -> None:
+    command, row, _, _ = personal_library
+    layout = json.loads(row.layout_json)["templates"][0]["layout"]
+    DashboardPivotLayoutCommand.edit_library.__wrapped__(
+        command,
+        {
+            "action": "apply",
+            "chart_id": 1,
+            "layout": layout,
+            "selection": "system-default",
+        },
+    )
+    assert command.get_library()["selections"]["1"] == "system-default"

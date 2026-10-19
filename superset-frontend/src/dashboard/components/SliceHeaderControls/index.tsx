@@ -25,6 +25,7 @@ import {
   RefObject,
 } from 'react';
 
+import { isEqual } from 'lodash';
 import { RouteComponentProps, useHistory } from 'react-router-dom';
 import { extendedDayjs } from '@superset-ui/core/utils/dates';
 import { t } from '@apache-superset/core/translation';
@@ -40,7 +41,10 @@ import {
 import { css, useTheme, styled } from '@apache-superset/core/theme';
 import { useSelector } from 'react-redux';
 import { Menu, MenuItem } from '@superset-ui/core/components/Menu';
-import type { PersonalChartLayout } from 'src/dashboard/actions/personalChartLayout';
+import type {
+  PersonalChartLayout,
+  PersonalChartTemplateSelection,
+} from 'src/dashboard/actions/personalChartLayout';
 import {
   NoAnimationDropdown,
   Tooltip,
@@ -145,7 +149,7 @@ export interface SliceHeaderControlsProps {
   dashboardPivotLayout?: PersonalChartLayout | null;
   personalChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
   legacyChartTemplates?: import('src/dashboard/actions/personalChartLayout').PersonalChartTemplate[];
-  personalChartTemplateActiveSlot?: 1 | 2 | 3 | null;
+  personalChartTemplateActiveSlot?: PersonalChartTemplateSelection;
   onApplyPersonalChartLayout?: (
     layout: PersonalChartLayout | null,
     slot: 1 | 2 | 3 | null,
@@ -389,13 +393,18 @@ const SliceHeaderControls = (
   const activePersonalChartTemplate = personalChartTemplates.find(
     template =>
       template.slot === props.personalChartTemplateActiveSlot &&
-      JSON.stringify(template.layout) ===
-        JSON.stringify(props.personalChartLayout),
+      isEqual(
+        { frozen_column_count: 0, ...template.layout },
+        { frozen_column_count: 0, ...props.personalChartLayout },
+      ),
   );
   const activePersonalChartTemplateName = props.dashboardPivotLayout
     ? t('本看板共享')
     : activePersonalChartTemplate?.name ||
-      (props.personalChartLayout ? t('自定义布局') : t('系统默认'));
+      (props.personalChartTemplateActiveSlot === 'system-default' ||
+      !props.personalChartLayout
+        ? t('系统默认')
+        : t('自定义布局'));
   const personalTemplateMenuItems: MenuItem[] = props.dashboardPivotLayout
     ? [{ key: 'dashboard-shared', label: t('本看板共享（在自定义列中停用）') }]
     : [
@@ -769,7 +778,11 @@ const SliceHeaderControls = (
           dashboardSharedLayout={props.dashboardPivotLayout}
           templates={props.personalChartTemplates || []}
           legacyTemplates={props.legacyChartTemplates || []}
-          activeSlot={props.personalChartTemplateActiveSlot || null}
+          activeSlot={
+            typeof props.personalChartTemplateActiveSlot === 'number'
+              ? props.personalChartTemplateActiveSlot
+              : null
+          }
           isSaving={props.isSavingPersonalChartLayout}
           onHide={() => setShowPivotMetricLayoutModal(false)}
           onApply={(layout, slot) =>

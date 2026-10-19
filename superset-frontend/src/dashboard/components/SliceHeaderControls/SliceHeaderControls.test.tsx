@@ -657,3 +657,78 @@ test('shows the active personal column template on a pivot chart and applies ano
   userEvent.click(await screen.findByText('系统默认'));
   expect(props.onApplyPersonalChartLayout).toHaveBeenLastCalledWith(null, null);
 });
+
+test('restored system-default selection is displayed as system default', () => {
+  const props = createProps(VizType.PivotTable);
+  Object.assign(props, {
+    personalChartTemplateActiveSlot: 'system-default',
+    personalChartLayout: {
+      version: 1,
+      ordered_metric_ids: ['sales'],
+      hidden_metric_ids: [],
+      frozen_column_count: 0,
+      frozen_column_key: null,
+    },
+  });
+  renderWrapper(props);
+  expect(
+    screen.getByRole('button', { name: '列模板：系统默认' }),
+  ).toBeInTheDocument();
+});
+
+test('template identity matches after API field ordering and omitted freeze defaults change', () => {
+  const props = createProps(VizType.PivotTable);
+  Object.assign(props, {
+    personalChartTemplates: [
+      {
+        slot: 2,
+        name: '选择的模板',
+        is_default: false,
+        layout: {
+          version: 1,
+          ordered_metric_ids: ['sales'],
+          hidden_metric_ids: [],
+        },
+      },
+    ],
+    personalChartTemplateActiveSlot: 2,
+    personalChartLayout: {
+      hidden_metric_ids: [],
+      frozen_column_count: 0,
+      ordered_metric_ids: ['sales'],
+      version: 1,
+    },
+  });
+  renderWrapper(props);
+  expect(
+    screen.getByRole('button', { name: '列模板：选择的模板' }),
+  ).toBeInTheDocument();
+});
+
+test('changed or deleted source template is shown as custom while the snapshot remains', () => {
+  const props = createProps(VizType.PivotTable);
+  Object.assign(props, {
+    personalChartTemplates: [
+      {
+        slot: 2,
+        name: '已修改模板',
+        is_default: false,
+        layout: {
+          version: 1,
+          ordered_metric_ids: ['sales'],
+          hidden_metric_ids: ['sales'],
+        },
+      },
+    ],
+    personalChartTemplateActiveSlot: 2,
+    personalChartLayout: {
+      version: 1,
+      ordered_metric_ids: ['sales'],
+      hidden_metric_ids: [],
+    },
+  });
+  renderWrapper(props);
+  expect(
+    screen.getByRole('button', { name: '列模板：自定义布局' }),
+  ).toBeInTheDocument();
+});

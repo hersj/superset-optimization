@@ -622,3 +622,34 @@ test('reload restores the remembered chart snapshot and preserves other chart la
       .personalChartLayouts,
   ).toEqual({ '2': other });
 });
+
+test('initial library restores template choices over legacy defaults only for saved charts', () => {
+  const layout = {
+    version: 1,
+    ordered_metric_ids: ['sales'],
+    hidden_metric_ids: [],
+  };
+  const state = createMockDashboardState({
+    personalChartTemplateActiveSlots: { '1': 1, '2': 2, '3': 3 },
+  });
+  const library: PivotTemplateLibrary = {
+    version: 2,
+    templates: [],
+    defaults: { '1': layout, '2': layout },
+    selections: { '1': 2, '2': 'system-default' },
+    legacy_layout: null,
+  };
+  const restored = typedDashboardStateReducer(
+    state,
+    setPivotTemplateLibrary(library, true),
+  );
+  expect(restored.personalChartTemplateActiveSlots).toEqual({
+    '1': 2,
+    '2': 'system-default',
+    '3': 3,
+  });
+  expect(
+    typedDashboardStateReducer(state, setPivotTemplateLibrary(library))
+      .personalChartTemplateActiveSlots,
+  ).toEqual(state.personalChartTemplateActiveSlots);
+});

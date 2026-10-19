@@ -151,7 +151,12 @@ test('remembered chart layout is sent to and reloaded from the personal library'
   const get = jest
     .spyOn(SupersetClient, 'get')
     .mockResolvedValue({ json: { result: library } } as never);
-  const payload = { action: 'apply' as const, chart_id: 611, layout };
+  const payload = {
+    action: 'apply' as const,
+    chart_id: 611,
+    layout,
+    selection: 2 as const,
+  };
   await expect(editPivotTemplateLibrary(88, payload)).resolves.toEqual(library);
   expect(put).toHaveBeenCalledWith({
     endpoint: '/api/v1/dashboard/88/pivot_templates',
