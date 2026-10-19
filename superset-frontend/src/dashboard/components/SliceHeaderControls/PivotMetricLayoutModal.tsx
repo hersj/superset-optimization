@@ -227,7 +227,10 @@ interface PivotMetricLayoutModalProps {
   activeSlot: 1 | 2 | 3 | null;
   isSaving?: boolean;
   onHide: () => void;
-  onApply: (layout: PersonalChartLayout | null, slot: 1 | 2 | 3 | null) => void;
+  onApply: (
+    layout: PersonalChartLayout | null,
+    slot: 1 | 2 | 3 | null,
+  ) => Promise<void> | void;
   onSaveTemplate: (
     slot: 1 | 2 | 3,
     name: string,
@@ -256,7 +259,7 @@ export default function PivotMetricLayoutModal({
   onDeleteTemplate,
 }: PivotMetricLayoutModalProps) {
   /*
-   * 同一用户、同一看板共用三个模板；保存只更新库，使用才应用当前图表。
+   * 同一用户、同一看板共用三个模板；保存只更新库，使用会记住当前图表布局。
    * 默认布局保存独立快照，更新/删除源模板不覆盖已应用布局。
    * 草稿仅在弹窗内；取消不写入，保存失败保留草稿。旧图表模板只读保留。
    * 冻结保存稳定列标识，旧数字配置仅在能解析实际表头时转换。
@@ -429,14 +432,16 @@ export default function PivotMetricLayoutModal({
     }
   };
 
-  const handleUseSystemDefault = () => {
-    onApply(null, null);
-    onHide();
-  };
-
-  const handleUseTemplate = (template: PersonalChartTemplate) => {
-    onApply(template.layout, template.slot);
-    onHide();
+  const handleApply = async (
+    layout: PersonalChartLayout | null,
+    slot: 1 | 2 | 3 | null,
+  ) => {
+    try {
+      await onApply(layout, slot);
+      onHide();
+    } catch {
+      // The owning chart reports the error; keep the dialog and current layout.
+    }
   };
 
   const handleSetDefault = async (template: PersonalChartTemplate) => {
@@ -463,9 +468,9 @@ export default function PivotMetricLayoutModal({
     onHide();
   };
 
-  /* Kept explicit so a system-default view never clears a personal default slot. */
-  const handleReset = () => {
-    handleUseSystemDefault();
+  /* Remember the system-default snapshot while preserving saved templates. */
+  const handleReset = async () => {
+    await handleApply(null, null);
   };
 
   return (
@@ -497,7 +502,7 @@ export default function PivotMetricLayoutModal({
     >
       <Description>
         {t(
-          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿；保存更新模板库，点击使用才应用到当前图表。',
+          '拖动或使用置顶、上移、下移、置底可调整指标顺序；取消勾选可隐藏指标。修改内容仅是草稿；保存更新模板库，点击使用后会记住当前图表布局，刷新后自动恢复。',
         )}
       </Description>
       <label>
@@ -543,62 +548,60 @@ export default function PivotMetricLayoutModal({
           )}
         </Description>
       )}
-      {
-        <TemplateSection>
-          <Description>
-            <strong>{t('本看板个人模板库（最多3个）')}</strong>
-            <br />
-            {t(
-              '同看板透视图共用，仅本人可见。保存只更新模板库；点击使用才应用到当前图表，设为默认也只影响当前图表。',
-            )}
-          </Description>
-          {([1, 2, 3] as const).map(slot => {
-            const template = templates.find(item => item.slot === slot);
-            return (
-              <TemplateRow key={slot}>
-                <Input
-                  aria-label={t('模板 %(slot)s 名称', { slot })}
-                  value={
-                    saveSlot === slot
-                      ? templateName
-                      : template?.name || t('模板 %(slot)s', { slot })
-                  }
-                  onFocus={() => chooseSlot(slot)}
-                  onChange={event => {
-                    chooseSlot(slot);
-                    setTemplateName(event.target.value);
-                  }}
+      <TemplateSection>
+        <Description>
+          <strong>{t('本看板个人模板库（最多3个）')}</strong>
+          <br />
+          {t(
+            '同看板透视图共用，仅本人可见。保存只更新模板库；点击使用后会应用并记住当前图表布局，设为默认也只影响当前图表。',
+          )}
+        </Description>
+        {([1, 2, 3] as const).map(slot => {
+          const template = templates.find(item => item.slot === slot);
+          return (
+            <TemplateRow key={slot}>
+              <Input
+                aria-label={t('模板 %(slot)s 名称', { slot })}
+                value={
+                  saveSlot === slot
+                    ? templateName
+                    : template?.name || t('模板 %(slot)s', { slot })
+                }
+                onFocus={() => chooseSlot(slot)}
+                onChange={event => {
+                  chooseSlot(slot);
+                  setTemplateName(event.target.value);
+                }}
+                disabled={isSaving}
+              />
+              {template && (
+                <Button
+                  onClick={() => handleApply(template.layout, template.slot)}
                   disabled={isSaving}
-                />
-                {template && (
-                  <Button
-                    onClick={() => handleUseTemplate(template)}
-                    disabled={isSaving}
-                  >
-                    {t('使用')}
-                  </Button>
-                )}
-                {template && (
-                  <Button
-                    onClick={() => handleSetDefault(template)}
-                    disabled={isSaving}
-                  >
-                    {template.is_default ? t('默认') : t('设为默认')}
-                  </Button>
-                )}
-                {template && (
-                  <Button
-                    onClick={() => handleDelete(template)}
-                    disabled={isSaving}
-                  >
-                    {t('Delete')}
-                  </Button>
-                )}
-              </TemplateRow>
-            );
-          })}
-        </TemplateSection>
-      }
+                >
+                  {t('使用')}
+                </Button>
+              )}
+              {template && (
+                <Button
+                  onClick={() => handleSetDefault(template)}
+                  disabled={isSaving}
+                >
+                  {template.is_default ? t('默认') : t('设为默认')}
+                </Button>
+              )}
+              {template && (
+                <Button
+                  onClick={() => handleDelete(template)}
+                  disabled={isSaving}
+                >
+                  {t('Delete')}
+                </Button>
+              )}
+            </TemplateRow>
+          );
+        })}
+      </TemplateSection>
       {legacyTemplates.length > 0 && (
         <details>
           <summary>{t('旧图表模板（保留）')}</summary>
@@ -606,10 +609,7 @@ export default function PivotMetricLayoutModal({
             <div key={template.slot}>
               {template.name}
               <Button
-                onClick={() => {
-                  onApply(template.layout, null);
-                  onHide();
-                }}
+                onClick={() => handleApply(template.layout, null)}
                 disabled={isSaving}
               >
                 {t('使用旧模板')}

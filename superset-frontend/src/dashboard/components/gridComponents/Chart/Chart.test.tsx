@@ -20,17 +20,17 @@ import {
   createStore,
   fireEvent,
   render,
+  screen,
+  userEvent,
   waitFor,
 } from 'spec/helpers/testing-library';
-import { FeatureFlag, VizType } from '@superset-ui/core';
+import { FeatureFlag, SupersetClient, VizType } from '@superset-ui/core';
 import * as redux from 'redux';
 
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
 import { setDashboardChartControls } from '../../../actions/dashboardState';
-import {
-  DEFAULT_DASHBOARD_CHART_CONTROLS,
-} from '../../../util/charts/getDashboardChartControls';
+import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../../../util/charts/getDashboardChartControls';
 import reducerIndex from 'spec/helpers/reducerIndex';
 import { sliceEntitiesForChart as sliceEntities } from 'spec/fixtures/mockSliceEntities';
 import mockDatasource from 'spec/fixtures/mockDatasource';
@@ -563,5 +563,143 @@ test('should pass filterState from dataMask to ChartContainer', () => {
   expect(capturedChartContainerProps).toHaveProperty(
     'filterState',
     mockFilterState,
+  );
+});
+
+const rememberedLayout = {
+  version: 1,
+  ordered_metric_ids: ['profit', 'sales'],
+  hidden_metric_ids: ['sales'],
+  frozen_column_key: 'profit',
+};
+const previousLayout = {
+  version: 1,
+  ordered_metric_ids: ['sales', 'profit'],
+  hidden_metric_ids: [],
+};
+function setupPivot() {
+  return setup(
+    {},
+    {
+      charts: {
+        ...chartQueries,
+        [queryId]: {
+          ...chartQueries[queryId],
+          form_data: {
+            ...chartQueries[queryId].form_data,
+            viz_type: VizType.PivotTable,
+            metrics: ['sales', 'profit'],
+          },
+        },
+      },
+      sliceEntities: {
+        ...defaultState.sliceEntities,
+        slices: {
+          [queryId]: {
+            ...defaultState.sliceEntities.slices[queryId],
+            viz_type: VizType.PivotTable,
+          },
+        },
+      },
+      dashboardState: {
+        ...defaultState.dashboardState,
+        personalChartLayouts: { [queryId]: previousLayout },
+        pivotTemplateLibrary: {
+          version: 2,
+          templates: [
+            {
+              slot: 1,
+              name: '利润布局',
+              is_default: false,
+              layout: rememberedLayout,
+            },
+          ],
+          defaults: {},
+          legacy_layout: null,
+        },
+      },
+    },
+  );
+}
+
+test('using a template persists before changing the rendered chart layout', async () => {
+  let finish!: (value: Awaited<ReturnType<typeof SupersetClient.put>>) => void;
+  const put = jest.spyOn(SupersetClient, 'put').mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  setupPivot();
+  userEvent.click(screen.getByRole('button', { name: /列模板：/ }));
+  userEvent.click(await screen.findByText('利润布局'));
+  expect(put).toHaveBeenCalledWith({
+    endpoint: '/api/v1/dashboard/111/pivot_templates',
+    jsonPayload: {
+      action: 'apply',
+      chart_id: queryId,
+      layout: rememberedLayout,
+    },
+  });
+  expect(capturedChartContainerProps.ownState).toEqual(
+    expect.objectContaining({ pivot_table_metric_layout: previousLayout }),
+  );
+  finish({
+    json: {
+      result: {
+        version: 2,
+        templates: [],
+        defaults: { [queryId]: rememberedLayout },
+        legacy_layout: null,
+      },
+    },
+  } as never);
+  await waitFor(() =>
+    expect(capturedChartContainerProps.ownState).toEqual(
+      expect.objectContaining({ pivot_table_metric_layout: rememberedLayout }),
+    ),
+  );
+});
+
+test('failed template persistence keeps the previous chart layout and reports the failure', async () => {
+  jest.spyOn(SupersetClient, 'put').mockRejectedValueOnce(new Error('offline'));
+  setupPivot();
+  userEvent.click(screen.getByRole('button', { name: /列模板：/ }));
+  userEvent.click(await screen.findByText('利润布局'));
+  await waitFor(() =>
+    expect(addDangerToast).toHaveBeenCalledWith('个人列布局保存失败，请重试'),
+  );
+  expect(capturedChartContainerProps.ownState).toEqual(
+    expect.objectContaining({ pivot_table_metric_layout: previousLayout }),
+  );
+});
+
+test('system default persists all current metrics with no hidden or frozen columns', async () => {
+  const put = jest.spyOn(SupersetClient, 'put').mockResolvedValueOnce({
+    json: {
+      result: {
+        version: 2,
+        templates: [],
+        defaults: {},
+        legacy_layout: null,
+      },
+    },
+  } as never);
+  setupPivot();
+  userEvent.click(screen.getByRole('button', { name: /列模板：/ }));
+  userEvent.click(await screen.findByText('系统默认'));
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith({
+      endpoint: '/api/v1/dashboard/111/pivot_templates',
+      jsonPayload: {
+        action: 'apply',
+        chart_id: queryId,
+        layout: {
+          ...previousLayout,
+          frozen_column_count: 0,
+          frozen_column_key: null,
+        },
+      },
+    }),
   );
 });

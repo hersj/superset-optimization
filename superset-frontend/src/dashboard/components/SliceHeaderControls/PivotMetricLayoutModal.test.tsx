@@ -121,3 +121,43 @@ test('old per-chart templates remain available without overwriting the library',
   expect(callbacks.onApply).toHaveBeenCalledWith(layout, null);
   expect(callbacks.onSaveTemplate).not.toHaveBeenCalled();
 });
+
+test('use closes only after the layout has been persisted', async () => {
+  let finish!: () => void;
+  const onApply = jest.fn(
+    () =>
+      new Promise<void>(resolve => {
+        finish = resolve;
+      }),
+  );
+  const callbacks = setup({ onApply });
+  userEvent.click(screen.getByRole('button', { name: /^使\s*用$/ }));
+  expect(onApply).toHaveBeenCalledWith(layout, 1);
+  expect(callbacks.onHide).not.toHaveBeenCalled();
+  finish();
+  await waitFor(() => expect(callbacks.onHide).toHaveBeenCalledTimes(1));
+});
+
+test('failed use keeps the modal open and preserves its draft', async () => {
+  const onApply = jest.fn().mockRejectedValue(new Error('offline'));
+  const callbacks = setup({ onApply });
+  userEvent.selectOptions(
+    screen.getByRole('combobox', { name: '冻结到哪一列' }),
+    'profit',
+  );
+  userEvent.click(screen.getByRole('button', { name: /^使\s*用$/ }));
+  await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
+  expect(callbacks.onHide).not.toHaveBeenCalled();
+  expect(screen.getByRole('combobox', { name: '冻结到哪一列' })).toHaveValue(
+    'profit',
+  );
+});
+
+test('restoring system defaults uses the same persistence path', async () => {
+  const onApply = jest.fn().mockResolvedValue(undefined);
+  const callbacks = setup({ onApply });
+  userEvent.click(screen.getByRole('button', { name: '恢复系统默认' }));
+  await waitFor(() => expect(callbacks.onHide).toHaveBeenCalledTimes(1));
+  expect(onApply).toHaveBeenCalledWith(null, null);
+  expect(callbacks.onSaveTemplate).not.toHaveBeenCalled();
+});

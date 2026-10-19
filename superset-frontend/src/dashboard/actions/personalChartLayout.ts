@@ -26,7 +26,7 @@ export interface PersonalChartLayout {
   version: number;
 }
 
-/** A persisted personal slot. The selected layout itself remains session-only. */
+/** A saved personal slot; applying it persists a separate per-chart snapshot. */
 export interface PersonalChartTemplate {
   slot: 1 | 2 | 3;
   name: string;
@@ -57,12 +57,14 @@ export async function getPivotTemplateLibrary(
 }
 export async function editPivotTemplateLibrary(
   dashboardId: number,
-  payload: {
-    action: 'save' | 'delete' | 'default';
-    slot: 1 | 2 | 3;
-    chart_id?: number;
-    template?: { name: string; layout: PersonalChartLayout };
-  },
+  payload:
+    | {
+        action: 'save' | 'delete' | 'default';
+        slot: 1 | 2 | 3;
+        chart_id?: number;
+        template?: { name: string; layout: PersonalChartLayout };
+      }
+    | { action: 'apply'; chart_id: number; layout: PersonalChartLayout },
 ): Promise<PivotTemplateLibrary> {
   const { json } = await SupersetClient.put({
     endpoint: `/api/v1/dashboard/${dashboardId}/pivot_templates`,

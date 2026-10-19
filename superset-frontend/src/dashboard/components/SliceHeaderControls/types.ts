@@ -71,7 +71,7 @@ export interface SliceHeaderControlsProps {
   onApplyPersonalChartLayout?: (
     layout: PersonalChartLayout | null,
     slot: 1 | 2 | 3 | null,
-  ) => void;
+  ) => Promise<void> | void;
   onSavePersonalChartTemplate?: (
     slot: 1 | 2 | 3,
     name: string,

@@ -836,25 +836,40 @@ const Chart = (props: ChartProps) => {
   );
 
   const applyPersonalChartLayout = useCallback(
-    (layout: PersonalChartLayout | null, slot: 1 | 2 | 3 | null) => {
-      if (layout) {
-        dispatch(upsertPersonalChartLayout(props.id, layout));
-      } else {
-        dispatch(
-          upsertPersonalChartLayout(
-            props.id,
-            normalizeTemplateLayout({
-              version: 1,
-              ordered_metric_ids: [],
-              hidden_metric_ids: [],
-              frozen_column_key: null,
-            }),
-          ),
-        );
+    async (layout: PersonalChartLayout | null, slot: 1 | 2 | 3 | null) => {
+      const appliedLayout = layout || {
+        ...normalizeTemplateLayout({
+          version: 1,
+          ordered_metric_ids: [],
+          hidden_metric_ids: [],
+          frozen_column_key: null,
+        }),
+        hidden_metric_ids: [],
+      };
+      setIsSavingPersonalChartLayout(true);
+      try {
+        const updated = await editPivotTemplateLibrary(props.dashboardId, {
+          action: 'apply',
+          chart_id: props.id,
+          layout: appliedLayout,
+        });
+        dispatch(setPivotTemplateLibrary(updated));
+        dispatch(upsertPersonalChartLayout(props.id, appliedLayout));
+        dispatch(setPersonalChartTemplateActiveSlot(props.id, slot));
+      } catch {
+        boundActionCreators.addDangerToast(t('个人列布局保存失败，请重试'));
+        throw new Error('个人列布局保存失败');
+      } finally {
+        setIsSavingPersonalChartLayout(false);
       }
-      dispatch(setPersonalChartTemplateActiveSlot(props.id, slot));
     },
-    [dispatch, normalizeTemplateLayout, props.id],
+    [
+      boundActionCreators,
+      dispatch,
+      normalizeTemplateLayout,
+      props.dashboardId,
+      props.id,
+    ],
   );
 
   const savePersonalChartTemplate = useCallback(

@@ -1137,15 +1137,28 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             if request.method == "GET":
                 return self.response(200, result=command.get_library())
             payload = request.get_json(silent=True)
-            if not isinstance(payload, dict):
-                raise ValueError("JSON object required")
-            if payload.get("action") not in ("save", "delete", "default"):
-                raise ValueError("Invalid action")
-            if type(payload.get("slot")) is not int or payload["slot"] not in (1, 2, 3):
+            if not isinstance(payload, dict) or payload.get("action") not in (
+                "save", "delete", "default", "apply"
+            ):
+                raise ValueError("JSON object with a valid action required")
+            if payload["action"] != "apply" and (
+                type(payload.get("slot")) is not int or payload["slot"] not in (1, 2, 3)
+            ):
                 raise ValueError("Slot must be 1, 2 or 3")
             if payload["action"] == "save":
                 payload["template"] = self.chart_template_model_schema.load(payload.get("template", {}))
-            if payload["action"] == "default" and type(payload.get("chart_id")) is not int:
+            if payload["action"] == "apply":
+                payload["layout"] = self.chart_layout_model_schema.load(
+                    payload.get("layout", {})
+                )
+                # Applied snapshots follow the same stable-ID and size limits as templates.
+                self.chart_template_model_schema.validate_template_layout(
+                    {"layout": payload["layout"]}
+                )
+            if (
+                payload["action"] in ("default", "apply")
+                and type(payload.get("chart_id")) is not int
+            ):
                 raise ValueError("Chart ID required")
             return self.response(200, result=command.edit_library(payload))
         except ValidationError as error:

@@ -636,6 +636,7 @@ test('shows the active personal column template on a pivot chart and applies ano
       { slot: 2, name: '利润优先', is_default: false, layout: profitLayout },
     ],
     personalChartTemplateActiveSlot: 1,
+    personalChartLayout: salesLayout,
     onApplyPersonalChartLayout: jest.fn(),
   });
 

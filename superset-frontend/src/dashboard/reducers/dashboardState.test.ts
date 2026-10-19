@@ -41,6 +41,10 @@ import {
   setActiveTabs,
 } from '../actions/dashboardState';
 import { DashboardState, RootState } from '../types';
+import {
+  setPivotTemplateLibrary,
+  PivotTemplateLibrary,
+} from '../actions/personalChartLayout';
 import { HYDRATE_DASHBOARD } from '../actions/hydrate';
 
 // Type the reducer function properly since it's imported from JS
@@ -584,4 +588,37 @@ describe('DashboardState reducer', () => {
       showValueEnabled: false,
     });
   });
+});
+
+test('reload restores the remembered chart snapshot and preserves other chart layouts', () => {
+  const saved = {
+    version: 1,
+    ordered_metric_ids: ['profit', 'sales'],
+    hidden_metric_ids: ['sales'],
+    frozen_column_key: 'profit',
+  };
+  const other = {
+    version: 1,
+    ordered_metric_ids: ['cost'],
+    hidden_metric_ids: [],
+  };
+  const library: PivotTemplateLibrary = {
+    version: 2,
+    templates: [],
+    defaults: { '1': saved },
+    legacy_layout: null,
+  };
+  const state = createMockDashboardState({
+    sliceIds: [1, 2],
+    personalChartLayouts: { '2': other },
+  });
+  const restored = typedDashboardStateReducer(
+    state,
+    setPivotTemplateLibrary(library, true),
+  );
+  expect(restored.personalChartLayouts).toEqual({ '1': saved, '2': other });
+  expect(
+    typedDashboardStateReducer(state, setPivotTemplateLibrary(library))
+      .personalChartLayouts,
+  ).toEqual({ '2': other });
 });

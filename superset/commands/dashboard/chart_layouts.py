@@ -65,28 +65,49 @@ class DashboardPivotLayoutCommand(BaseCommand):
         from superset.models.dashboard_chart_layout import DashboardPivotLayout
 
         user_id, dashboard_id = self.scope()
-        row = (db.session.query(DashboardPivotLayout).options(lazyload("*"))
-               .filter_by(user_id=user_id, dashboard_id=dashboard_id)
-               .with_for_update().one_or_none())
+        row = (
+            db.session.query(DashboardPivotLayout)
+            .options(lazyload("*"))
+            .filter_by(user_id=user_id, dashboard_id=dashboard_id)
+            .with_for_update()
+            .one_or_none()
+        )
         library = self.library(json.loads(row.layout_json) if row else None)
-        action, slot = payload["action"], payload["slot"]
-        template = next((item for item in library["templates"] if item["slot"] == slot), None)
+        action, slot = payload["action"], payload.get("slot")
+        template = next(
+            (item for item in library["templates"] if item["slot"] == slot), None
+        )
         if action == "save":
-            library["templates"] = [item for item in library["templates"] if item["slot"] != slot]
-            library["templates"].append({"slot": slot, "name": payload["template"]["name"],
-                                         "layout": payload["template"]["layout"], "is_default": False})
+            library["templates"] = [
+                item for item in library["templates"] if item["slot"] != slot
+            ]
+            library["templates"].append(
+                {
+                    "slot": slot,
+                    "name": payload["template"]["name"],
+                    "layout": payload["template"]["layout"],
+                    "is_default": False,
+                }
+            )
             library["templates"].sort(key=lambda item: item["slot"])
         elif action == "delete":
-            library["templates"] = [item for item in library["templates"] if item["slot"] != slot]
+            library["templates"] = [
+                item for item in library["templates"] if item["slot"] != slot
+            ]
             # Applied/default snapshots are deliberately not removed with their source.
-        else:
+        elif action in ("default", "apply"):
             dashboard = DashboardDAO.get_by_id_or_slug(dashboard_id)
             chart_id = payload["chart_id"]
             if chart_id not in {chart.id for chart in dashboard.slices}:
                 raise ValueError("Chart is not part of dashboard")
-            if template is None:
+            if action == "default" and template is None:
                 raise ValueError("Template slot does not exist")
-            library["defaults"][str(chart_id)] = template["layout"]
+            # Remember an applied snapshot without overwriting any saved template.
+            library["defaults"][str(chart_id)] = (
+                payload["layout"] if action == "apply" else template["layout"]
+            )
+        else:
+            raise ValueError("Invalid action")
         DashboardPivotLayoutDAO.upsert(user_id, dashboard_id, library)
         return library
 

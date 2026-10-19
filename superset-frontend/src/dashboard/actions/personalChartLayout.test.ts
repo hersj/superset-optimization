@@ -21,6 +21,8 @@ import { SupersetClient } from '@superset-ui/core';
 
 import {
   deleteDashboardPivotLayout,
+  editPivotTemplateLibrary,
+  getPivotTemplateLibrary,
   getDashboardPivotLayout,
   getDashboardChartTemplates,
   isNotFoundError,
@@ -127,5 +129,36 @@ test('uses the scoped template endpoints for get, save, and default', async () =
   });
   expect(postSpy).toHaveBeenCalledWith({
     endpoint: '/api/v1/dashboard/88/chart_templates/611/2/default',
+  });
+});
+
+test('remembered chart layout is sent to and reloaded from the personal library', async () => {
+  const layout = {
+    version: 1,
+    ordered_metric_ids: ['profit', 'sales'],
+    hidden_metric_ids: ['sales'],
+    frozen_column_key: 'profit',
+  };
+  const library = {
+    version: 2,
+    templates: [],
+    defaults: { '611': layout },
+    legacy_layout: null,
+  };
+  const put = jest
+    .spyOn(SupersetClient, 'put')
+    .mockResolvedValue({ json: { result: library } } as never);
+  const get = jest
+    .spyOn(SupersetClient, 'get')
+    .mockResolvedValue({ json: { result: library } } as never);
+  const payload = { action: 'apply' as const, chart_id: 611, layout };
+  await expect(editPivotTemplateLibrary(88, payload)).resolves.toEqual(library);
+  expect(put).toHaveBeenCalledWith({
+    endpoint: '/api/v1/dashboard/88/pivot_templates',
+    jsonPayload: payload,
+  });
+  await expect(getPivotTemplateLibrary(88)).resolves.toEqual(library);
+  expect(get).toHaveBeenCalledWith({
+    endpoint: '/api/v1/dashboard/88/pivot_templates',
   });
 });

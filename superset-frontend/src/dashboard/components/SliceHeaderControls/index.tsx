@@ -149,7 +149,7 @@ export interface SliceHeaderControlsProps {
   onApplyPersonalChartLayout?: (
     layout: PersonalChartLayout | null,
     slot: 1 | 2 | 3 | null,
-  ) => void;
+  ) => Promise<void> | void;
   onSavePersonalChartTemplate?: (
     slot: 1 | 2 | 3,
     name: string,
@@ -378,10 +378,10 @@ const SliceHeaderControls = (
    * 功能审计（可重写规格）：透视表标题栏个人列模板快捷切换
    * - 功能目的与触发方式：仅在 pivot_table_v2 图表标题栏提供当前用户模板的可见选择入口。
    * - 输入契约：模板、激活 slot 和应用回调均来自当前 dashboard/chart 的既有 Redux 状态与回调。
-   * - 输出契约：选择模板或系统默认只更新当前图会话列布局，不写共享看板配置。
+   * - 输出契约：选择模板或系统默认会保存当前用户的当前图表布局，不写共享看板配置。
    * - 处理流程：显示当前激活模板；菜单选择精确模板 slot 或系统默认后调用既有 onApply 回调。
-   * - 业务规则：未激活模板显示系统默认；切换模板不改变模板默认标记、名称或保存内容。
-   * - 状态与副作用：不新增 API、localStorage 或服务端写入。
+   * - 业务规则：切换只保存当前图表快照，不修改模板内容或其他图表。
+   * - 状态与副作用：应用回调持久化成功后更新显示，失败保留旧布局并提示错误。
    * - 异常与边界：无模板时仍可选择系统默认；非透视图不渲染入口。
    * - 验证方式：SliceHeaderControls 组件测试覆盖显示当前模板和切换另一模板。
    */
@@ -405,17 +405,24 @@ const SliceHeaderControls = (
           label: template.name,
         })),
       ];
-  const applyPersonalTemplate = (key: Key) => {
+  const applyPersonalTemplate = async (key: Key) => {
     if (props.dashboardPivotLayout) return;
-    if (key === 'system-default') {
-      props.onApplyPersonalChartLayout?.(null, null);
-      return;
-    }
-    const template = personalChartTemplates.find(
-      item => ['personal-template', item.slot].join('-') === key,
-    );
-    if (template) {
-      props.onApplyPersonalChartLayout?.(template.layout, template.slot);
+    try {
+      if (key === 'system-default') {
+        await props.onApplyPersonalChartLayout?.(null, null);
+        return;
+      }
+      const template = personalChartTemplates.find(
+        item => ['personal-template', item.slot].join('-') === key,
+      );
+      if (template) {
+        await props.onApplyPersonalChartLayout?.(
+          template.layout,
+          template.slot,
+        );
+      }
+    } catch {
+      // The owning chart displays the save error and retains the previous layout.
     }
   };
 
@@ -705,6 +712,7 @@ const SliceHeaderControls = (
               template: activePersonalChartTemplateName,
             })}
             title={activePersonalChartTemplateName}
+            disabled={props.isSavingPersonalChartLayout}
           >
             {t('列模板：%(template)s', {
               template: activePersonalChartTemplateName,
