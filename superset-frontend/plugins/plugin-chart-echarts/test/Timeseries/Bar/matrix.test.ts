@@ -40,6 +40,10 @@ import {
   OrientationType,
 } from '../../../src/Timeseries/types';
 import { createEchartsTimeseriesTestChartProps } from '../../helpers';
+import {
+  persistMatrixViewport,
+  restoreMatrixViewport,
+} from '../../../src/utils/matrixViewport';
 
 function props(
   formData: Partial<EchartsTimeseriesFormData> = {},
@@ -486,4 +490,45 @@ test('a standard dashboard tile shows three brands together even with multiple m
   expect(
     matrixSeries(result).flatMap(series => series.data ?? []),
   ).toHaveLength(60);
+});
+
+test('real ECharts retains a custom viewport on both refresh merge and full recreation', () => {
+  const options = {
+    ...barTransformProps(denseMatrix()).echartOptions,
+    animation: false,
+  };
+  const context = jest
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(null);
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 800,
+    height: 600,
+  });
+  try {
+    chart.setOption(options as EChartsOption);
+    chart.dispatchAction({
+      type: 'dataZoom',
+      dataZoomIndex: 0,
+      start: 20,
+      end: 60,
+    });
+    persistMatrixViewport(chart.getOption(), 'matrix-test');
+    for (const notMerge of [false, true]) {
+      chart.setOption(
+        restoreMatrixViewport(options, 'matrix-test') as EChartsOption,
+        { notMerge },
+      );
+      expect(chart.getOption().dataZoom[0]).toMatchObject({
+        start: 20,
+        end: 60,
+      });
+      expect(chart.renderToSVGString()).toContain('Brand');
+    }
+  } finally {
+    chart.dispose();
+    context.mockRestore();
+    localStorage.removeItem('matrix-test');
+  }
 });

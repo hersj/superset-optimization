@@ -16,23 +16,28 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import type { EChartsCoreOption } from 'echarts/core';
 import Echart from './Echart';
 
 const mockSetOption = jest.fn();
+const mockState = {
+  common: { locale: 'en' },
+  user: { userId: 1 },
+  dashboardState: { isRefreshing: true },
+};
 const mockChart = {
   dispatchAction: jest.fn(),
   setOption: mockSetOption,
   resize: jest.fn(),
+  on: jest.fn(),
+  off: jest.fn(),
+  dispose: jest.fn(),
+  getOption: jest.fn(),
 };
 
 jest.mock('react-redux', () => ({
-  useSelector: (selector: (state: unknown) => unknown) =>
-    selector({
-      common: { locale: 'en' },
-      dashboardState: { isRefreshing: true },
-    }),
+  useSelector: (selector: (state: unknown) => unknown) => selector(mockState),
 }));
 
 jest.mock('echarts/core', () => ({
@@ -69,6 +74,11 @@ jest.mock('@apache-superset/core/theme', () => {
 afterEach(() => {
   mockSetOption.mockReset();
   mockChart.resize.mockReset();
+  mockChart.on.mockClear();
+  mockChart.off.mockClear();
+  mockChart.getOption.mockReset();
+  localStorage.clear();
+  mockState.user.userId = 1;
 });
 
 test('replaces the legend component during a dashboard refresh', async () => {
@@ -90,4 +100,61 @@ test('replaces the legend component during a dashboard refresh', async () => {
     replaceMerge: ['series', 'legend'],
     lazyUpdate: true,
   });
+});
+
+const matrixOptions = {
+  dataZoom: [{ id: 'matrix-rows', yAxisIndex: 0, startValue: 0, endValue: 2 }],
+};
+const matrixChart = (scope = '[73,726,"competitor"]') => (
+  <Echart
+    width={800}
+    height={400}
+    echartOptions={{ ...matrixOptions }}
+    dataZoomStorageKey={scope}
+  />
+);
+
+test('retains a resized and panned range on dashboard refresh and remount', async () => {
+  const first = render(matrixChart());
+  await waitFor(() =>
+    expect(mockChart.on).toHaveBeenCalledWith('datazoom', expect.any(Function)),
+  );
+  const handler = mockChart.on.mock.calls.at(-1)?.[1];
+  mockChart.getOption.mockReturnValue({
+    dataZoom: [{ id: 'matrix-rows', start: 20, end: 45 }],
+  });
+  act(() => handler());
+  first.rerender(matrixChart());
+  expect(mockSetOption.mock.calls.at(-1)?.[0].dataZoom[0]).toMatchObject({
+    start: 20,
+    end: 45,
+    startValue: undefined,
+    endValue: undefined,
+  });
+  first.unmount();
+  render(matrixChart());
+  await waitFor(() =>
+    expect(mockSetOption.mock.calls.at(-1)?.[0].dataZoom[0]).toMatchObject({
+      start: 20,
+      end: 45,
+    }),
+  );
+  expect(mockChart.off).toHaveBeenCalledWith('datazoom', handler);
+});
+
+test('keeps other users and dashboards on their own ranges', async () => {
+  localStorage.setItem(
+    `echarts__matrix_viewport:${JSON.stringify([1, '[73,726,"competitor"]'])}`,
+    JSON.stringify({ start: 20, end: 45 }),
+  );
+  const view = render(matrixChart('[74,726,"competitor"]'));
+  await waitFor(() => expect(mockSetOption).toHaveBeenCalled());
+  expect(
+    mockSetOption.mock.calls.at(-1)?.[0].dataZoom[0].start,
+  ).toBeUndefined();
+  mockState.user.userId = 2;
+  view.rerender(matrixChart());
+  expect(
+    mockSetOption.mock.calls.at(-1)?.[0].dataZoom[0].start,
+  ).toBeUndefined();
 });

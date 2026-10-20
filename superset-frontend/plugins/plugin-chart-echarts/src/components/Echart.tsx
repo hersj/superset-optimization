@@ -66,10 +66,15 @@ import { LabelLayout } from 'echarts/features';
 import { EchartsHandler, EchartsProps, EchartsStylesProps } from '../types';
 import { DEFAULT_LOCALE } from '../constants';
 import { mergeEchartsThemeOverrides } from '../utils/themeOverrides';
+import {
+  persistMatrixViewport,
+  restoreMatrixViewport,
+} from '../utils/matrixViewport';
 
 // Define this interface here to avoid creating a dependency back to superset-frontend,
 // TODO: to move the type to @superset-ui/core
 interface ExplorePageState {
+  user?: { userId?: number };
   common?: {
     locale?: string;
   };
@@ -135,6 +140,7 @@ function Echart(
     selectedValues = {},
     refs,
     vizType,
+    dataZoomStorageKey,
   }: EchartsProps,
   ref: Ref<EchartsHandler>,
 ) {
@@ -159,6 +165,11 @@ function Echart(
   const locale = useSelector(
     (state: ExplorePageState) => state?.common?.locale ?? DEFAULT_LOCALE,
   ).toUpperCase();
+  const userId = useSelector((state: ExplorePageState) => state.user?.userId);
+  const viewportKey =
+    userId && dataZoomStorageKey
+      ? `echarts__matrix_viewport:${JSON.stringify([userId, dataZoomStorageKey])}`
+      : undefined;
   const isDashboardRefreshing = useSelector((state: ExplorePageState) =>
     Boolean(state?.dashboardState?.isRefreshing),
   );
@@ -272,6 +283,13 @@ function Echart(
         animationOverride,
       );
 
+      const persistViewport = () => {
+        if (viewportKey && chartRef.current) {
+          persistMatrixViewport(chartRef.current.getOption(), viewportKey);
+        }
+      };
+      if (viewportKey) chartRef.current?.on('datazoom', persistViewport);
+
       const notMerge = !isDashboardRefreshing;
       if (!notMerge) {
         chartRef.current?.dispatchAction({ type: 'hideTip' });
@@ -283,20 +301,34 @@ function Echart(
        * - 输出契约：非刷新使用完整替换；刷新使用延迟合并但替换 series 和 legend 两个组件，使本轮真实系列、图例项和 selected 映射完整生效。
        * - 处理流程：刷新时先隐藏提示框，再以 replaceMerge 替换数据和图例；非刷新保持原有 notMerge 完整替换路径。
        * - 业务规则：legend.selected 只来自当前图表的 legendState 转换结果；不能让 ECharts 上一轮的 legend.data 或 selected 合并覆盖当前图例选择。
-       * - 状态与副作用：只改变当前 ECharts 实例；不写 Redux、看板配置、数据库或 localStorage，查询和图表状态仍由上层现有链路管理。
+       * - 状态与副作用：只改变当前 ECharts 实例；不写 Redux、看板配置或数据库；矩阵柱图仅在真实 datazoom 事件中记录当前用户的私有视窗，设置选项前恢复。
        * - 外部依赖：依赖 ECharts setOption、ChartRenderer 的 legendState 和看板刷新标记；其他图表继续使用相同刷新策略。
        * - 异常与边界：空 legend 或无系列时按当前选项替换；非看板刷新、探索页渲染和无图例图表不改变原有行为。
        * - 不变量与约束：切换数字显示或时间对比不得恢复旧图例；series、legend、tooltip、颜色和注释配置必须来自同一轮选项。
        * - 验证方式：Echart.test.tsx 断言刷新 setOption 同时 replaceMerge series/legend；标准和混合时序 transform 测试覆盖状态映射。
        */
-      chartRef.current?.setOption(themedEchartOptions, {
-        notMerge,
-        replaceMerge: notMerge ? undefined : ['series', 'legend'],
-        lazyUpdate: isDashboardRefreshing,
-      });
+      chartRef.current?.setOption(
+        restoreMatrixViewport(themedEchartOptions, viewportKey),
+        {
+          notMerge,
+          replaceMerge: notMerge ? undefined : ['series', 'legend'],
+          lazyUpdate: isDashboardRefreshing,
+        },
+      );
+      return () => {
+        if (viewportKey) chartRef.current?.off('datazoom', persistViewport);
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isDashboardRefreshing intentionally excluded to prevent extra setOption calls
-  }, [didMount, echartOptions, eventHandlers, zrEventHandlers, theme, vizType]);
+  }, [
+    didMount,
+    echartOptions,
+    eventHandlers,
+    zrEventHandlers,
+    theme,
+    vizType,
+    viewportKey,
+  ]);
 
   useEffect(() => () => chartRef.current?.dispose(), []);
 

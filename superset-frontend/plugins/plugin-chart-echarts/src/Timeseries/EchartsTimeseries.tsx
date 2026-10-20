@@ -71,6 +71,14 @@ export default function EchartsTimeseries({
   matrixTimeGrain,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
+  const dataZoomStorageKey =
+    matrixDimensions && formData.sliceId
+      ? JSON.stringify([
+          formData.dashboardId ?? 'explore',
+          formData.sliceId,
+          getColumnLabel(matrixDimensions[1]),
+        ])
+      : undefined;
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
   const echartRef = useRef<EchartsHandler | null>(null);
   // eslint-disable-next-line no-param-reassign
@@ -465,6 +473,7 @@ export default function EchartsTimeseries({
         zrEventHandlers={zrEventHandlers}
         selectedValues={selectedValues}
         vizType={formData.vizType}
+        dataZoomStorageKey={dataZoomStorageKey}
       />
     </>
   );

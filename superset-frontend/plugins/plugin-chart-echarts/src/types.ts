@@ -56,6 +56,7 @@ export interface EchartsProps {
   forceClear?: boolean;
   refs: Refs;
   vizType?: string;
+  dataZoomStorageKey?: string;
 }
 
 export interface EchartsHandler {

@@ -553,3 +553,19 @@ test('keeps cross-filter clicks when rich tooltip is disabled', async () => {
   expect(onTooltipSeriesClick).not.toHaveBeenCalled();
   expect(mockDispatchAction).not.toHaveBeenCalled();
 });
+
+test.each([73, 74, undefined])(
+  'scopes the matrix viewport to chart, dashboard and row dimension (%s)',
+  dashboardId => {
+    render(
+      <EchartsTimeseries
+        {...defaultProps}
+        matrixDimensions={['snapshot_month', 'competitor']}
+        formData={{ ...defaultFormData, sliceId: 726, dashboardId }}
+      />,
+    );
+    expect(mockEchart.mock.calls.at(-1)?.[0].dataZoomStorageKey).toBe(
+      JSON.stringify([dashboardId ?? 'explore', 726, 'competitor']),
+    );
+  },
+);
