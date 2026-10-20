@@ -248,3 +248,9 @@ Top Nav and remove the Filter Bar:
 In a dashboard, charts with a row-limit query control offer a row-limit selector in their header. A selection re-runs that chart and is remembered for your account, dashboard and chart, including after automatic refresh or reopening the dashboard. It does not change the saved chart or another user's preference. Mixed time-series charts apply the limit to both queries.
 
 Choose the default option to follow the chart's saved row limit again. Limits cannot exceed the configured system maximum. Server-paginated tables use their page-size control instead. The limit applies to source query rows, so a pivot or aggregate may display a different number of rows.
+
+### Reading dense chart data
+
+Two-dimensional bar charts keep category rows readable when many values are returned. Scroll over the plot or drag the right-hand slider to move through rows; the column headings stay visible. Changing the query row limit still controls how much data is returned.
+
+Sankey charts keep separate source and target nodes when shared labels would create a cycle, including missing labels. The original labels, flow values and tooltip percentages are retained. Acyclic multi-stage flows keep their original node connections.

@@ -265,6 +265,11 @@ export function transformBarMatrix(
       };
     },
   );
+  const visibleRows = Math.max(
+    1,
+    Math.floor((chartProps.height - 110) / Math.max(120, slotCount * 48)),
+  );
+  const scrollRows = yValues.length > visibleRows;
   const label = (value: DataRecordValue) =>
     value == null ? t('NULL') : String(value);
   const xLabel = (value: DataRecordValue) =>
@@ -292,7 +297,7 @@ export function transformBarMatrix(
       grid: {
         top: formData.showLegend ? 65 : 35,
         left: 25,
-        right: formData.zoomable ? 45 : 25,
+        right: formData.zoomable || scrollRows ? 45 : 25,
         bottom: formData.zoomable ? 65 : 25,
         containLabel: true,
       },
@@ -345,22 +350,49 @@ export function transformBarMatrix(
           ]);
         },
       },
-      dataZoom: formData.zoomable
-        ? [
-            {
-              type: 'slider',
-              xAxisIndex: 0,
-              bottom: 0,
-              filterMode: 'weakFilter',
-            },
-            {
-              type: 'slider',
-              yAxisIndex: 0,
-              right: 0,
-              filterMode: 'weakFilter',
-            },
-          ]
-        : [],
+      dataZoom: [
+        ...(formData.zoomable
+          ? [
+              {
+                type: 'slider' as const,
+                xAxisIndex: 0,
+                bottom: 0,
+                filterMode: 'weakFilter' as const,
+              },
+            ]
+          : []),
+        ...(formData.zoomable || scrollRows
+          ? [
+              {
+                id: 'matrix-rows',
+                type: 'slider' as const,
+                yAxisIndex: 0,
+                right: 0,
+                filterMode: 'weakFilter' as const,
+                ...(scrollRows && {
+                  startValue: 0,
+                  endValue: visibleRows - 1,
+                  zoomLock: true,
+                  brushSelect: false,
+                  showDetail: false,
+                }),
+              },
+            ]
+          : []),
+        ...(scrollRows
+          ? [
+              {
+                type: 'inside' as const,
+                yAxisIndex: 0,
+                filterMode: 'weakFilter' as const,
+                zoomLock: true,
+                zoomOnMouseWheel: false,
+                moveOnMouseWheel: true,
+                moveOnMouseMove: true,
+              },
+            ]
+          : []),
+      ],
     },
   };
 }

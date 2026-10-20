@@ -364,3 +364,101 @@ test('finite values near numeric limits still produce finite bar geometry', () =
   const shape = rectangle(matrixSeries(result)[0], 1e308);
   expect(Object.values(shape).every(Number.isFinite)).toBe(true);
 });
+
+function denseMatrix() {
+  const data: DataRecord = { month: 'Sep' };
+  const labelMap: Record<string, string[]> = {};
+  for (let i = 0; i < 20; i += 1) {
+    const name = `sales, Brand ${i}`;
+    data[name] = i + 1;
+    labelMap[name] = ['sales', `Brand ${i}`];
+  }
+  return props({}, [data], labelMap);
+}
+
+test('dense matrices scroll within the viewport and retain all returned categories and values', () => {
+  const result = barTransformProps(denseMatrix());
+  expect(result.height).toBe(600);
+  expect(result.echartOptions.yAxis).toMatchObject({
+    data: expect.any(Array),
+    inverse: true,
+  });
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
+    20,
+  );
+  expect(result.echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: 'slider',
+        yAxisIndex: 0,
+        startValue: 0,
+        endValue: 3,
+        zoomLock: true,
+      }),
+      expect.objectContaining({
+        type: 'inside',
+        yAxisIndex: 0,
+        zoomOnMouseWheel: false,
+        moveOnMouseWheel: true,
+      }),
+    ]),
+  );
+  expect(
+    matrixSeries(result).flatMap(series => series.data ?? []),
+  ).toHaveLength(20);
+  const context = jest
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue(null);
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 800,
+    height: 600,
+  });
+  try {
+    chart.setOption({
+      ...result.echartOptions,
+      animation: false,
+    } as EChartsOption);
+    const before = chart.renderToSVGString();
+    chart.dispatchAction({
+      type: 'dataZoom',
+      dataZoomIndex: 0,
+      startValue: 16,
+      endValue: 19,
+    });
+    const after = chart.renderToSVGString();
+    expect(before).not.toEqual(after);
+    expect(before).toContain('Brand 19');
+    expect(after).toContain('Brand 0');
+  } finally {
+    chart.dispose();
+    context.mockRestore();
+  }
+});
+
+test('small matrices keep their full view and explicit X-axis zoom remains available', () => {
+  expect(barTransformProps(props()).echartOptions.dataZoom).toEqual([]);
+  const input = denseMatrix();
+  input.formData.zoomable = true;
+  expect(barTransformProps(input).echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: 'slider', xAxisIndex: 0 }),
+      expect.objectContaining({
+        type: 'slider',
+        yAxisIndex: 0,
+        zoomLock: true,
+      }),
+    ]),
+  );
+});
+
+test('short chart viewports show at least one readable row', () => {
+  const input = denseMatrix();
+  input.height = 100;
+  expect(barTransformProps(input).echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ startValue: 0, endValue: 0 }),
+    ]),
+  );
+});

@@ -35,6 +35,27 @@ import { getPercentFormatter } from '../utils/formatters';
 type Link = { source: string; target: string; value: number };
 type EChartsOption = ComposeOption<SankeySeriesOption>;
 
+function hasCycle(links: Link[]): boolean {
+  const incoming = new Map<string, number>();
+  const outgoing = new Map<string, string[]>();
+  links.forEach(({ source, target }) => {
+    incoming.set(source, incoming.get(source) ?? 0);
+    incoming.set(target, (incoming.get(target) ?? 0) + 1);
+    const targets = outgoing.get(source) ?? [];
+    targets.push(target);
+    outgoing.set(source, targets);
+  });
+  const queue = Array.from(incoming.keys()).filter(name => !incoming.get(name));
+  for (let index = 0; index < queue.length; index += 1) {
+    (outgoing.get(queue[index]) ?? []).forEach(target => {
+      const remaining = incoming.get(target)! - 1;
+      incoming.set(target, remaining);
+      if (!remaining) queue.push(target);
+    });
+  }
+  return queue.length < incoming.size;
+}
+
 export default function transformProps(
   chartProps: SankeyChartProps,
 ): SankeyTransformedProps {
@@ -48,14 +69,11 @@ export default function transformProps(
   const valueFormatter = getNumberFormatter(NumberFormats.FLOAT_2_POINT);
   const percentFormatter = getPercentFormatter(NumberFormats.PERCENT_2_POINT);
 
-  const links: Link[] = [];
-  const set = new Set<string>();
+  let links: Link[] = [];
   data.forEach(datum => {
     const sourceName = String(datum[getColumnLabel(source)]);
     const targetName = String(datum[getColumnLabel(target)]);
     const value = datum[metricLabel] as number;
-    set.add(sourceName);
-    set.add(targetName);
     links.push({
       source: sourceName,
       target: targetName,
@@ -63,18 +81,28 @@ export default function transformProps(
     });
   });
 
+  // Cyclic labels represent separate source/target roles; retain every flow.
+  const splitRoles = hasCycle(links);
+  const nodeLabels = new Map<string, string>();
+  links = links.map(({ source, target, value }) => {
+    const sourceId = splitRoles ? JSON.stringify(['source', source]) : source;
+    const targetId = splitRoles ? JSON.stringify(['target', target]) : target;
+    nodeLabels.set(sourceId, source);
+    nodeLabels.set(targetId, target);
+    return { source: sourceId, target: targetId, value };
+  });
   const seriesData: NonNullable<SankeySeriesOption['data']> = Array.from(
-    set,
-  ).map(name => ({
-    name,
-    itemStyle: {
-      color: colorFn(name, sliceId),
-    },
-    label: {
-      color: theme.colorText,
-      textShadow: theme.colorBgBase,
-    },
-  }));
+    nodeLabels,
+    ([name, label]) => ({
+      name,
+      itemStyle: { color: colorFn(label, sliceId) },
+      label: {
+        formatter: () => label,
+        color: theme.colorText,
+        textShadow: theme.colorBgBase,
+      },
+    }),
+  );
 
   // stores a map with the total values for each node considering the links
   const incomingFlows = new Map<string, number>();
@@ -105,15 +133,19 @@ export default function transformProps(
     const { source, target } = data as Link;
     if (source && target) {
       rows.push([
-        `% (${source})`,
+        `% (${nodeLabels.get(source)})`,
         percentFormatter.format(value / nodeValues.get(source)!),
       ]);
       rows.push([
-        `% (${target})`,
+        `% (${nodeLabels.get(target)})`,
         percentFormatter.format(value / nodeValues.get(target)!),
       ]);
     }
-    return tooltipHtml(rows, name);
+    const title =
+      source && target
+        ? `${nodeLabels.get(source)} > ${nodeLabels.get(target)}`
+        : (nodeLabels.get(name) ?? name);
+    return tooltipHtml(rows, title);
   };
 
   const echartOptions: EChartsOption = {
