@@ -365,15 +365,17 @@ test('finite values near numeric limits still produce finite bar geometry', () =
   expect(Object.values(shape).every(Number.isFinite)).toBe(true);
 });
 
-function denseMatrix() {
+function denseMatrix(metrics = ['sales']) {
   const data: DataRecord = { month: 'Sep' };
   const labelMap: Record<string, string[]> = {};
   for (let i = 0; i < 20; i += 1) {
-    const name = `sales, Brand ${i}`;
-    data[name] = i + 1;
-    labelMap[name] = ['sales', `Brand ${i}`];
+    metrics.forEach(metric => {
+      const name = `${metric}, Brand ${i}`;
+      data[name] = i + 1;
+      labelMap[name] = [metric, `Brand ${i}`];
+    });
   }
-  return props({}, [data], labelMap);
+  return props({ metrics }, [data], labelMap);
 }
 
 test('dense matrices scroll within the viewport and retain all returned categories and values', () => {
@@ -392,7 +394,7 @@ test('dense matrices scroll within the viewport and retain all returned categori
         type: 'slider',
         yAxisIndex: 0,
         startValue: 0,
-        endValue: 3,
+        endValue: 4,
         zoomLock: true,
       }),
       expect.objectContaining({
@@ -461,4 +463,26 @@ test('short chart viewports show at least one readable row', () => {
       expect.objectContaining({ startValue: 0, endValue: 0 }),
     ]),
   );
+});
+
+test('a standard dashboard tile shows three brands together even with multiple metrics', () => {
+  const input = denseMatrix(['sales', 'units', 'share']);
+  input.height = 417;
+  const result = barTransformProps(input);
+  expect(result.echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        yAxisIndex: 0,
+        startValue: 0,
+        endValue: 2,
+        zoomLock: true,
+      }),
+    ]),
+  );
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
+    20,
+  );
+  expect(
+    matrixSeries(result).flatMap(series => series.data ?? []),
+  ).toHaveLength(60);
 });
