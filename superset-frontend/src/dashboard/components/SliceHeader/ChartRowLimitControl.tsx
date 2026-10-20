@@ -52,6 +52,7 @@ export default function ChartRowLimitControl({
       <Select<number | 'default'>
         aria-label={t('行限制')}
         size="small"
+        sortComparator={() => 0}
         style={{ width: 150, marginRight: 4 }}
         value={value ?? 'default'}
         disabled={disabled}
