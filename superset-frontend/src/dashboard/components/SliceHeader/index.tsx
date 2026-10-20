@@ -44,11 +44,16 @@ import { RootState } from 'src/dashboard/types';
 import { getSliceHeaderTooltip } from 'src/dashboard/util/getSliceHeaderTooltip';
 import { DashboardPageIdContext } from 'src/dashboard/containers/DashboardPage';
 import RowCountLabel from 'src/components/RowCountLabel';
+import ChartRowLimitControl from './ChartRowLimitControl';
 import { Link } from 'react-router-dom';
 
 const extensionsRegistry = getExtensionsRegistry();
 
 type SliceHeaderProps = SliceHeaderControlsProps & {
+  personalRowLimit?: number;
+  onRowLimitChange?: (value: number | null) => void;
+  isRowLimitDisabled?: boolean;
+  defaultRowLimit?: number;
   updateSliceName?: (arg0: string) => void;
   editMode?: boolean;
   annotationQuery?: object;
@@ -183,6 +188,10 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
       onSetPersonalChartTemplateDefault,
       onDeletePersonalChartTemplate,
       isSavingPersonalChartLayout,
+      personalRowLimit,
+      onRowLimitChange,
+      isRowLimitDisabled,
+      defaultRowLimit,
     },
     ref,
   ) => {
@@ -339,6 +348,14 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
                 <FiltersBadge chartId={slice.slice_id} />
               )}
 
+              {!uiConfig.hideChartControls && onRowLimitChange && (
+                <ChartRowLimitControl
+                  value={personalRowLimit}
+                  defaultValue={defaultRowLimit ?? rowLimit}
+                  disabled={isRowLimitDisabled}
+                  onChange={onRowLimitChange}
+                />
+              )}
               {showRowLimitWarning && (
                 <RowCountLabel
                   rowcount={sqlRowCount}

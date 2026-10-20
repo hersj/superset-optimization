@@ -266,6 +266,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "pivot_layout",
         "get_chart_templates",
         "pivot_templates",
+        "chart_row_limits",
         "put_chart_template",
         "rename_chart_template",
         "delete_chart_template",
@@ -1124,6 +1125,29 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
     def get_chart_templates(self, pk: int) -> Response:
         try:
             return self.response(200, result=GetDashboardChartTemplatesCommand(pk).run())
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+
+    @expose("/<pk>/chart_row_limits", methods=("GET", "PUT"))
+    @protect()
+    @safe
+    @permission_name("read")
+    def chart_row_limits(self, pk: int) -> Response:
+        """Read or update only the current viewer's row limits for this dashboard."""
+        from superset.commands.dashboard.chart_row_limits import (
+            DashboardChartRowLimitsCommand,
+        )
+
+        command = DashboardChartRowLimitsCommand(pk)
+        try:
+            if request.method == "GET":
+                return self.response(200, result=command.run())
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required")
+            return self.response(200, result=command.put(payload))
+        except ValueError as error:
+            return self.response_400(message=str(error))
         except (DashboardAccessDeniedError, DashboardNotFoundError):
             return self.response_404()
 

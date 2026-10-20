@@ -30,6 +30,10 @@ import {
   useDashboardCharts,
   useDashboardDatasets,
 } from 'src/hooks/apiResources';
+import {
+  getChartRowLimits,
+  setChartRowLimits,
+} from 'src/dashboard/actions/chartRowLimits';
 import { hydrateDashboard } from 'src/dashboard/actions/hydrate';
 import { setDatasources } from 'src/dashboard/actions/datasources';
 import injectCustomCss from 'src/dashboard/util/injectCustomCss';
@@ -256,18 +260,31 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
   }, [dispatch, id, userId]);
 
   useEffect(() => {
-    // eslint-disable-next-line consistent-return
+    let active = true;
     async function getDataMaskApplied() {
       // activeTabs is initialized with undefined so that it doesn't override
       // the currently stored value when hydrating
-      const { dataMask, activeTabs, chartStates, anchor } =
-        await loadDashboardDataMask(id);
+      const [{ dataMask, activeTabs, chartStates, anchor }, rowLimits] =
+        await Promise.all([
+          loadDashboardDataMask(id),
+          userId
+            ? getChartRowLimits(id).catch(() => {
+                addDangerToast(
+                  t(
+                    'Unable to load row limits. Reload the dashboard to try again.',
+                  ),
+                );
+                return null;
+              })
+            : Promise.resolve(null),
+        ]);
 
-      if (readyToRender) {
+      if (readyToRender && active) {
         if (!isDashboardHydrated.current) {
           isDashboardHydrated.current = true;
         }
         lastSavedDataMaskTextRef.current = serializeLastFilterState(dataMask);
+        dispatch(setChartRowLimits(rowLimits));
         dispatch(
           hydrateDashboard({
             history,
@@ -292,9 +309,12 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
       }
       return null;
     }
-    if (id) getDataMaskApplied();
+    if (id && readyToRender) getDataMaskApplied();
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readyToRender]);
+  }, [readyToRender, id, userId]);
 
   // Save dataMask (including chart-level filters) for last-filter-state restoration
   const dataMaskRef = useRef(currentDataMask);
@@ -309,7 +329,7 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
           lastSavedDataMaskTextRef.current,
         )
       ) {
-        void saveLastFilterValue(id, dataMaskText).then(() => {
+        saveLastFilterValue(id, dataMaskText).then(() => {
           lastSavedDataMaskTextRef.current = dataMaskText;
         });
       }

@@ -57,6 +57,10 @@ import {
   CLEAR_ALL_CHART_STATES,
   SET_DASHBOARD_CHART_CONTROLS,
 } from '../actions/dashboardState';
+import {
+  SET_CHART_ROW_LIMITS,
+  SET_CHART_ROW_LIMIT,
+} from '../actions/chartRowLimits';
 import { HYDRATE_DASHBOARD } from '../actions/hydrate';
 import {
   SET_AUTO_REFRESH_STATUS,
@@ -124,6 +128,7 @@ interface DashboardStateShape {
   nativeFiltersBarOpen?: boolean;
   chartStates?: Record<string, ChartStateEntry>;
   dashboardChartControls?: DashboardChartControls;
+  chartRowLimits?: Record<string, number> | null;
   personalChartLayouts?: Record<string, JsonObject>;
   pivotTemplateLibrary?: PivotTemplateLibrary | null;
   personalChartTemplates?: Record<
@@ -180,6 +185,8 @@ interface DashboardStateAction {
   lastModified?: number;
   chartStates?: Record<string, ChartStateEntry>;
   dashboardChartControls?: DashboardChartControls;
+  rowLimits?: Record<string, number> | null;
+  rowLimit?: number | null;
   layouts?: Record<string, JsonObject>;
   layout?: JsonObject;
   templates?: PersonalChartTemplatesMap;
@@ -210,6 +217,15 @@ export default function dashboardStateReducer(
   action: DashboardStateAction,
 ): DashboardStateShape {
   const actionHandlers: Record<string, () => DashboardStateShape> = {
+    [SET_CHART_ROW_LIMITS](): DashboardStateShape {
+      return { ...state, chartRowLimits: action.rowLimits };
+    },
+    [SET_CHART_ROW_LIMIT](): DashboardStateShape {
+      const limits = { ...state.chartRowLimits };
+      if (action.rowLimit == null) delete limits[action.chartId!];
+      else limits[action.chartId!] = action.rowLimit;
+      return { ...state, chartRowLimits: limits };
+    },
     [HYDRATE_DASHBOARD](): DashboardStateShape {
       const hydratedState: DashboardStateShape = {
         ...state,

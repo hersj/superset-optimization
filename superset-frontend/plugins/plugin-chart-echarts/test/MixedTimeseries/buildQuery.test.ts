@@ -23,6 +23,7 @@ import {
   TimeGranularity,
 } from '@superset-ui/core';
 import buildQuery from '../../src/MixedTimeseries/buildQuery';
+import getFormDataWithExtraFilters from 'src/dashboard/util/charts/getFormDataWithExtraFilters';
 
 const formDataMixedChart = {
   datasource: 'dummy',
@@ -411,4 +412,24 @@ test('ensure correct pivot columns', () => {
       },
     },
   });
+});
+
+test('dashboard personal limit reaches both actual mixed-chart query objects', () => {
+  const formData = getFormDataWithExtraFilters({
+    chart: {
+      id: 9999,
+      form_data: { ...formDataMixedChart, viz_type: 'mixed_timeseries' },
+    },
+    chartConfiguration: {},
+    filters: {},
+    sliceId: 9999,
+    nativeFilters: {},
+    dataMask: {},
+    extraControls: {},
+    allSliceIds: [9999],
+    rowLimit: 50,
+  });
+  const context = buildQuery(formData);
+  expect(context.queries).toHaveLength(2);
+  expect(context.queries.map(query => query.row_limit)).toEqual([50, 50]);
 });

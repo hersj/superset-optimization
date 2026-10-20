@@ -73,6 +73,34 @@ describe('getFormDataWithExtraFilters', () => {
     allSliceIds: [chartId],
   };
 
+  test('personal limits override both mixed queries, invalidate cache and restore the saved default', () => {
+    const args = {
+      ...mockArgs,
+      chart: {
+        ...mockChart,
+        form_data: {
+          ...mockChart.form_data,
+          viz_type: 'mixed_timeseries',
+          row_limit: 10000,
+          row_limit_b: 5000,
+        },
+      },
+    };
+    const first = getFormDataWithExtraFilters({ ...args, rowLimit: 50 });
+    const cached = getFormDataWithExtraFilters({ ...args, rowLimit: 50 });
+    expect(first.row_limit).toBe(50);
+    expect(first.row_limit_b).toBe(50);
+    expect(cached.row_limit).toBe(50);
+    expect(
+      getFormDataWithExtraFilters({ ...args, rowLimit: 100 }).row_limit,
+    ).toBe(100);
+    const restored = getFormDataWithExtraFilters(args);
+    expect(restored.row_limit).toBe(10000);
+    expect(restored.row_limit_b).toBe(5000);
+    expect(restored.extra_filters).toEqual(first.extra_filters);
+    expect(args.chart.form_data.row_limit).toBe(10000);
+  });
+
   test('should include filters from the passed filters', () => {
     const result = getFormDataWithExtraFilters(mockArgs);
     expect(result.extra_filters).toHaveLength(2);
@@ -145,7 +173,9 @@ describe('getFormDataWithExtraFilters', () => {
       expect(result.time_compare).toEqual(expected);
       expect(result.extra_form_data?.time_compare).toEqual(expected);
       if (vizType === 'mixed_timeseries')
-        expect(result).toEqual(expect.objectContaining({ time_compare_b: expected }));
+        expect(result).toEqual(
+          expect.objectContaining({ time_compare_b: expected }),
+        );
       expect(result.extra_form_data?.filters?.[0].val).toHaveLength(2);
     },
   );

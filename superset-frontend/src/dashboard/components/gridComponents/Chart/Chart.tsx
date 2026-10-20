@@ -54,6 +54,10 @@ import {
 import { useIsAutoRefreshing } from 'src/dashboard/contexts/AutoRefreshContext';
 
 import SliceHeader from '../../SliceHeader';
+import {
+  setChartRowLimit,
+  saveChartRowLimit,
+} from '../../../actions/chartRowLimits';
 import MissingChart from '../../MissingChart';
 
 import {
@@ -519,6 +523,27 @@ const Chart = (props: ChartProps) => {
       state.dashboardState.dashboardChartControls ||
       DEFAULT_DASHBOARD_CHART_CONTROLS,
   );
+  const chartRowLimits = useSelector(
+    (state: RootState) => state.dashboardState.chartRowLimits,
+  );
+  const rowLimit = chartRowLimits?.[props.id];
+  const [isSavingRowLimit, setIsSavingRowLimit] = useState(false);
+  const applyRowLimit = useCallback(
+    async (value: number | null) => {
+      setIsSavingRowLimit(true);
+      try {
+        await saveChartRowLimit(props.dashboardId, props.id, value);
+        dispatch(setChartRowLimit(props.id, value));
+      } catch {
+        boundActionCreators.addDangerToast(
+          t('Unable to save row limit. Please try again.'),
+        );
+      } finally {
+        setIsSavingRowLimit(false);
+      }
+    },
+    [props.dashboardId, props.id, dispatch, boundActionCreators.addDangerToast],
+  );
   const previousDashboardChartControls = useRef(dashboardChartControls);
   const lastRequestedDashboardChartControlSignature = useRef<string | null>(
     null,
@@ -558,6 +583,7 @@ const Chart = (props: ChartProps) => {
         labelsColorMap,
         sharedLabelsColors,
         ownColorScheme,
+        rowLimit,
       }),
     [
       chart?.id,
@@ -575,15 +601,22 @@ const Chart = (props: ChartProps) => {
       labelsColorMap,
       sharedLabelsColors,
       ownColorScheme,
+      rowLimit,
     ],
   );
 
-  const dashboardChartControlQuerySignature =
-    getDashboardChartControlQuerySignature(formData as JsonObject);
-  const latestQueryChartControlSignature =
+  const dashboardChartControlQuerySignature = JSON.stringify([
+    getDashboardChartControlQuerySignature(formData as JsonObject),
+    (formData as JsonObject).row_limit,
+    (formData as JsonObject).row_limit_b,
+  ]);
+  const latestQueryChartControlSignature = JSON.stringify([
     getDashboardChartControlQuerySignature(
       chart?.latestQueryFormData as JsonObject | undefined,
-    );
+    ),
+    chart?.latestQueryFormData?.row_limit,
+    chart?.latestQueryFormData?.row_limit_b,
+  ]);
   const latestQueryFormData = chart?.latestQueryFormData as
     | JsonObject
     | undefined;
@@ -591,7 +624,7 @@ const Chart = (props: ChartProps) => {
     | JsonObject
     | undefined;
   const latestQueryHasDashboardChartControls =
-    ['time_compare', 'show_value', 'show_valueB'].some(field =>
+    ['time_compare', 'show_value', 'show_valueB', 'row_limit'].some(field =>
       Object.prototype.hasOwnProperty.call(latestQueryFormData || {}, field),
     ) ||
     Object.prototype.hasOwnProperty.call(
@@ -602,19 +635,9 @@ const Chart = (props: ChartProps) => {
     latestQueryHasDashboardChartControls &&
     dashboardChartControlQuerySignature !== latestQueryChartControlSignature;
 
-  /**
-   * 功能审计（可重写规格）：看板开关查询同步
-   * - 功能目的与触发方式：看板右上角“和过去对比”或“数字显示”改变，或首次 hydrate 后图表配置晚于开关状态到达时，确保当前图表提交一次使用最新覆盖项的查询。
-   * - 输入契约：当前 dashboardChartControls、当前 formData、最近一次 query formData、chart.triggerQuery 和 chartId。
-   * - 输出契约：仅在必要时 dispatch 一次 triggerQuery(true, chartId)；图表随后由现有 Chart -> postChartFormData 链路重新查询。
-   * - 处理流程：先判断开关对象引用是否改变，再判断当前三个显示字段与最近查询是否不一致；查询进行中不重复触发；同一签名已请求但 Redux 尚未回写时不重复触发。
-   * - 业务规则：当前时间对比值优先读取 extra_form_data.time_compare；空数组和保存的偏移不同；数字显示同时比较 Query A/B 字段；普通筛选和图例状态不在此处处理。
-   * - 状态与副作用：只触发既有 Redux 查询动作，不修改图表、看板配置、数据库或用户偏好。
-   * - 外部依赖：依赖 Chart reducer 的 latestQueryFormData/triggerQuery 和现有 query abort 机制。
-   * - 异常与边界：没有最近查询时不因初始化额外发起请求；查询已在进行时跳过；请求签名回写后清除去重标记。
-   * - 不变量与约束：关闭对比后的查询不得继续使用旧 offset；一个图表的判断和请求不影响其他图表。
-   * - 验证方式：Chart.test.tsx 覆盖首次加载错位和控制开关切换；真实看板检查请求与图例。
-   */
+  // Display controls and personal row limits share the existing query trigger.
+  // Compare with the last submitted form so hydration and rapid changes cannot
+  // leave auto-refresh using a stale limit; deduplicate until Redux catches up.
   useEffect(() => {
     const controlsChanged =
       previousDashboardChartControls.current !== dashboardChartControls;
@@ -1020,6 +1043,16 @@ const Chart = (props: ChartProps) => {
         width={width}
         height={getHeaderHeight()}
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
+        defaultRowLimit={Number(chart?.form_data?.row_limit ?? 10000)}
+        personalRowLimit={rowLimit}
+        onRowLimitChange={
+          chart?.form_data &&
+          Object.prototype.hasOwnProperty.call(chart.form_data, 'row_limit') &&
+          !chart.form_data.server_pagination
+            ? applyRowLimit
+            : undefined
+        }
+        isRowLimitDisabled={chartRowLimits == null || isSavingRowLimit}
         personalChartLayout={
           personalChartLayout || dashboardPivotLayout || undefined
         }

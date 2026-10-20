@@ -80,6 +80,7 @@ const cachedFormdataByChart: Record<
     dataMask: DataMask;
     extraControls: Record<string, string | boolean | null | string[]>;
     nativeFilters: PartialFilters;
+    personalRowLimit?: number;
   }
 > = {};
 
@@ -100,6 +101,7 @@ export interface GetFormDataWithExtraFiltersArguments {
   sharedLabelsColors?: string[];
   allSliceIds: number[];
   chartCustomization?: JsonObject;
+  rowLimit?: number;
   activeFilters?: ActiveFilters;
 }
 
@@ -433,6 +435,7 @@ export default function getFormDataWithExtraFilters({
   sharedLabelsColors,
   allSliceIds,
   chartCustomization,
+  rowLimit,
   activeFilters: passedActiveFilters,
 }: GetFormDataWithExtraFiltersArguments) {
   const cachedFormData = cachedFormdataByChart[sliceId];
@@ -445,6 +448,7 @@ export default function getFormDataWithExtraFilters({
     { ignoreUndefined: true },
   );
   if (
+    cachedFormData?.personalRowLimit === rowLimit &&
     cachedFiltersByChart[sliceId] === filters &&
     areObjectsEqual(cachedFormData?.own_color_scheme, ownColorScheme) &&
     areObjectsEqual(cachedFormData?.color_scheme, colorScheme) &&
@@ -591,6 +595,12 @@ export default function getFormDataWithExtraFilters({
     ...(layerFilterScope && { layer_filter_scope: layerFilterScope }),
   };
 
+  if (Number.isInteger(rowLimit) && rowLimit! > 0) {
+    formData.row_limit = rowLimit;
+    if (formData.viz_type === 'mixed_timeseries')
+      formData.row_limit_b = rowLimit;
+  }
+
   /**
    * 功能审计（可重写规格）：看板对比开关的最终表单覆盖
    * - 功能目的与触发方式：看板右上角关闭对比后，在图表查询表单完成全部筛选与自定义项合并时执行。
@@ -696,6 +706,7 @@ export default function getFormDataWithExtraFilters({
   cachedFiltersByChart[sliceId] = filters;
   cachedFormdataByChart[sliceId] = {
     ...formData,
+    personalRowLimit: rowLimit,
     dataMask,
     extraControls,
     nativeFilters,

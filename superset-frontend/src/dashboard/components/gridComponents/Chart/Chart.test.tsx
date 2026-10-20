@@ -17,6 +17,7 @@
  * under the License.
  */
 import {
+  act,
   createStore,
   fireEvent,
   render,
@@ -30,6 +31,7 @@ import * as redux from 'redux';
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
 import { setPivotTemplateLibrary } from '../../../actions/personalChartLayout';
+import { setChartRowLimit } from '../../../actions/chartRowLimits';
 import { setDashboardChartControls } from '../../../actions/dashboardState';
 import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../../../util/charts/getDashboardChartControls';
 import reducerIndex from 'spec/helpers/reducerIndex';
@@ -768,4 +770,85 @@ test('reload restores the selected name even when another template has identical
   expect(capturedChartContainerProps.ownState).toEqual(
     expect.objectContaining({ pivot_table_metric_layout: rememberedLayout }),
   );
+});
+
+test('restores a personal limit into query data and refreshes when the limit changes', async () => {
+  const chart = {
+    ...chartQueries[queryId],
+    triggerQuery: false,
+    latestQueryFormData: {
+      ...chartQueries[queryId].form_data,
+      row_limit: 10000,
+    },
+  };
+  const store = createStore(
+    {
+      ...defaultState,
+      charts: { ...chartQueries, [queryId]: chart },
+      dashboardState: {
+        ...defaultState.dashboardState,
+        chartRowLimits: { [queryId]: 50 },
+      },
+    },
+    reducerIndex,
+  );
+  const dispatchSpy = jest.spyOn(store, 'dispatch');
+  render(<Chart {...props} />, { store, useRouter: true });
+  expect(
+    (capturedChartContainerProps.formData as Record<string, unknown>).row_limit,
+  ).toBe(50);
+  await waitFor(() =>
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    }),
+  );
+  await act(async () => {
+    store.dispatch(setChartRowLimit(queryId, 100));
+  });
+  await waitFor(() =>
+    expect(
+      (capturedChartContainerProps.formData as Record<string, unknown>)
+        .row_limit,
+    ).toBe(100),
+  );
+});
+
+test('commits a selected limit only after saving and retains it if a later save fails', async () => {
+  const chart = {
+    ...chartQueries[queryId],
+    form_data: { ...chartQueries[queryId].form_data, row_limit: 10000 },
+  };
+  const store = createStore(
+    {
+      ...defaultState,
+      charts: { ...chartQueries, [queryId]: chart },
+      dashboardState: { ...defaultState.dashboardState, chartRowLimits: {} },
+    },
+    reducerIndex,
+  );
+  const put = jest
+    .spyOn(SupersetClient, 'put')
+    .mockResolvedValueOnce({ json: { result: 50 } } as any);
+  render(<Chart {...props} />, { store, useRouter: true });
+  await userEvent.click(screen.getByRole('combobox', { name: '行限制' }));
+  await userEvent.click(screen.getByText('行限制：50'));
+  await waitFor(() =>
+    expect(store.getState().dashboardState.chartRowLimits[queryId]).toBe(50),
+  );
+  expect(put).toHaveBeenCalledWith({
+    endpoint: '/api/v1/dashboard/111/chart_row_limits',
+    jsonPayload: { chart_id: queryId, row_limit: 50 },
+  });
+  put.mockRejectedValueOnce(new Error('save failed'));
+  await userEvent.click(screen.getByRole('combobox', { name: '行限制' }));
+  await userEvent.click(screen.getByText('行限制：250'));
+  await waitFor(() =>
+    expect(addDangerToast).toHaveBeenCalledWith(
+      'Unable to save row limit. Please try again.',
+    ),
+  );
+  expect(store.getState().dashboardState.chartRowLimits[queryId]).toBe(50);
+  put.mockRestore();
 });
