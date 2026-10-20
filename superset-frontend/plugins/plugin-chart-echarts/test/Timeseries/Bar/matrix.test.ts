@@ -467,7 +467,7 @@ test('short chart viewports show at least one readable row', () => {
 
 test('a standard dashboard tile shows three brands together even with multiple metrics', () => {
   const input = denseMatrix(['sales', 'units', 'share']);
-  input.height = 417;
+  input.height = 395;
   const result = barTransformProps(input);
   expect(result.echartOptions.dataZoom).toEqual(
     expect.arrayContaining([

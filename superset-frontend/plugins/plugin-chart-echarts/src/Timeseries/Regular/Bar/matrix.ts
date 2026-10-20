@@ -265,7 +265,7 @@ export function transformBarMatrix(
       };
     },
   );
-  const visibleRows = Math.max(1, Math.floor((chartProps.height - 110) / 96));
+  const visibleRows = Math.max(1, Math.floor((chartProps.height - 110) / 88));
   const scrollRows = yValues.length > visibleRows;
   const label = (value: DataRecordValue) =>
     value == null ? t('NULL') : String(value);
