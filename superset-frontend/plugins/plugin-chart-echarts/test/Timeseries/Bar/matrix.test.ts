@@ -395,11 +395,12 @@ test('dense matrices scroll within the viewport and retain all returned categori
         yAxisIndex: 0,
         startValue: 0,
         endValue: 4,
-        zoomLock: true,
+        zoomLock: false,
       }),
       expect.objectContaining({
         type: 'inside',
         yAxisIndex: 0,
+        zoomLock: false,
         zoomOnMouseWheel: false,
         moveOnMouseWheel: true,
       }),
@@ -449,7 +450,7 @@ test('small matrices keep their full view and explicit X-axis zoom remains avail
       expect.objectContaining({
         type: 'slider',
         yAxisIndex: 0,
-        zoomLock: true,
+        zoomLock: false,
       }),
     ]),
   );
@@ -475,7 +476,7 @@ test('a standard dashboard tile shows three brands together even with multiple m
         yAxisIndex: 0,
         startValue: 0,
         endValue: 2,
-        zoomLock: true,
+        zoomLock: false,
       }),
     ]),
   );

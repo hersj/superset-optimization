@@ -369,7 +369,7 @@ export function transformBarMatrix(
                 ...(scrollRows && {
                   startValue: 0,
                   endValue: visibleRows - 1,
-                  zoomLock: true,
+                  zoomLock: false,
                   brushSelect: false,
                   showDetail: false,
                 }),
@@ -382,7 +382,7 @@ export function transformBarMatrix(
                 type: 'inside' as const,
                 yAxisIndex: 0,
                 filterMode: 'weakFilter' as const,
-                zoomLock: true,
+                zoomLock: false,
                 zoomOnMouseWheel: false,
                 moveOnMouseWheel: true,
                 moveOnMouseMove: true,
