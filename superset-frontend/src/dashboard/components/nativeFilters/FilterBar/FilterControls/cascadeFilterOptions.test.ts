@@ -575,7 +575,7 @@ describe('cascade filter time range contract', () => {
 });
 
 test.each(['ILIKE', 'NOT ILIKE', 'NOT IN'])(
-  'a %s parent uses the standard query fallback, not an IN batch',
+  'a %s parent preserves the country and original operator in the batch request',
   async op => {
     clearSellerfoxCascadeFilterOptionsCache();
     const post = jest
@@ -586,20 +586,31 @@ test.each(['ILIKE', 'NOT ILIKE', 'NOT IN'])(
     const nativeFilters = {
       parent: {
         filterType: 'filter_select',
-        targets: [{ datasetId: 175, column: { name: 'competitor' } }],
+        targets: [{ datasetId: 156, column: { name: 'competitor' } }],
+      },
+      country: {
+        filterType: 'filter_select',
+        targets: [{ datasetId: 156, column: { name: 'site' } }],
       },
     };
-    await expect(
-      getCascadeFilterOptions(73, 175, nativeFilters, {
-        parent: {
-          id: 'parent',
-          extraFormData: {
-            filters: [{ col: 'competitor', op, val: '%深圳%' }],
-          },
-        },
+    await getCascadeFilterOptions(73, 156, nativeFilters, {
+      parent: {
+        id: 'parent',
+        extraFormData: { filters: [{ col: 'competitor', op, val: '%深圳%' }] },
+      },
+      country: {
+        id: 'country',
+        extraFormData: { filters: [{ col: 'site', op: 'IN', val: ['US'] }] },
+      },
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jsonPayload: expect.objectContaining({
+          applied_filters: { competitor: ['%深圳%'], site: ['US'] },
+          filter_operators: { competitor: op },
+        }),
       }),
-    ).rejects.toThrow('Cascade batch does not support this filter operator');
-    expect(post).not.toHaveBeenCalled();
+    );
     post.mockRestore();
   },
 );

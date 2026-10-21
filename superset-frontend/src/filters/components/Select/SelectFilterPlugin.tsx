@@ -19,6 +19,7 @@
 /* eslint-disable no-param-reassign */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
+import { createPortal } from 'react-dom';
 import {
   AppSection,
   DataMask,
@@ -35,6 +36,7 @@ import { debounce, isUndefined } from 'lodash';
 import { useImmerReducer } from 'use-immer';
 import {
   FormItem,
+  Button,
   Input,
   LabeledValue,
   Select,
@@ -139,6 +141,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     filterBarOrientation,
     clearAllTrigger,
     onClearAllComplete,
+    matchModeContainer,
   } = props;
   const {
     enableEmptyFilter,
@@ -165,6 +168,18 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   const datatype: GenericDataType = coltypeMap[col];
   const matchMode: SelectFilterMatchMode =
     filterState.matchMode === 'contains' ? 'contains' : 'exact';
+  const [keyword, setKeyword] = useState(String(filterState.value?.[0] ?? ''));
+  const isComposing = useRef(false);
+  const isKeywordFocused = useRef(false);
+  useEffect(() => {
+    if (clearAllTrigger || matchMode !== 'contains') {
+      setKeyword('');
+      isComposing.current = false;
+      isKeywordFocused.current = false;
+    } else if (!isKeywordFocused.current && !isComposing.current) {
+      setKeyword(String(filterState.value?.[0] ?? ''));
+    }
+  }, [filterState.value?.[0], matchMode, clearAllTrigger]);
   const showMatchMode =
     appSection !== AppSection.FilterConfigModal &&
     (datatype === GenericDataType.String || matchMode === 'contains');
@@ -504,102 +519,119 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     setExcludeFilterValues(value === 'true');
   };
 
+  const matchModeButton = showMatchMode && (
+    <Button
+      type="text"
+      size="small"
+      style={{ paddingInline: 4, height: 20, fontSize: 12 }}
+      aria-label={`${t('匹配方式')}：${col}`}
+      aria-pressed={matchMode === 'contains'}
+      title={
+        matchMode === 'contains' ? t('切换为精确匹配') : t('切换为模糊匹配')
+      }
+      onClick={() =>
+        updateDataMask(null, matchMode === 'contains' ? 'exact' : 'contains')
+      }
+      disabled={isDisabled}
+    >
+      {matchMode === 'contains' ? t('模糊') : t('精确')}
+    </Button>
+  );
+
   return (
     <FilterPluginStyle height={height} width={width}>
       <FormItem
         validateStatus={filterState.validateStatus}
         extra={formItemExtra}
       >
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-          <StyledSpace
-            appSection={appSection}
-            inverseSelection={inverseSelection}
-          >
-            {appSection !== AppSection.FilterConfigModal &&
-              inverseSelection && (
-                <Select
-                  className="exclude-select"
-                  value={`${excludeFilterValues}`}
-                  options={[
-                    { value: 'true', label: t('is not') },
-                    { value: 'false', label: t('is') },
-                  ]}
-                  onChange={handleExclusionToggle}
-                />
-              )}
-            {matchMode === 'contains' ? (
-              <Input
-                aria-label={`${t('模糊匹配关键词')}：${col}`}
-                allowClear
-                value={filterState.value?.[0] ?? ''}
-                placeholder={t('输入名称中包含的关键词')}
-                onChange={event =>
-                  updateDataMask(
-                    event.target.value.trim() ? [event.target.value] : null,
-                  )
-                }
-                onFocus={setFocusedFilter}
-                onBlur={unsetFocusedFilter}
-                onMouseEnter={setHoveredFilter}
-                onMouseLeave={unsetHoveredFilter}
-                disabled={isDisabled}
-              />
-            ) : (
-              <Select
-                name={formData.nativeFilterId}
-                allowClear
-                allowNewOptions={!searchAllOptions && creatable !== false}
-                allowSelectAll={!searchAllOptions}
-                value={
-                  multiSelect ? filterState.value || [] : filterState.value
-                }
-                disabled={isDisabled}
-                getPopupContainer={
-                  showOverflow
-                    ? () => (parentRef?.current as HTMLElement) || document.body
-                    : (trigger: HTMLElement) =>
-                        (trigger?.parentNode as HTMLElement) || document.body
-                }
-                showSearch={showSearch}
-                mode={multiSelect ? 'multiple' : 'single'}
-                placeholder={placeholderText}
-                onClear={() => onSearch('')}
-                onSearch={onSearch}
-                onBlur={handleBlur}
-                onFocus={setFocusedFilter}
-                onMouseEnter={setHoveredFilter}
-                onMouseLeave={unsetHoveredFilter}
-                // @ts-expect-error
-                onChange={handleChange}
-                ref={inputRef}
-                loading={isRefreshing}
-                oneLine={
-                  filterBarOrientation === FilterBarOrientation.Horizontal
-                }
-                invertSelection={inverseSelection && excludeFilterValues}
-                options={options}
-                sortComparator={sortComparator}
-                onOpenChange={setFilterActive}
-                className="select-container"
-              />
-            )}
-          </StyledSpace>
-          {showMatchMode && (
+        {matchModeContainer &&
+          createPortal(matchModeButton, matchModeContainer)}
+        <StyledSpace
+          appSection={appSection}
+          inverseSelection={inverseSelection}
+        >
+          {!matchModeContainer && matchModeButton}
+          {appSection !== AppSection.FilterConfigModal && inverseSelection && (
             <Select
-              aria-label={`${t('匹配方式')}：${col}`}
-              size="small"
-              value={matchMode}
+              className="exclude-select"
+              value={`${excludeFilterValues}`}
               options={[
-                { value: 'exact', label: t('精确匹配') },
-                { value: 'contains', label: t('模糊匹配') },
+                { value: 'true', label: t('is not') },
+                { value: 'false', label: t('is') },
               ]}
-              onChange={value =>
-                updateDataMask(null, value as SelectFilterMatchMode)
-              }
-              disabled={isDisabled}
+              onChange={handleExclusionToggle}
             />
           )}
-        </Space>
+          {matchMode === 'contains' ? (
+            <Input
+              aria-label={`${t('模糊匹配关键词')}：${col}`}
+              allowClear
+              value={keyword}
+              placeholder={t('输入名称中包含的关键词')}
+              onChange={event => {
+                const value = event.target.value;
+                setKeyword(value);
+                if (!isComposing.current) {
+                  updateDataMask(value.trim() ? [value] : null);
+                }
+              }}
+              onCompositionStart={() => {
+                isComposing.current = true;
+              }}
+              onCompositionEnd={event => {
+                isComposing.current = false;
+                const value = event.currentTarget.value;
+                setKeyword(value);
+                updateDataMask(value.trim() ? [value] : null);
+              }}
+              onFocus={() => {
+                isKeywordFocused.current = true;
+                setFocusedFilter();
+              }}
+              onBlur={() => {
+                isKeywordFocused.current = false;
+                unsetFocusedFilter();
+              }}
+              onMouseEnter={setHoveredFilter}
+              onMouseLeave={unsetHoveredFilter}
+              disabled={isDisabled}
+            />
+          ) : (
+            <Select
+              name={formData.nativeFilterId}
+              allowClear
+              allowNewOptions={!searchAllOptions && creatable !== false}
+              allowSelectAll={!searchAllOptions}
+              value={multiSelect ? filterState.value || [] : filterState.value}
+              disabled={isDisabled}
+              getPopupContainer={
+                showOverflow
+                  ? () => (parentRef?.current as HTMLElement) || document.body
+                  : (trigger: HTMLElement) =>
+                      (trigger?.parentNode as HTMLElement) || document.body
+              }
+              showSearch={showSearch}
+              mode={multiSelect ? 'multiple' : 'single'}
+              placeholder={placeholderText}
+              onClear={() => onSearch('')}
+              onSearch={onSearch}
+              onBlur={handleBlur}
+              onFocus={setFocusedFilter}
+              onMouseEnter={setHoveredFilter}
+              onMouseLeave={unsetHoveredFilter}
+              // @ts-expect-error
+              onChange={handleChange}
+              ref={inputRef}
+              loading={isRefreshing}
+              oneLine={filterBarOrientation === FilterBarOrientation.Horizontal}
+              invertSelection={inverseSelection && excludeFilterValues}
+              options={options}
+              sortComparator={sortComparator}
+              onOpenChange={setFilterActive}
+              className="select-container"
+            />
+          )}
+        </StyledSpace>
       </FormItem>
     </FilterPluginStyle>
   );

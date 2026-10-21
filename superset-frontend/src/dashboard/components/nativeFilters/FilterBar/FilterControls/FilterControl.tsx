@@ -55,6 +55,8 @@ const FilterControl = ({
 }: FilterControlProps) => {
   const portalNode = useMemo(() => createHtmlPortalNode(), []);
   const [isFilterActive, setIsFilterActive] = useState(false);
+  const [matchModeContainer, setMatchModeContainer] =
+    useState<HTMLSpanElement | null>(null);
 
   const { name = '<undefined>' } = filter;
 
@@ -86,6 +88,12 @@ const FilterControl = ({
         {filter.description?.trim() && (
           <DescriptionToolTip description={filter.description} />
         )}
+        {filter.filterType === 'filter_select' && (
+          <span
+            ref={setMatchModeContainer}
+            style={{ marginInlineStart: 'auto' }}
+          />
+        )}
         <FilterStyledIcon data-test="filter-icon">{icon}</FilterStyledIcon>
       </FilterControlTitleBox>
     ),
@@ -95,6 +103,7 @@ const FilterControl = ({
       name,
       isRequired,
       filter.description,
+      filter.filterType,
       icon,
     ],
   );
@@ -145,6 +154,7 @@ const FilterControl = ({
           validateStatus={validateStatus}
           clearAllTrigger={clearAllTrigger}
           onClearAllComplete={onClearAllComplete}
+          matchModeContainer={matchModeContainer}
           initializedFilters={initializedFilters}
         />
       </InPortal>

@@ -71,6 +71,7 @@ export default function transformProps(
     unsetFocusedFilter,
     setFilterActive,
     inputRef,
+    matchModeContainer: displaySettings?.matchModeContainer,
     filterBarOrientation: displaySettings?.filterBarOrientation,
     isOverflowingFilterBar: displaySettings?.isOverflowingFilterBar,
     clearAllTrigger,

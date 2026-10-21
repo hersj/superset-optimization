@@ -884,3 +884,65 @@ def test_cascade_filter_options_rejects_missing_range_when_filter_is_configured(
 
     with pytest.raises(ValueError, match="time_range"):
         command.run()
+
+
+@pytest.mark.parametrize("operator", ["ILIKE", "NOT ILIKE", "NOT IN"])
+def test_text_parent_keeps_country_time_and_rls(operator):
+    command = GetCascadeFilterOptionsCommand(
+        73,
+        156,
+        ["brand"],
+        applied_filters={"competitor": ["%深圳%"], "site": ["US"]},
+        filter_operators={"competitor": operator},
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={
+            "columns": ["site", "competitor", "brand"],
+            "parent_columns_by_column": {"brand": ["site", "competitor"]},
+        }
+    )
+    command.validate()
+    dataset = MagicMock(
+        schema="public",
+        table_name="market_monthly_fact",
+        main_dttm_col="snapshot_month",
+    )
+    statement, params = command._build_statement(
+        dataset, datetime(2026, 1, 1), datetime(2026, 10, 1), ["(allowed = TRUE)"]
+    )
+    sql = str(statement)
+    assert '"site" IN' in sql
+    assert operator in sql
+    assert "深圳" not in sql
+    assert "since" in sql
+    assert "until" in sql
+    assert "(allowed = TRUE)" in sql
+    assert ["US"] in params.values()
+    assert ("%深圳%" if operator != "NOT IN" else ["%深圳%"]) in params.values()
+    old_cache_key = command._get_cache_key()
+    command._filter_operators = {}
+    assert command._get_cache_key() != old_cache_key
+
+
+@pytest.mark.parametrize(
+    "operators,values",
+    [
+        ({"competitor": "ILIKE OR TRUE"}, ["%深圳%"]),
+        ({"competitor": "ILIKE"}, ["a", "b"]),
+        ({"competitor": "ILIKE"}, [1]),
+        ({"unconfigured": "ILIKE"}, ["a"]),
+    ],
+)
+def test_rejects_invalid_parent_patterns(operators, values):
+    command = GetCascadeFilterOptionsCommand(
+        73,
+        156,
+        ["brand"],
+        applied_filters={"competitor": values},
+        filter_operators=operators,
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={"columns": ["brand", "competitor"]}
+    )
+    with pytest.raises(ValueError, match="Unsupported parent|Pattern filters"):
+        command.validate()

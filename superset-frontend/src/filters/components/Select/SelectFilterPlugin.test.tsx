@@ -1304,8 +1304,7 @@ function ControlledMatchFilter({
 test('switches from exact selections to a typed contains predicate and back', async () => {
   const setDataMask = jest.fn();
   render(<ControlledMatchFilter setDataMask={setDataMask} />);
-  userEvent.click(screen.getByRole('combobox', { name: '匹配方式：gender' }));
-  userEvent.click(screen.getByText('模糊匹配'));
+  userEvent.click(screen.getByRole('button', { name: '匹配方式：gender' }));
   const input = await screen.findByRole('textbox', {
     name: '模糊匹配关键词：gender',
   });
@@ -1324,8 +1323,7 @@ test('switches from exact selections to a typed contains predicate and back', as
       }),
     ),
   );
-  userEvent.click(screen.getByRole('combobox', { name: '匹配方式：gender' }));
-  userEvent.click(screen.getByText('精确匹配'));
+  userEvent.click(screen.getByRole('button', { name: '匹配方式：gender' }));
   await waitFor(() =>
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1364,4 +1362,98 @@ test('restores a saved keyword even when it is absent from the candidate options
       }),
     ),
   );
+});
+
+test('keeps pinyin local until Chinese composition is committed', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <ControlledMatchFilter
+      saved={{ value: null, matchMode: 'contains' }}
+      setDataMask={setDataMask}
+    />,
+  );
+  const input = await screen.findByRole('textbox', {
+    name: '模糊匹配关键词：gender',
+  });
+  fireEvent.focus(input);
+  setDataMask.mockClear();
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: 'shen' } });
+  fireEvent.change(input, { target: { value: 'shenzhen' } });
+  expect(input).toHaveValue('shenzhen');
+  expect(setDataMask).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: '深圳' } });
+  fireEvent.compositionEnd(input, { data: '深圳' });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'ILIKE', val: '%深圳%' }],
+        },
+        filterState: expect.objectContaining({ value: ['深圳'] }),
+      }),
+    ),
+  );
+  expect(input).toHaveValue('深圳');
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: '深圳keji' } });
+  fireEvent.change(input, { target: { value: '深圳科技' } });
+  fireEvent.compositionEnd(input, { data: '科技' });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filterState: expect.objectContaining({ value: ['深圳科技'] }),
+      }),
+    ),
+  );
+  expect(
+    setDataMask.mock.calls.every(
+      ([mask]) =>
+        !JSON.stringify(mask.filterState.value).includes('shen') &&
+        !JSON.stringify(mask.filterState.value).includes('keji'),
+    ),
+  ).toBe(true);
+});
+
+test('keeps sequential typing stable and renders the mode button beside the heading', async () => {
+  const props = transformProps({
+    ...selectMultipleProps,
+    filterState: { value: ['深圳'], matchMode: 'contains' },
+  });
+  const heading = document.createElement('span');
+  document.body.appendChild(heading);
+  const view = render(
+    <SelectFilterPlugin
+      {...props}
+      matchModeContainer={heading}
+      showOverflow={false}
+    />,
+  );
+  expect(heading).toContainElement(
+    screen.getByRole('button', { name: '匹配方式：gender' }),
+  );
+  const input = screen.getByRole('textbox', { name: '模糊匹配关键词：gender' });
+  userEvent.click(input);
+  userEvent.type(input, '科技');
+  expect(input).toHaveValue('深圳科技');
+  view.rerender(
+    <SelectFilterPlugin
+      {...props}
+      isRefreshing
+      matchModeContainer={heading}
+      showOverflow={false}
+    />,
+  );
+  expect(input).toHaveValue('深圳科技');
+  view.rerender(
+    <SelectFilterPlugin
+      {...props}
+      clearAllTrigger
+      matchModeContainer={heading}
+      showOverflow={false}
+    />,
+  );
+  expect(input).toHaveValue('');
+  view.unmount();
+  heading.remove();
 });

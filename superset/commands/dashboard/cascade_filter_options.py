@@ -98,11 +98,13 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         limit: int = 1000,
         time_ranges: list[str] | None = None,
         time_column: str | None = None,
+        filter_operators: dict[str, str] | None = None,
     ) -> None:
         self._dashboard_id = dashboard_id
         self._dataset_id = dataset_id
         self._columns = columns
         self._applied_filters = applied_filters or {}
+        self._filter_operators = filter_operators or {}
         self._time_range = time_range
         self._time_ranges = time_ranges
         self._time_column = time_column
@@ -119,6 +121,24 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         if not self._columns:
             raise ValueError("At least one column is required")
         supported_columns = metadata["columns"]
+        if not isinstance(self._applied_filters, dict):
+            raise ValueError("applied_filters must be an object")
+        if not isinstance(self._filter_operators, dict):
+            raise ValueError("filter_operators must be an object")
+        for column, operator in self._filter_operators.items():
+            if (
+                not isinstance(operator, str)
+                or column not in supported_columns
+                or operator not in {"IN", "NOT IN", "ILIKE", "NOT ILIKE"}
+            ):
+                raise ValueError("Unsupported parent filter operator or column")
+            values = self._applied_filters.get(column)
+            if not isinstance(values, list) or not values:
+                raise ValueError("Parent filter values must be a nonempty list")
+            if operator in {"ILIKE", "NOT ILIKE"} and (
+                len(values) != 1 or not isinstance(values[0], str) or not values[0]
+            ):
+                raise ValueError("Pattern filters require exactly one string")
         unknown_columns = set(self._columns) - set(supported_columns)
         if unknown_columns:
             raise ValueError(f"Unsupported columns: {sorted(unknown_columns)}")
@@ -222,6 +242,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 "dataset_id": self._dataset_id,
                 "columns": self._columns,
                 "applied_filters": self._applied_filters,
+                "filter_operators": self._filter_operators,
                 "time_range": self._time_range,
                 "time_ranges": self._time_ranges,
                 "time_column": self._time_column,
@@ -387,11 +408,19 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 ]
                 if values:
                     param_name = f"column_{column_index}_parent_{parent_index}_values"
-                    where_clauses.append(
-                        f"{quote_identifier(parent_column)} IN :{param_name}"
+                    operator = self._filter_operators.get(parent_column, "IN")
+                    is_pattern = operator in {"ILIKE", "NOT ILIKE"}
+                    parent_expression = quote_identifier(parent_column)
+                    parent_expression = (
+                        f"CAST({parent_expression} AS TEXT)"
+                        if is_pattern
+                        else parent_expression
                     )
-                    params[param_name] = values
-                    bindparams.append(bindparam(param_name, expanding=True))
+                    where_clauses.append(
+                        f"{parent_expression} {operator} :{param_name}"
+                    )
+                    params[param_name] = values[0] if is_pattern else values
+                    bindparams.append(bindparam(param_name, expanding=not is_pattern))
 
             if self._time_ranges is not None:
                 # 每个UNION都使用同一绑定列的区间并集；整体括号后再AND父维度和RLS。

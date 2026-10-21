@@ -206,6 +206,7 @@ const FilterValue: FC<FilterValueProps> = ({
   clearAllTrigger,
   onClearAllComplete,
   initializedFilters,
+  matchModeContainer,
 }) => {
   const { id, targets, filterType } = filter;
   const isCustomization = isChartCustomization(filter);
@@ -683,8 +684,9 @@ const FilterValue: FC<FilterValueProps> = ({
     () => ({
       filterBarOrientation: orientation,
       isOverflowingFilterBar: overflow,
+      matchModeContainer,
     }),
-    [orientation, overflow],
+    [orientation, overflow, matchModeContainer],
   );
 
   if (error) {

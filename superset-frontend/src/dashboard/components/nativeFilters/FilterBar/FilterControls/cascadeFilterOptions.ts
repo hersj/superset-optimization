@@ -59,6 +59,7 @@ type SellerfoxCascadeOptionsPayload = {
   dataset_id: number;
   columns: string[];
   applied_filters: Record<string, unknown[]>;
+  filter_operators?: Record<string, string>;
   time_range?: string;
   time_ranges?: string[];
   time_column?: string;
@@ -196,6 +197,7 @@ const getPayload = (
   options: CascadeFilterOptions = {},
 ): SellerfoxCascadeOptionsPayload => {
   const appliedFilters: Record<string, unknown[]> = {};
+  const filterOperators: Record<string, string> = {};
   const columns = nativeFilters
     ? getCascadeFilterColumns(dashboardId, datasetId, nativeFilters)
     : getSellerfoxCascadeColumns(dashboardId, datasetId);
@@ -229,13 +231,12 @@ const getPayload = (
         columnSet.has(column) &&
         'val' in filter
       ) {
-        // The batch endpoint represents IN only; use the standard query path
-        // for patterns or exclusions so it preserves the actual predicate.
-        if (filter.op !== 'IN') {
+        if (!['IN', 'NOT IN', 'ILIKE', 'NOT ILIKE'].includes(filter.op)) {
           throw new Error(
             'Cascade batch does not support this filter operator',
           );
         }
+        if (filter.op !== 'IN') filterOperators[column] = filter.op;
         const values = toArray(filter.val);
         if (values.length) {
           appliedFilters[column] = values;
@@ -262,6 +263,9 @@ const getPayload = (
     dataset_id: datasetId,
     columns,
     applied_filters: appliedFilters,
+    ...(Object.keys(filterOperators).length
+      ? { filter_operators: filterOperators }
+      : {}),
     ...(timeRange ? { time_range: timeRange } : {}),
     ...(dependencyResult?.timeRanges
       ? {
