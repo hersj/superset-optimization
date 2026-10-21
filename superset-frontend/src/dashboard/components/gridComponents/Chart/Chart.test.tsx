@@ -862,7 +862,7 @@ test('persists the personal legend selection across auto-refresh and dashboard r
   const key = legendStorageKey(1, props.dashboardId, props.id);
   const initial = { 'current:费用': false, 'current:销售额': true };
   writeLegendState(key, initial);
-  const view = setup({}, { user: { userId: 1 } });
+  const view = setup({ isComponentVisible: true }, { user: { userId: 1 } });
   expect(capturedChartContainerProps.legendState).toEqual(initial);
   const next = { ...initial, 'current:销售额': false };
   act(() =>
@@ -873,13 +873,23 @@ test('persists the personal legend selection across auto-refresh and dashboard r
     )(next),
   );
   expect(readLegendState(key)).toEqual(next);
-  view.rerender(<Chart {...props} suppressLoadingSpinner />);
+  view.rerender(<Chart {...props} isComponentVisible suppressLoadingSpinner />);
   expect(capturedChartContainerProps.legendState).toEqual(next);
   view.unmount();
-  const remounted = setup({}, { user: { userId: 1 } });
+  const remounted = setup(
+    { isComponentVisible: true },
+    { user: { userId: 1 } },
+  );
+  expect(capturedChartContainerProps.legendState).toEqual(next);
+  remounted.rerender(<Chart {...props} isComponentVisible dashboardId={112} />);
+  expect(capturedChartContainerProps.legendState).toBeUndefined();
+  remounted.rerender(<Chart {...props} isComponentVisible />);
   expect(capturedChartContainerProps.legendState).toEqual(next);
   remounted.unmount();
-  const otherUser = setup({}, { user: { userId: 2 } });
+  const otherUser = setup(
+    { isComponentVisible: true },
+    { user: { userId: 2 } },
+  );
   expect(capturedChartContainerProps.legendState).toBeUndefined();
   otherUser.unmount();
   localStorage.removeItem(key!);

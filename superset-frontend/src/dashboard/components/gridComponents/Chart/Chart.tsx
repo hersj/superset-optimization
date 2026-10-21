@@ -318,14 +318,18 @@ const Chart = (props: ChartProps) => {
 
   const userId = useSelector((state: RootState) => state.user?.userId);
   const legendKey = legendStorageKey(userId, props.dashboardId, props.id);
-  const [legendState, setLegendState] = useState<
-    Record<string, boolean> | undefined
-  >(() => readLegendState(legendKey));
-  // Reload only when the preference owner changes; queries and auto-refresh keep it intact.
-  useEffect(() => setLegendState(readLegendState(legendKey)), [legendKey]);
+  const [rememberedLegend, setRememberedLegend] = useState(() => ({
+    key: legendKey,
+    state: readLegendState(legendKey),
+  }));
+  // A new owner must restore its own state before ChartRenderer mounts.
+  const legendState =
+    rememberedLegend.key === legendKey
+      ? rememberedLegend.state
+      : readLegendState(legendKey);
   const rememberLegendState = useCallback(
     (state: Record<string, boolean>) => {
-      setLegendState(state);
+      setRememberedLegend({ key: legendKey, state });
       writeLegendState(legendKey, state);
     },
     [legendKey],
