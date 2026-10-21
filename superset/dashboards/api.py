@@ -571,6 +571,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
                 time_ranges=payload.get("time_ranges"),
                 time_column=payload.get("time_column"),
                 filter_operators=payload.get("filter_operators") or {},
+                search=payload.get("search"),
                 limit=payload.get("limit", 1000),
             ).run()
             return self.response(200, result=result)

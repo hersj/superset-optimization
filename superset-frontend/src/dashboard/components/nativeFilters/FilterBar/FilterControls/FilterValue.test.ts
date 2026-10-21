@@ -132,7 +132,7 @@ afterEach(() => {
 });
 
 describe('FilterValue request lifecycle guards', () => {
-  it('starts a new options request when query context changes during an in-flight request', () => {
+  test('starts a new options request when query context changes during an in-flight request', () => {
     expect(
       shouldStartFilterOptionsRequest({
         isRefreshing: true,
@@ -143,7 +143,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('does not duplicate refresh-only requests while a refresh request is already in flight', () => {
+  test('does not duplicate refresh-only requests while a refresh request is already in flight', () => {
     expect(
       shouldStartFilterOptionsRequest({
         isRefreshing: true,
@@ -154,7 +154,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(false);
   });
 
-  it('does not start a first options request while a filter has not been opened', () => {
+  test('does not start a first options request while a filter has not been opened', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: false,
@@ -174,7 +174,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(false);
   });
 
-  it('allows a batchable filter to preload its first options request', () => {
+  test('allows a batchable filter to preload its first options request', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: false,
@@ -195,7 +195,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('preloads a range filter to obtain its minimum and maximum', () => {
+  test('preloads a range filter to obtain its minimum and maximum', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: false,
@@ -206,7 +206,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('starts the first options request when a filter is opened', () => {
+  test('starts the first options request when a filter is opened', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: false,
@@ -226,7 +226,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('keeps loading options for filters that need an initial first item default', () => {
+  test('keeps loading options for filters that need an initial first item default', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: true,
@@ -236,7 +236,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('allows already loaded filters to refresh their options', () => {
+  test('allows already loaded filters to refresh their options', () => {
     expect(
       shouldLoadFilterOptions({
         defaultToFirstItem: false,
@@ -256,7 +256,7 @@ describe('FilterValue request lifecycle guards', () => {
     ).toBe(true);
   });
 
-  it('applies only the latest request for the current dashboard', () => {
+  test('applies only the latest request for the current dashboard', () => {
     expect(
       shouldApplyFilterOptionsRequestResult({
         requestId: 3,
@@ -410,4 +410,36 @@ describe('FilterValue custom time dependency integration', () => {
       }),
     );
   });
+});
+
+test('a contains preview keeps the batch cascade path and its five-name search', async () => {
+  const original = childFilter.dataMask;
+  const controls = childFilter.controlValues;
+  childFilter.controlValues = { allowFuzzyMatch: true };
+  childFilter.dataMask = {
+    filterState: { value: ['品牌'], matchMode: 'contains' },
+    ownState: { search: '品牌', searchMatchMode: 'contains' },
+  };
+  filterOptionsRequestMock.mockResolvedValueOnce({
+    shop_name: { data: [], colnames: ['shop_name'], coltypes: [1] },
+  });
+  try {
+    renderFilterValue({ shop: childFilter });
+    await waitFor(() =>
+      expect(filterOptionsRequestMock).toHaveBeenCalledWith(
+        44,
+        98,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({
+          search: { column: 'shop_name', value: '品牌' },
+        }),
+      ),
+    );
+    expect(chartDataRequestMock).not.toHaveBeenCalled();
+  } finally {
+    childFilter.dataMask = original;
+    childFilter.controlValues = controls;
+  }
 });

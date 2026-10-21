@@ -26,12 +26,13 @@ import {
 } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import { DEFAULT_FORM_DATA, PluginFilterSelectQueryFormData } from './types';
+import { getSelectExtraFormData } from '../../utils';
 
 const buildQuery: BuildQuery<PluginFilterSelectQueryFormData> = (
   formData: PluginFilterSelectQueryFormData,
   options,
 ) => {
-  const { search, coltypeMap } = options?.ownState || {};
+  const { search, coltypeMap, searchMatchMode } = options?.ownState || {};
   const { sortAscending, sortMetric } = { ...DEFAULT_FORM_DATA, ...formData };
   return buildQueryContext(formData, baseQueryObject => {
     const { columns = [], filters = [] } = baseQueryObject;
@@ -44,11 +45,19 @@ const buildQuery: BuildQuery<PluginFilterSelectQueryFormData> = (
           (coltypeMap[label] === GenericDataType.Numeric &&
             !Number.isNaN(Number(search)))
         ) {
-          extraFilters.push({
-            col: column,
-            op: 'ILIKE',
-            val: `%${search}%`,
-          });
+          if (searchMatchMode === 'contains') {
+            extraFilters.push(
+              ...(getSelectExtraFormData(
+                label,
+                [search],
+                false,
+                false,
+                'contains',
+              ).filters || []),
+            );
+          } else {
+            extraFilters.push({ col: column, op: 'ILIKE', val: `%${search}%` });
+          }
         }
       });
     }

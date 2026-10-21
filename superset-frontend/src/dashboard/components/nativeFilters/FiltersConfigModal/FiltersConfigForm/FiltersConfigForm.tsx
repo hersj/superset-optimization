@@ -146,6 +146,7 @@ const controlsOrder: ControlKey[] = [
   'creatable',
   'multiSelect',
   'searchAllOptions',
+  'allowFuzzyMatch',
   'inverseSelection',
 ];
 

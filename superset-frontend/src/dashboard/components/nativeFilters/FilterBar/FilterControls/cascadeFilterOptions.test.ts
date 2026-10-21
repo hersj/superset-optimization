@@ -614,3 +614,50 @@ test.each(['ILIKE', 'NOT ILIKE', 'NOT IN'])(
     post.mockRestore();
   },
 );
+
+test('preview requests only its own column with a five-name cap and retains parent filters', async () => {
+  clearSellerfoxCascadeFilterOptionsCache();
+  const post = jest
+    .spyOn(SupersetClient, 'post')
+    .mockResolvedValue({ json: { result: {} } } as any);
+  const filters = {
+    country: {
+      id: 'country',
+      filterType: 'filter_select',
+      targets: [{ datasetId: 156, column: { name: 'site' } }],
+    },
+    company: {
+      id: 'company',
+      filterType: 'filter_select',
+      targets: [{ datasetId: 156, column: { name: 'competitor' } }],
+      cascadeParentIds: ['country'],
+    },
+  };
+  await getCascadeFilterOptions(
+    73,
+    156,
+    filters,
+    {
+      country: {
+        id: 'country',
+        extraFormData: { filters: [{ col: 'site', op: 'IN', val: ['US'] }] },
+      },
+    },
+    {},
+    {
+      childFilterId: 'company',
+      search: { column: 'competitor', value: '深圳' },
+    },
+  );
+  expect(post).toHaveBeenCalledWith(
+    expect.objectContaining({
+      jsonPayload: expect.objectContaining({
+        columns: ['competitor'],
+        limit: 5,
+        search: { column: 'competitor', value: '深圳' },
+        applied_filters: { site: ['US'] },
+      }),
+    }),
+  );
+  post.mockRestore();
+});

@@ -38,6 +38,7 @@ import {
   FormItem,
   Button,
   Input,
+  Popover,
   LabeledValue,
   Select,
   Space,
@@ -142,9 +143,11 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     clearAllTrigger,
     onClearAllComplete,
     matchModeContainer,
+    previewSearch,
   } = props;
   const {
     enableEmptyFilter,
+    allowFuzzyMatch,
     creatable,
     multiSelect,
     showSearch,
@@ -167,9 +170,12 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   });
   const datatype: GenericDataType = coltypeMap[col];
   const matchMode: SelectFilterMatchMode =
-    filterState.matchMode === 'contains' ? 'contains' : 'exact';
+    allowFuzzyMatch !== false && filterState.matchMode === 'contains'
+      ? 'contains'
+      : 'exact';
   const [keyword, setKeyword] = useState(String(filterState.value?.[0] ?? ''));
   const isComposing = useRef(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const isKeywordFocused = useRef(false);
   useEffect(() => {
     if (clearAllTrigger || matchMode !== 'contains') {
@@ -181,6 +187,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     }
   }, [filterState.value?.[0], matchMode, clearAllTrigger]);
   const showMatchMode =
+    allowFuzzyMatch !== false &&
     appSection !== AppSection.FilterConfigModal &&
     (datatype === GenericDataType.String || matchMode === 'contains');
   const labelFormatter = useMemo(
@@ -276,19 +283,23 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   const onSearch = useMemo(
     () =>
       debounce((search: string) => {
-        setSearch(search);
-        if (searchAllOptions) {
+        const value = matchMode === 'contains' && !search.trim() ? '' : search;
+        setSearch(value);
+        if (searchAllOptions || matchMode === 'contains') {
           dispatchDataMask({
             type: 'ownState',
             ownState: {
               coltypeMap: initialColtypeMap,
-              search,
+              search: value,
+              searchMatchMode: matchMode,
             },
           });
         }
       }, Constants.SLOW_DEBOUNCE),
-    [dispatchDataMask, initialColtypeMap, searchAllOptions],
+    [dispatchDataMask, initialColtypeMap, searchAllOptions, matchMode],
   );
+
+  useEffect(() => () => onSearch.cancel(), [onSearch]);
 
   const handleBlur = useCallback(() => {
     unsetFocusedFilter();
@@ -372,6 +383,15 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       return;
     }
 
+    if (allowFuzzyMatch === false && filterState.matchMode === 'contains') {
+      dispatchDataMask({
+        type: 'ownState',
+        ownState: { search: '', searchMatchMode: 'exact' },
+      });
+      updateDataMask(null, 'exact');
+      return;
+    }
+
     // Case 1: Handle disabled state first
     if (isDisabled) {
       updateDataMask(null);
@@ -402,6 +422,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       }
     }
   }, [
+    allowFuzzyMatch,
     isDisabled,
     matchMode,
     enableEmptyFilter,
@@ -435,7 +456,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   }, [data, col]);
 
   useEffect(() => {
-    if (matchMode === 'contains') return;
+    if (filterState.matchMode === 'contains') return;
     if (
       filterState.value?.every((value?: any) =>
         data.some(row => row[col] === value),
@@ -529,9 +550,13 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       title={
         matchMode === 'contains' ? t('切换为精确匹配') : t('切换为模糊匹配')
       }
-      onClick={() =>
-        updateDataMask(null, matchMode === 'contains' ? 'exact' : 'contains')
-      }
+      onClick={() => {
+        onSearch.cancel();
+        setSearch('');
+        setPreviewOpen(false);
+        dispatchDataMask({ type: 'ownState', ownState: { search: '' } });
+        updateDataMask(null, matchMode === 'contains' ? 'exact' : 'contains');
+      }}
       disabled={isDisabled}
     >
       {matchMode === 'contains' ? t('模糊') : t('精确')}
@@ -563,39 +588,77 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
             />
           )}
           {matchMode === 'contains' ? (
-            <Input
-              aria-label={`${t('模糊匹配关键词')}：${col}`}
-              allowClear
-              value={keyword}
-              placeholder={t('输入名称中包含的关键词')}
-              onChange={event => {
-                const value = event.target.value;
-                setKeyword(value);
-                if (!isComposing.current) {
+            <Popover
+              trigger="focus"
+              placement="rightTop"
+              open={previewOpen && Boolean(keyword.trim())}
+              onOpenChange={setPreviewOpen}
+              title={t('匹配名称预览（最多 5 个）')}
+              content={
+                <div role="status" aria-live="polite" style={{ maxWidth: 320 }}>
+                  {isRefreshing || previewSearch !== keyword ? (
+                    t('正在查找匹配名称…')
+                  ) : data.length ? (
+                    <ul style={{ margin: 0, paddingInlineStart: 16 }}>
+                      {data.slice(0, 5).map(row => (
+                        <li key={String(row[col])}>
+                          {labelFormatter(row[col], datatype)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    t('没有匹配的名称')
+                  )}
+                </div>
+              }
+            >
+              <Input
+                aria-label={`${t('模糊匹配关键词')}：${col}`}
+                allowClear
+                value={keyword}
+                placeholder={t('输入名称中包含的关键词')}
+                onChange={event => {
+                  const value = event.target.value;
+                  setKeyword(value);
+                  if (!isComposing.current) {
+                    updateDataMask(value.trim() ? [value] : null);
+                    onSearch(value);
+                  }
+                }}
+                onCompositionStart={() => {
+                  isComposing.current = true;
+                  onSearch.cancel();
+                  setPreviewOpen(false);
+                }}
+                onCompositionEnd={event => {
+                  isComposing.current = false;
+                  const value = event.currentTarget.value;
+                  setKeyword(value);
                   updateDataMask(value.trim() ? [value] : null);
-                }
-              }}
-              onCompositionStart={() => {
-                isComposing.current = true;
-              }}
-              onCompositionEnd={event => {
-                isComposing.current = false;
-                const value = event.currentTarget.value;
-                setKeyword(value);
-                updateDataMask(value.trim() ? [value] : null);
-              }}
-              onFocus={() => {
-                isKeywordFocused.current = true;
-                setFocusedFilter();
-              }}
-              onBlur={() => {
-                isKeywordFocused.current = false;
-                unsetFocusedFilter();
-              }}
-              onMouseEnter={setHoveredFilter}
-              onMouseLeave={unsetHoveredFilter}
-              disabled={isDisabled}
-            />
+                  onSearch(value);
+                  setPreviewOpen(isKeywordFocused.current);
+                }}
+                onFocus={() => {
+                  isKeywordFocused.current = true;
+                  setPreviewOpen(true);
+                  setFilterActive(true);
+                  onSearch(keyword);
+                  setFocusedFilter();
+                }}
+                onBlur={() => {
+                  isKeywordFocused.current = false;
+                  setPreviewOpen(false);
+                  setFilterActive(false);
+                  unsetFocusedFilter();
+                }}
+                onMouseEnter={setHoveredFilter}
+                onMouseLeave={unsetHoveredFilter}
+                onKeyDown={event => {
+                  if (event.key === 'Escape') setPreviewOpen(false);
+                }}
+                disabled={isDisabled}
+              />
+            </Popover>
           ) : (
             <Select
               name={formData.nativeFilterId}

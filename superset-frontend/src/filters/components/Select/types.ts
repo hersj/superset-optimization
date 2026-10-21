@@ -34,6 +34,7 @@ export type SelectValue = (number | string | null)[] | null | undefined;
 
 export interface PluginFilterSelectCustomizeProps {
   defaultValue?: SelectValue;
+  allowFuzzyMatch?: boolean;
   enableEmptyFilter: boolean;
   inverseSelection: boolean;
   creatable: boolean;
@@ -54,6 +55,7 @@ export interface PluginFilterSelectChartProps extends ChartProps {
 
 export type PluginFilterSelectProps = PluginFilterStylesProps & {
   matchModeContainer?: HTMLElement | null;
+  previewSearch?: string;
   coltypeMap: Record<string, GenericDataType>;
   data: DataRecord[];
   behaviors: Behavior[];
@@ -72,6 +74,7 @@ export type PluginFilterSelectProps = PluginFilterStylesProps & {
 
 export const DEFAULT_FORM_DATA: PluginFilterSelectCustomizeProps = {
   defaultValue: null,
+  allowFuzzyMatch: true,
   enableEmptyFilter: false,
   inverseSelection: false,
   defaultToFirstItem: false,

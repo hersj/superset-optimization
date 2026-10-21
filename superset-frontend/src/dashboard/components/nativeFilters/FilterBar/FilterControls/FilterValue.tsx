@@ -301,6 +301,7 @@ const FilterValue: FC<FilterValueProps> = ({
 
   const [isLoading, setIsLoading] = useState<boolean>(hasDataSource);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState<string>();
   const [hasLoadedOptions, setHasLoadedOptions] = useState(!hasDataSource);
   const requestIdRef = useRef(0);
   const dashboardIdRef = useRef(dashboardId);
@@ -325,6 +326,7 @@ const FilterValue: FC<FilterValueProps> = ({
     setIsRefreshing(false);
     setIsLoading(hasDataSource);
     setHasLoadedOptions(!hasDataSource);
+    setPreviewSearch(undefined);
     setState([]);
     setError(undefined);
     setFormData({ inView: false });
@@ -404,8 +406,11 @@ const FilterValue: FC<FilterValueProps> = ({
     ) => (key === 'url_params' ? true : undefined);
     const formDataChanged = !isEqualWith(formData, newFormData, customizer);
     const ownStateChanged = !isEqual(ownState, filterOwnState);
+    const isContainsSearch =
+      newFormData.allowFuzzyMatch !== false &&
+      filter.dataMask?.filterState?.matchMode === 'contains';
     const isBatchableFilter =
-      !filterOwnState.search &&
+      (!filterOwnState.search || isContainsSearch) &&
       isCascadeFilter(
         dashboardId,
         datasetId,
@@ -464,6 +469,7 @@ const FilterValue: FC<FilterValueProps> = ({
         });
       const finishCurrentRequest = () => {
         if (isCurrentRequest()) {
+          setPreviewSearch(filterOwnState.search);
           handleFilterLoadFinish();
         }
       };
@@ -543,6 +549,14 @@ const FilterValue: FC<FilterValueProps> = ({
             initializedFilters,
             chartIds,
             chartLayoutItems,
+            ...(isContainsSearch && filterOwnState.search
+              ? {
+                  search: {
+                    column: groupby as string,
+                    value: filterOwnState.search,
+                  },
+                }
+              : {}),
           },
         )
           .then(result => {
@@ -685,8 +699,9 @@ const FilterValue: FC<FilterValueProps> = ({
       filterBarOrientation: orientation,
       isOverflowingFilterBar: overflow,
       matchModeContainer,
+      previewSearch,
     }),
-    [orientation, overflow, matchModeContainer],
+    [orientation, overflow, matchModeContainer, previewSearch],
   );
 
   if (error) {

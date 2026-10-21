@@ -1274,9 +1274,11 @@ test('resets dependent filter to first item when value does not exist in data', 
 
 function ControlledMatchFilter({
   saved,
+  allowFuzzyMatch = true,
   setDataMask = jest.fn(),
 }: {
   saved?: DataMask['filterState'];
+  allowFuzzyMatch?: boolean;
   setDataMask?: (mask: DataMask) => void;
 }) {
   const [filterState, setFilterState] = useState(saved ?? { value: null });
@@ -1285,6 +1287,7 @@ function ControlledMatchFilter({
     filterState,
     formData: {
       ...selectMultipleProps.formData,
+      allowFuzzyMatch,
       enableEmptyFilter: false,
       defaultValue: null,
     },
@@ -1418,6 +1421,7 @@ test('keeps pinyin local until Chinese composition is committed', async () => {
 test('keeps sequential typing stable and renders the mode button beside the heading', async () => {
   const props = transformProps({
     ...selectMultipleProps,
+    formData: { ...selectMultipleProps.formData, allowFuzzyMatch: true },
     filterState: { value: ['深圳'], matchMode: 'contains' },
   });
   const heading = document.createElement('span');
@@ -1456,4 +1460,78 @@ test('keeps sequential typing stable and renders the mode button beside the head
   expect(input).toHaveValue('');
   view.unmount();
   heading.remove();
+});
+
+test('disabling one filter hides matching controls and clears its remembered contains predicate', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <ControlledMatchFilter
+      allowFuzzyMatch={false}
+      saved={{ value: ['深圳'], matchMode: 'contains' }}
+      setDataMask={setDataMask}
+    />,
+  );
+  expect(
+    screen.queryByRole('button', { name: '匹配方式：gender' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('textbox', { name: '模糊匹配关键词：gender' }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {},
+        filterState: expect.objectContaining({
+          value: null,
+          matchMode: 'exact',
+        }),
+        ownState: expect.objectContaining({ search: '' }),
+      }),
+    ),
+  );
+});
+
+test('shows at most five current matches in a transient preview and hides stale results', () => {
+  const props = transformProps({
+    ...selectMultipleProps,
+    formData: { ...selectMultipleProps.formData, allowFuzzyMatch: true },
+    filterState: { value: ['深圳'], matchMode: 'contains' },
+  });
+  const matches = Array.from({ length: 6 }, (_, index) => ({
+    gender: `深圳公司${index + 1}`,
+  }));
+  const view = render(
+    <SelectFilterPlugin
+      {...props}
+      data={matches}
+      previewSearch="深圳"
+      showOverflow={false}
+    />,
+  );
+  const input = screen.getByRole('textbox', { name: '模糊匹配关键词：gender' });
+  fireEvent.focus(input);
+  expect(screen.getByRole('status')).toHaveTextContent('深圳公司1');
+  expect(screen.getByRole('status')).toHaveTextContent('深圳公司5');
+  expect(screen.getByRole('status')).not.toHaveTextContent('深圳公司6');
+  view.rerender(
+    <SelectFilterPlugin
+      {...props}
+      data={matches}
+      previewSearch="旧关键词"
+      showOverflow={false}
+    />,
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('正在查找匹配名称');
+  expect(screen.getByRole('status')).not.toHaveTextContent('深圳公司1');
+  view.rerender(
+    <SelectFilterPlugin
+      {...props}
+      data={[]}
+      previewSearch="深圳"
+      showOverflow={false}
+    />,
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('没有匹配的名称');
+  fireEvent.compositionStart(input);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

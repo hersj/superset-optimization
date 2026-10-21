@@ -60,6 +60,8 @@ type SellerfoxCascadeOptionsPayload = {
   columns: string[];
   applied_filters: Record<string, unknown[]>;
   filter_operators?: Record<string, string>;
+  search?: { column: string; value: string };
+  limit?: number;
   time_range?: string;
   time_ranges?: string[];
   time_column?: string;
@@ -71,6 +73,7 @@ const requestCache = new Map<
 >();
 
 type CascadeFilterOptions = {
+  search?: { column: string; value: string };
   childFilter?: NativeFilterConfig;
   childFilterId?: string;
   initializedFilters?: ReadonlySet<string>;
@@ -261,7 +264,8 @@ const getPayload = (
 
   return {
     dataset_id: datasetId,
-    columns,
+    columns: options.search ? [options.search.column] : columns,
+    ...(options.search ? { search: options.search, limit: 5 } : {}),
     applied_filters: appliedFilters,
     ...(Object.keys(filterOperators).length
       ? { filter_operators: filterOperators }

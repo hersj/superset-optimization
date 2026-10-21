@@ -35,6 +35,7 @@ describe('Select buildQuery', () => {
     multiSelect: false,
     defaultToFirstItem: false,
     searchAllOptions: false,
+    allowFuzzyMatch: false,
     height: 100,
     width: 100,
   };
@@ -126,4 +127,24 @@ describe('Select buildQuery', () => {
       { col: 'my_col', op: 'ILIKE', val: '%123%' },
     ]);
   });
+});
+
+test('contains previews use the same literal wildcard escaping as the chart predicate', () => {
+  const result = buildQuery(
+    {
+      datasource: '5__table',
+      groupby: ['company'],
+      viz_type: 'filter_select',
+    } as PluginFilterSelectQueryFormData,
+    {
+      ownState: {
+        search: '50%_brand',
+        searchMatchMode: 'contains',
+        coltypeMap: { company: GenericDataType.String },
+      },
+    },
+  );
+  expect(result.queries[0].filters).toEqual([
+    { col: 'company', op: 'ILIKE', val: '%50\\%\\_brand%' },
+  ]);
 });

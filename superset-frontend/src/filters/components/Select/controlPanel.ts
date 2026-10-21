@@ -25,6 +25,7 @@ import {
 import { DEFAULT_FORM_DATA } from './types';
 
 const {
+  allowFuzzyMatch,
   enableEmptyFilter,
   inverseSelection,
   multiSelect,
@@ -56,6 +57,20 @@ const config: ControlPanelConfig = {
       label: t('UI Configuration'),
       expanded: true,
       controlSetRows: [
+        [
+          {
+            name: 'allowFuzzyMatch',
+            config: {
+              type: 'CheckboxControl',
+              renderTrigger: true,
+              label: t('允许模糊匹配'),
+              default: allowFuzzyMatch,
+              description: t(
+                '仅对该筛选器启用精确/模糊切换及匹配名称预览，适用于文本字段。',
+              ),
+            },
+          },
+        ],
         [
           {
             name: 'sortAscending',

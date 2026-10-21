@@ -99,12 +99,14 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         time_ranges: list[str] | None = None,
         time_column: str | None = None,
         filter_operators: dict[str, str] | None = None,
+        search: dict[str, str] | None = None,
     ) -> None:
         self._dashboard_id = dashboard_id
         self._dataset_id = dataset_id
         self._columns = columns
         self._applied_filters = applied_filters or {}
         self._filter_operators = filter_operators or {}
+        self._search = search or {}
         self._time_range = time_range
         self._time_ranges = time_ranges
         self._time_column = time_column
@@ -139,9 +141,21 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 len(values) != 1 or not isinstance(values[0], str) or not values[0]
             ):
                 raise ValueError("Pattern filters require exactly one string")
+        self._validate_search()
         unknown_columns = set(self._columns) - set(supported_columns)
         if unknown_columns:
             raise ValueError(f"Unsupported columns: {sorted(unknown_columns)}")
+
+    def _validate_search(self) -> None:
+        if not isinstance(self._search, dict):
+            raise ValueError("search must be an object")
+        if self._search and (
+            self._search.get("column") not in self._columns
+            or not isinstance(self._search.get("value"), str)
+            or not self._search["value"].strip()
+            or len(self._search["value"]) > 1000
+        ):
+            raise ValueError("Search requires a requested column and a keyword")
 
     def _activate_request_identity(self) -> None:
         # 功能审计（可重写规格）：级联筛选选项的请求身份激活
@@ -243,6 +257,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 "columns": self._columns,
                 "applied_filters": self._applied_filters,
                 "filter_operators": self._filter_operators,
+                "search": self._search,
                 "time_range": self._time_range,
                 "time_ranges": self._time_ranges,
                 "time_column": self._time_column,
@@ -373,7 +388,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             "time_columns": time_columns,
         }
 
-    def _build_statement(
+    def _build_statement(  # noqa: C901
         self,
         dataset: SqlaTable,
         since: datetime | None,
@@ -398,6 +413,16 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             where_clauses = [f"{quoted_column} IS NOT NULL", *rls_clauses]
             params[f"column_{column_index}"] = column
             params[f"limit_{column_index}"] = self._limit
+
+            if self._search.get("column") == column:
+                where_clauses.append(f"CAST({quoted_column} AS TEXT) ILIKE :search")
+                keyword = self._search["value"]
+                escaped = (
+                    keyword.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+                params["search"] = f"%{escaped}%"
 
             parent_columns = metadata["parent_columns_by_column"].get(column, [])
             for parent_index, parent_column in enumerate(parent_columns):

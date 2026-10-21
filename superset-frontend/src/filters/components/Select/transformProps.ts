@@ -72,6 +72,7 @@ export default function transformProps(
     setFilterActive,
     inputRef,
     matchModeContainer: displaySettings?.matchModeContainer,
+    previewSearch: displaySettings?.previewSearch,
     filterBarOrientation: displaySettings?.filterBarOrientation,
     isOverflowingFilterBar: displaySettings?.isOverflowingFilterBar,
     clearAllTrigger,

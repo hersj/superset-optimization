@@ -189,10 +189,16 @@ slices and dashboards of your own.
 
 ### Match text in dashboard filters
 
-Text selection filters offer **精确匹配** (exact match, the default) and
+Use **允许模糊匹配** separately in each text filter's settings to offer
+**精确匹配** (exact match, the default) and
 **模糊匹配** (contains match). Exact match uses the selected complete values.
 Use the compact button beside the filter title to switch modes. Chinese input
-composition is committed only after the characters are confirmed.
+composition is committed only after the characters are confirmed. While typing,
+a temporary popover previews at most five matching names within the current
+parent and time filters. The chart keeps its existing update behavior; preview
+does not add an Apply step. The option defaults to enabled to preserve existing
+filters and remembered keywords; turn it off for filters needing only exact selection.
+Disabling it clears any remembered contains keyword so it cannot stay active invisibly.
 Contains match accepts one keyword and filters all matching rows, independently
 of the number of dropdown options loaded. It ignores letter case and treats
 `%`, `_`, and backslashes as literal characters. Switching modes clears the

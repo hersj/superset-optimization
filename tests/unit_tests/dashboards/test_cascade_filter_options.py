@@ -946,3 +946,61 @@ def test_rejects_invalid_parent_patterns(operators, values):
     )
     with pytest.raises(ValueError, match="Unsupported parent|Pattern filters"):
         command.validate()
+
+
+def test_preview_search_is_bounded_parameterized_and_keeps_country_time_and_rls():
+    command = GetCascadeFilterOptionsCommand(
+        73,
+        156,
+        ["competitor"],
+        applied_filters={"site": ["US"]},
+        limit=5,
+        search={"column": "competitor", "value": "50%_O'Brand"},
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={
+            "columns": ["site", "competitor"],
+            "parent_columns_by_column": {"competitor": ["site"]},
+        }
+    )
+    command.validate()
+    dataset = MagicMock(
+        schema="public",
+        table_name="market_monthly_fact",
+        main_dttm_col="snapshot_month",
+    )
+    statement, params = command._build_statement(
+        dataset, datetime(2026, 1, 1), datetime(2026, 10, 1), ["(allowed = TRUE)"]
+    )
+    sql = str(statement)
+    assert "ILIKE :search" in sql
+    assert "O'Brand" not in sql
+    assert '"site" IN' in sql
+    assert "(allowed = TRUE)" in sql
+    assert "since" in sql
+    assert "until" in sql
+    assert params["search"] == "%50\\%\\_O'Brand%"
+    assert params["limit_0"] == 5
+    old_key = command._get_cache_key()
+    command._search["value"] = "another"
+    assert command._get_cache_key() != old_key
+
+
+@pytest.mark.parametrize(
+    "search",
+    [
+        {"column": "unknown", "value": "a"},
+        {"column": "competitor", "value": ""},
+        {"column": "competitor", "value": 1},
+        {"column": "competitor", "value": "x" * 1001},
+        {"column": "competitor", "value": "  "},
+        {"column": "competitor", "value": " " + "x" * 1000},
+    ],
+)
+def test_invalid_preview_search_is_rejected(search):
+    command = GetCascadeFilterOptionsCommand(73, 156, ["competitor"], search=search)
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={"columns": ["competitor"]}
+    )
+    with pytest.raises(ValueError, match="Search requires"):
+        command.validate()
