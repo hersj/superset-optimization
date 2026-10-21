@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { act, render } from '@testing-library/react';
+import { act, render } from 'spec/helpers/testing-library';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ComponentType, ReactNode } from 'react';

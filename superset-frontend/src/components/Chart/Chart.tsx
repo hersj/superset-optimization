@@ -91,6 +91,8 @@ export interface ChartProps {
   onChartStateChange?: (chartState: AgGridChartState) => void;
   /** Whether to suppress the loading spinner (during auto-refresh) */
   suppressLoadingSpinner?: boolean;
+  legendState?: Record<string, boolean>;
+  onLegendStateChanged?: (state: Record<string, boolean>) => void;
   filterState?: FilterState;
 }
 

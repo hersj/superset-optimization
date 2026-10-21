@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { render } from 'spec/helpers/testing-library';
+import { act, render } from 'spec/helpers/testing-library';
 import {
   ChartMetadata,
   getChartMetadataRegistry,
@@ -37,20 +37,24 @@ interface MockSuperChartProps {
   [key: string]: unknown;
 }
 
+let mockLatestChartProps: MockSuperChartProps;
 jest.mock('@superset-ui/core', () => ({
   ...jest.requireActual('@superset-ui/core'),
   SuperChart: ({
     postTransformProps = (x: JsonObject) => x,
     isRefreshing = false,
     ...props
-  }: MockSuperChartProps & { isRefreshing?: boolean }) => (
-    <div
-      data-test="mock-super-chart"
-      data-is-refreshing={isRefreshing ? 'true' : 'false'}
-    >
-      {JSON.stringify(postTransformProps(props).formData)}
-    </div>
-  ),
+  }: MockSuperChartProps & { isRefreshing?: boolean }) => {
+    mockLatestChartProps = props;
+    return (
+      <div
+        data-test="mock-super-chart"
+        data-is-refreshing={isRefreshing ? 'true' : 'false'}
+      >
+        {JSON.stringify(postTransformProps(props).formData)}
+      </div>
+    );
+  },
 }));
 
 jest.mock(
@@ -445,4 +449,34 @@ test('does not render chart during loading when last data has errors', () => {
 
   const { queryByTestId } = render(<ChartRenderer {...props} />);
   expect(queryByTestId('mock-super-chart')).not.toBeInTheDocument();
+});
+
+test('restores remembered legends before rendering and reports the merged user selection', () => {
+  const remembered = { 'current:费用': false, 'current:销售额': true };
+  const onLegendStateChanged = jest.fn();
+  const { unmount } = render(
+    <ChartRenderer
+      {...(requiredProps as ChartRendererProps)}
+      legendState={remembered}
+      onLegendStateChanged={onLegendStateChanged}
+    />,
+  );
+  expect(mockLatestChartProps.legendState).toEqual(remembered);
+  act(() =>
+    (
+      mockLatestChartProps.hooks as {
+        onLegendStateChanged: (state: Record<string, boolean>) => void;
+      }
+    ).onLegendStateChanged({ 'current:销售额': false }),
+  );
+  const saved = { ...remembered, 'current:销售额': false };
+  expect(onLegendStateChanged).toHaveBeenLastCalledWith(saved);
+  unmount();
+  render(
+    <ChartRenderer
+      {...(requiredProps as ChartRendererProps)}
+      legendState={saved}
+    />,
+  );
+  expect(mockLatestChartProps.legendState).toEqual(saved);
 });

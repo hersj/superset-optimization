@@ -135,6 +135,8 @@ export interface ChartRendererProps {
   cacheBusterProp?: string;
   onChartStateChange?: (chartState: AgGridChartState) => void;
   suppressLoadingSpinner?: boolean;
+  legendState?: Record<string, boolean>;
+  onLegendStateChanged?: (state: Record<string, boolean>) => void;
 }
 
 // State interface
@@ -228,7 +230,7 @@ class ChartRenderer extends Component<ChartRendererProps, ChartRendererState> {
         !suppressContextMenu &&
         isFeatureEnabled(FeatureFlag.DrillToDetail),
       inContextMenu: false,
-      legendState: undefined,
+      legendState: props.legendState,
       legendIndex: 0,
     };
     this.hasQueryResponseChange = false;
@@ -415,9 +417,15 @@ class ChartRenderer extends Component<ChartRendererProps, ChartRendererState> {
   }
 
   handleLegendStateChanged(legendState: LegendState): void {
-    this.setState(previousState => ({
-      legendState: mergeLegendState(previousState.legendState, legendState),
-    }));
+    this.setState(
+      previousState => ({
+        legendState: mergeLegendState(previousState.legendState, legendState),
+      }),
+      () => {
+        if (this.state.legendState)
+          this.props.onLegendStateChanged?.(this.state.legendState);
+      },
+    );
   }
 
   // When viz plugins don't handle `contextmenu` event, fallback handler

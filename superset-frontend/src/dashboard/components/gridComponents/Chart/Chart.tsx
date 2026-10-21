@@ -31,6 +31,11 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { exportChart } from 'src/explore/exploreUtils';
 import ChartContainer from 'src/components/Chart/ChartContainer';
+import {
+  legendStorageKey,
+  readLegendState,
+  writeLegendState,
+} from 'src/dashboard/util/legendStateStorage';
 import LastQueriedLabel from 'src/components/LastQueriedLabel';
 import {
   StreamingExportModal,
@@ -311,22 +316,20 @@ const Chart = (props: ChartProps) => {
   const [isSavingPersonalChartLayout, setIsSavingPersonalChartLayout] =
     useState(false);
 
-  /*
-   * 功能审计（可重写规格）：看板图例会话状态
-   * - 功能目的与触发方式：看板虚拟化卸载不可视 ChartRenderer 后，右上角开关触发查询刷新时仍恢复该图表的用户图例选择。
-   * - 输入契约：图表子组件回传的真实系列/逻辑图例布尔映射；首次挂载为空。
-   * - 输出契约：按 chart 组件实例保存内存状态并传给 ChartContainer，不写数据库、localStorage 或后端接口。
-   * - 处理流程：ChartRenderer 回传状态 -> 本组件保存 -> 子组件卸载后重新挂载时作为初始 legendState 传入。
-   * - 业务规则：状态只属于当前图表实例；数字显示和时间对比开关只改变查询/标注，不覆盖该映射；未出现的新系列继续使用图表默认规则。
-   * - 状态与副作用：仅产生 React 会话状态；图表离开可视区时子渲染器可卸载，但本容器保持状态。
-   * - 外部依赖：ChartContainer/ChartRenderer 的 legendState 和 onLegendStateChanged 透传。
-   * - 异常与边界：容器本身卸载或页面刷新时状态清空，符合不新增图例持久化的约束。
-   * - 不变量与约束：不同 chartId 的状态互不共享，不影响看板保存配置。
-   * - 验证方式：ChartRenderer 卸载重挂测试，以及看板 54/74 多图表切换右上角开关后逐图核对。
-   */
+  const userId = useSelector((state: RootState) => state.user?.userId);
+  const legendKey = legendStorageKey(userId, props.dashboardId, props.id);
   const [legendState, setLegendState] = useState<
     Record<string, boolean> | undefined
-  >();
+  >(() => readLegendState(legendKey));
+  // Reload only when the preference owner changes; queries and auto-refresh keep it intact.
+  useEffect(() => setLegendState(readLegendState(legendKey)), [legendKey]);
+  const rememberLegendState = useCallback(
+    (state: Record<string, boolean>) => {
+      setLegendState(state);
+      writeLegendState(legendKey, state);
+    },
+    [legendKey],
+  );
 
   const [isStreamingModalVisible, setIsStreamingModalVisible] = useState(false);
   const { progress, startExport, cancelExport, resetExport, retryExport } =
@@ -1099,6 +1102,7 @@ const Chart = (props: ChartProps) => {
         )}
 
         <ChartContainer
+          key={legendKey}
           width={width}
           height={getChartHeight()}
           addFilter={addFilter}
@@ -1129,7 +1133,7 @@ const Chart = (props: ChartProps) => {
           suppressLoadingSpinner={suppressLoadingSpinner}
           filterState={dataMask[props.id]?.filterState}
           legendState={legendState}
-          onLegendStateChanged={setLegendState}
+          onLegendStateChanged={rememberLegendState}
         />
       </ChartWrapper>
 

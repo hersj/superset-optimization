@@ -41,6 +41,11 @@ import chartQueries, {
   sliceId as queryId,
 } from 'spec/fixtures/mockChartQueries';
 import Chart from './Chart';
+import {
+  legendStorageKey,
+  readLegendState,
+  writeLegendState,
+} from '../../../util/legendStateStorage';
 
 let capturedChartContainerProps: Record<string, unknown> = {};
 jest.mock('src/components/Chart/ChartContainer', () => {
@@ -851,4 +856,31 @@ test('commits a selected limit only after saving and retains it if a later save 
   );
   expect(store.getState().dashboardState.chartRowLimits[queryId]).toBe(50);
   put.mockRestore();
+});
+
+test('persists the personal legend selection across auto-refresh and dashboard remounts', () => {
+  const key = legendStorageKey(1, props.dashboardId, props.id);
+  const initial = { 'current:费用': false, 'current:销售额': true };
+  writeLegendState(key, initial);
+  const view = setup({}, { user: { userId: 1 } });
+  expect(capturedChartContainerProps.legendState).toEqual(initial);
+  const next = { ...initial, 'current:销售额': false };
+  act(() =>
+    (
+      capturedChartContainerProps.onLegendStateChanged as (
+        state: Record<string, boolean>,
+      ) => void
+    )(next),
+  );
+  expect(readLegendState(key)).toEqual(next);
+  view.rerender(<Chart {...props} suppressLoadingSpinner />);
+  expect(capturedChartContainerProps.legendState).toEqual(next);
+  view.unmount();
+  const remounted = setup({}, { user: { userId: 1 } });
+  expect(capturedChartContainerProps.legendState).toEqual(next);
+  remounted.unmount();
+  const otherUser = setup({}, { user: { userId: 2 } });
+  expect(capturedChartContainerProps.legendState).toBeUndefined();
+  otherUser.unmount();
+  localStorage.removeItem(key!);
 });

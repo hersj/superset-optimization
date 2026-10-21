@@ -36,6 +36,7 @@ import { MatrixBarDatum, TimeseriesChartTransformedProps } from './types';
 import { formatSeriesName } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
+import LegendSelector from '../components/LegendSelector';
 
 const TIMER_DURATION = 300;
 
@@ -461,6 +462,12 @@ export default function EchartsTimeseries({
   return (
     <>
       <div ref={extraControlRef}>
+        <LegendSelector
+          options={echartOptions}
+          groups={legendGroups}
+          onChange={handleLegendBulkChange}
+          echartRef={echartRef}
+        />
         <ExtraControls formData={formData} setControlValue={setControlValue} />
       </div>
       <Echart

@@ -31,6 +31,7 @@ import Echart from '../components/Echart';
 import { EchartsHandler, EventHandlers } from '../types';
 import { formatSeriesName } from '../utils/series';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
+import LegendSelector from '../components/LegendSelector';
 
 export default function EchartsMixedTimeseries({
   height,
@@ -147,7 +148,7 @@ export default function EchartsMixedTimeseries({
     Array.isArray(echartOptions.legend)
       ? echartOptions.legend[0]
       : echartOptions.legend
-  ) as { data?: Array<string | { name?: string }> } | undefined;
+  ) as { show?: boolean; data?: Array<string | { name?: string }> } | undefined;
   const legendData = (legend?.data ?? [])
     .map(item => (typeof item === 'string' ? item : item.name))
     .filter((name): name is string => Boolean(name));
@@ -253,16 +254,24 @@ export default function EchartsMixedTimeseries({
   };
 
   return (
-    <Echart
-      refs={refs}
-      ref={echartRef}
-      height={height}
-      width={width}
-      echartOptions={echartOptions}
-      eventHandlers={eventHandlers}
-      zrEventHandlers={zrEventHandlers}
-      selectedValues={selectedValues}
-      vizType={formData.vizType}
-    />
+    <>
+      <LegendSelector
+        options={echartOptions}
+        groups={legendGroups}
+        onChange={handleLegendBulkChange}
+        echartRef={echartRef}
+      />
+      <Echart
+        refs={refs}
+        ref={echartRef}
+        height={height - (legendData.length && legend?.show !== false ? 32 : 0)}
+        width={width}
+        echartOptions={echartOptions}
+        eventHandlers={eventHandlers}
+        zrEventHandlers={zrEventHandlers}
+        selectedValues={selectedValues}
+        vizType={formData.vizType}
+      />
+    </>
   );
 }
