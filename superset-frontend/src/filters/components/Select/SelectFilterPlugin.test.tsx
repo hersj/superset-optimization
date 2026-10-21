@@ -16,11 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { AppSection } from '@superset-ui/core';
+import { AppSection, DataMask } from '@superset-ui/core';
+import { useState } from 'react';
 import {
   render,
   screen,
   userEvent,
+  fireEvent,
   waitFor,
 } from 'spec/helpers/testing-library';
 import { NULL_STRING } from 'src/utils/common';
@@ -243,7 +245,9 @@ describe('SelectFilterPlugin', () => {
     getWrapper();
     const filterSelect = screen.getAllByRole('combobox')[0];
     userEvent.click(filterSelect);
-    expect(await screen.findByRole('combobox')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('combobox', { name: 'test-filter' }),
+    ).toBeInTheDocument();
     userEvent.click(screen.getByTitle(NULL_STRING));
     expect(setDataMask).toHaveBeenLastCalledWith({
       extraFormData: {
@@ -267,7 +271,9 @@ describe('SelectFilterPlugin', () => {
     getWrapper({ searchAllOptions: true, multiSelect: false });
     const filterSelect = screen.getAllByRole('combobox')[0];
     userEvent.click(filterSelect);
-    expect(await screen.findByRole('combobox')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('combobox', { name: 'test-filter' }),
+    ).toBeInTheDocument();
     userEvent.click(screen.getByTitle('girl'));
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -288,8 +294,13 @@ describe('SelectFilterPlugin', () => {
     getWrapper({ searchAllOptions: true });
     const filterSelect = screen.getAllByRole('combobox')[0];
     userEvent.click(filterSelect);
-    expect(await screen.findByRole('combobox')).toBeInTheDocument();
-    await userEvent.type(screen.getByRole('combobox'), 'a');
+    expect(
+      await screen.findByRole('combobox', { name: 'test-filter' }),
+    ).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'test-filter' }),
+      'a',
+    );
     userEvent.tab();
     expect(setDataMask).toHaveBeenCalledTimes(2);
   });
@@ -334,8 +345,13 @@ describe('SelectFilterPlugin', () => {
     );
     const filterSelect = screen.getAllByRole('combobox')[0];
     userEvent.click(filterSelect);
-    expect(await screen.findByRole('combobox')).toBeInTheDocument();
-    await userEvent.type(screen.getByRole('combobox'), '1');
+    expect(
+      await screen.findByRole('combobox', { name: 'test-filter' }),
+    ).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'test-filter' }),
+      '1',
+    );
     expect(
       await screen.findByRole('option', { name: String(bigValue) }),
     ).toBeInTheDocument();
@@ -375,13 +391,19 @@ describe('SelectFilterPlugin', () => {
 
   test('Should not allow for new values when creatable is false', () => {
     getWrapper({ creatable: false });
-    userEvent.type(screen.getByRole('combobox'), 'new value');
+    userEvent.type(
+      screen.getByRole('combobox', { name: 'test-filter' }),
+      'new value',
+    );
     expect(screen.queryByTitle('new value')).not.toBeInTheDocument();
   });
 
   test('Should allow for new values when creatable is true', async () => {
     getWrapper({ creatable: true });
-    userEvent.type(screen.getByRole('combobox'), 'new value');
+    userEvent.type(
+      screen.getByRole('combobox', { name: 'test-filter' }),
+      'new value',
+    );
     expect(await screen.findByTitle('new value')).toBeInTheDocument();
   });
 
@@ -733,7 +755,7 @@ test('Select boolean FALSE value in single-select mode', async () => {
     },
   );
 
-  const filterSelect = screen.getByRole('combobox');
+  const filterSelect = screen.getByRole('combobox', { name: 'test-filter' });
   userEvent.click(filterSelect);
 
   const falseOption = await screen.findByRole('option', { name: /false/i });
@@ -810,7 +832,7 @@ test('Select boolean TRUE value in single-select mode', async () => {
     },
   );
 
-  const filterSelect = screen.getByRole('combobox');
+  const filterSelect = screen.getByRole('combobox', { name: 'test-filter' });
   userEvent.click(filterSelect);
 
   const trueOption = await screen.findByRole('option', { name: /true/i });
@@ -887,7 +909,7 @@ test('Select both boolean values in multi-select mode', async () => {
     },
   );
 
-  const filterSelect = screen.getByRole('combobox');
+  const filterSelect = screen.getByRole('combobox', { name: 'test-filter' });
   userEvent.click(filterSelect);
 
   const falseOption = await screen.findByRole('option', { name: /false/i });
@@ -964,7 +986,7 @@ test('Select boolean filter with null values', async () => {
     },
   );
 
-  const filterSelect = screen.getByRole('combobox');
+  const filterSelect = screen.getByRole('combobox', { name: 'test-filter' });
   userEvent.click(filterSelect);
 
   const nullOption = await screen.findByRole('option', { name: NULL_STRING });
@@ -1248,4 +1270,98 @@ test('resets dependent filter to first item when value does not exist in data', 
       }),
     );
   });
+});
+
+function ControlledMatchFilter({
+  saved,
+  setDataMask = jest.fn(),
+}: {
+  saved?: DataMask['filterState'];
+  setDataMask?: (mask: DataMask) => void;
+}) {
+  const [filterState, setFilterState] = useState(saved ?? { value: null });
+  const props = transformProps({
+    ...selectMultipleProps,
+    filterState,
+    formData: {
+      ...selectMultipleProps.formData,
+      enableEmptyFilter: false,
+      defaultValue: null,
+    },
+  });
+  return (
+    <SelectFilterPlugin
+      {...props}
+      showOverflow={false}
+      setDataMask={mask => {
+        setDataMask(mask);
+        setFilterState(mask.filterState);
+      }}
+    />
+  );
+}
+
+test('switches from exact selections to a typed contains predicate and back', async () => {
+  const setDataMask = jest.fn();
+  render(<ControlledMatchFilter setDataMask={setDataMask} />);
+  userEvent.click(screen.getByRole('combobox', { name: '匹配方式：gender' }));
+  userEvent.click(screen.getByText('模糊匹配'));
+  const input = await screen.findByRole('textbox', {
+    name: '模糊匹配关键词：gender',
+  });
+  fireEvent.change(input, { target: { value: '深圳' } });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'ILIKE', val: '%深圳%' }],
+        },
+        filterState: expect.objectContaining({
+          value: ['深圳'],
+          matchMode: 'contains',
+          label: '模糊匹配：深圳',
+        }),
+      }),
+    ),
+  );
+  userEvent.click(screen.getByRole('combobox', { name: '匹配方式：gender' }));
+  userEvent.click(screen.getByText('精确匹配'));
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {},
+        filterState: expect.objectContaining({
+          value: null,
+          matchMode: 'exact',
+        }),
+      }),
+    ),
+  );
+  expect(
+    screen.queryByRole('textbox', { name: '模糊匹配关键词：gender' }),
+  ).not.toBeInTheDocument();
+});
+
+test('restores a saved keyword even when it is absent from the candidate options', async () => {
+  const setDataMask = jest.fn();
+  const saved = { value: ['深圳'], matchMode: 'contains' };
+  const view = render(
+    <ControlledMatchFilter saved={saved} setDataMask={setDataMask} />,
+  );
+  expect(
+    await screen.findByRole('textbox', { name: '模糊匹配关键词：gender' }),
+  ).toHaveValue('深圳');
+  view.rerender(
+    <ControlledMatchFilter saved={saved} setDataMask={setDataMask} />,
+  );
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'ILIKE', val: '%深圳%' }],
+        },
+        filterState: expect.objectContaining(saved),
+      }),
+    ),
+  );
 });

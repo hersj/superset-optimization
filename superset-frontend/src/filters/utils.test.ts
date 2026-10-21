@@ -221,3 +221,41 @@ describe('Filter utils', () => {
     });
   });
 });
+
+test.each([
+  ['深圳', '%深圳%'],
+  ['kk-lamp', '%kk-lamp%'],
+  ['100%_SKU\\A', '%100\\%\\_SKU\\\\A%'],
+  ["O'Reilly", "%O'Reilly%"],
+])('contains matching sends a literal pattern for %s', (keyword, pattern) => {
+  expect(
+    getSelectExtraFormData('competitor', [keyword], false, false, 'contains'),
+  ).toEqual({
+    filters: [{ col: 'competitor', op: 'ILIKE', val: pattern }],
+  });
+});
+
+test('contains exclusion uses the backend-supported NOT ILIKE operator', () => {
+  expect(
+    getSelectExtraFormData('brand', ['lamp'], false, true, 'contains'),
+  ).toEqual({
+    filters: [{ col: 'brand', op: 'NOT ILIKE', val: '%lamp%' }],
+  });
+});
+
+test.each([
+  { value: [null] },
+  { value: [123] },
+  { value: ['one', 'two'] },
+  { value: ['   '] },
+])('invalid pattern values never broaden the query ($value)', ({ value }) => {
+  expect(
+    getSelectExtraFormData('name', value, false, false, 'contains'),
+  ).toEqual(getSelectExtraFormData('name', undefined, true));
+});
+
+test('clearing a contains filter removes its predicate', () => {
+  expect(
+    getSelectExtraFormData('name', null, false, false, 'contains'),
+  ).toEqual({});
+});

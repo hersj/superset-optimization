@@ -187,6 +187,16 @@ Congrats! You’ve successfully linked, analyzed, and visualized data in Superse
 of other table configuration and visualization options, so please start exploring and creating
 slices and dashboards of your own.
 
+### Match text in dashboard filters
+
+Text selection filters offer **精确匹配** (exact match, the default) and
+**模糊匹配** (contains match). Exact match uses the selected complete values.
+Contains match accepts one keyword and filters all matching rows, independently
+of the number of dropdown options loaded. It ignores letter case and treats
+`%`, `_`, and backslashes as literal characters. Switching modes clears the
+previous value; clearing the keyword removes the condition. The chosen mode and
+keyword use the dashboard's existing filter-state restore behavior.
+
 ### Manage access to Dashboards
 
 Access to dashboards is managed via owners and permissions. Non-owner access can be controlled

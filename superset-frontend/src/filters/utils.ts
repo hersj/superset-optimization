@@ -30,14 +30,26 @@ import {
   ExpressionTypes,
 } from '../explore/components/controls/FilterControl/types';
 
+export type SelectFilterMatchMode = 'exact' | 'contains';
+
 export const getSelectExtraFormData = (
   col: string,
   value?: null | (string | number | boolean | null)[],
   emptyFilter = false,
   shouldExcludeFilter = false,
+  matchMode: SelectFilterMatchMode = 'exact',
 ): ExtraFormData => {
   const extra: ExtraFormData = {};
-  if (emptyFilter) {
+  const keyword =
+    Array.isArray(value) && value.length === 1 && typeof value[0] === 'string'
+      ? value[0]
+      : undefined;
+  const invalidKeyword =
+    matchMode === 'contains' &&
+    value != null &&
+    (!Array.isArray(value) ||
+      (value.length > 0 && (keyword === undefined || !keyword.trim())));
+  if (emptyFilter || invalidKeyword) {
     extra.adhoc_filters = [
       {
         expressionType: ExpressionTypes.Sql,
@@ -46,13 +58,23 @@ export const getSelectExtraFormData = (
       },
     ];
   } else if (value !== undefined && value !== null && value.length !== 0) {
-    extra.filters = [
-      {
-        col,
-        op: shouldExcludeFilter ? ('NOT IN' as const) : ('IN' as const),
-        val: value,
-      },
-    ];
+    extra.filters =
+      matchMode === 'contains'
+        ? [
+            {
+              col,
+              op: shouldExcludeFilter ? 'NOT ILIKE' : 'ILIKE',
+              // Treat SQL wildcards as literal input, including backslashes in SKUs.
+              val: `%${keyword!.replace(/[\\%_]/g, '\\$&')}%`,
+            },
+          ]
+        : [
+            {
+              col,
+              op: shouldExcludeFilter ? ('NOT IN' as const) : ('IN' as const),
+              val: value,
+            },
+          ];
   }
   return extra;
 };

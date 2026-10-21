@@ -35,7 +35,7 @@ describe('sellerfox cascade filter options', () => {
     clearSellerfoxCascadeFilterOptionsCache();
   });
 
-  it('posts the full point union and separates cache entries with the same envelope', async () => {
+  test('posts the full point union and separates cache entries with the same envelope', async () => {
     const post = jest
       .spyOn(SupersetClient, 'post')
       .mockResolvedValue({ json: { result: {} } } as any);
@@ -83,7 +83,7 @@ describe('sellerfox cascade filter options', () => {
     });
   });
 
-  it('builds a generic dashboard batch payload from filter metadata', async () => {
+  test('builds a generic dashboard batch payload from filter metadata', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: {
         result: {},
@@ -145,7 +145,7 @@ describe('sellerfox cascade filter options', () => {
     ]);
   });
 
-  it('enables generic batch loading only for select filters with dataset columns', () => {
+  test('enables generic batch loading only for select filters with dataset columns', () => {
     const nativeFilters = {
       time: {
         id: 'time',
@@ -176,7 +176,7 @@ describe('sellerfox cascade filter options', () => {
     ).toBe(false);
   });
 
-  it('uses a single batch request for matching dashboard filter option loads', async () => {
+  test('uses a single batch request for matching dashboard filter option loads', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: {
         result: {
@@ -238,7 +238,7 @@ describe('sellerfox cascade filter options', () => {
     expect(shop.shop_name.data).toEqual([{ shop_name: 'Shop A' }]);
   });
 
-  it('uses the dashboard-specific cascade columns in the batch payload', async () => {
+  test('uses the dashboard-specific cascade columns in the batch payload', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: {
         result: {},
@@ -258,7 +258,7 @@ describe('sellerfox cascade filter options', () => {
     expect(getSellerfoxCascadeColumns(51, 98)).not.toContain('kk_sku');
   });
 
-  it('only enables the batch loader for the Sellerfox dashboard chain', () => {
+  test('only enables the batch loader for the Sellerfox dashboard chain', () => {
     expect(isSellerfoxCascadeFilter(44, 98, 'filter_select', 'country')).toBe(
       true,
     );
@@ -291,7 +291,7 @@ describe('cascade filter time range contract', () => {
     clearSellerfoxCascadeFilterOptionsCache();
   });
 
-  it('does not request when an applicable time filter is not ready', async () => {
+  test('does not request when an applicable time filter is not ready', async () => {
     const post = jest.spyOn(SupersetClient, 'post');
     const nativeFilters = {
       time: {
@@ -313,7 +313,7 @@ describe('cascade filter time range contract', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('uses the applicable filter id instead of the last data mask time range', async () => {
+  test('uses the applicable filter id instead of the last data mask time range', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: { result: {} },
     } as any);
@@ -351,7 +351,7 @@ describe('cascade filter time range contract', () => {
     expect(post.mock.calls[0][0].jsonPayload.applied_filters).toEqual({});
   });
 
-  it('rejects conflicting applicable time filter ranges without requesting', async () => {
+  test('rejects conflicting applicable time filter ranges without requesting', async () => {
     const post = jest.spyOn(SupersetClient, 'post');
     const nativeFilters = {
       timeA: {
@@ -381,7 +381,7 @@ describe('cascade filter time range contract', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('does not apply a time range from an unrelated dashboard filter', async () => {
+  test('does not apply a time range from an unrelated dashboard filter', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: { result: {} },
     } as any);
@@ -408,7 +408,7 @@ describe('cascade filter time range contract', () => {
     });
   });
 
-  it('does not request when an applicable time scope is unresolved', async () => {
+  test('does not request when an applicable time scope is unresolved', async () => {
     const post = jest.spyOn(SupersetClient, 'post');
     const nativeFilters = {
       time: {
@@ -441,7 +441,7 @@ describe('cascade filter time range contract', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('does not request when a hydrated applicable time filter is cleared', async () => {
+  test('does not request when a hydrated applicable time filter is cleared', async () => {
     const post = jest.spyOn(SupersetClient, 'post');
     const nativeFilters = {
       time: {
@@ -481,7 +481,7 @@ describe('cascade filter time range contract', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('uses the selected range for a time filter scoped through the chart dataset', async () => {
+  test('uses the selected range for a time filter scoped through the chart dataset', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: { result: {} },
     } as any);
@@ -519,7 +519,7 @@ describe('cascade filter time range contract', () => {
     });
   });
 
-  it('uses a range when the scope includes this and another dataset', async () => {
+  test('uses a range when the scope includes this and another dataset', async () => {
     const post = jest.spyOn(SupersetClient, 'post').mockResolvedValue({
       json: { result: {} },
     } as any);
@@ -552,7 +552,7 @@ describe('cascade filter time range contract', () => {
     });
   });
 
-  it('rejects a scoped time filter until chart datasets are ready', async () => {
+  test('rejects a scoped time filter until chart datasets are ready', async () => {
     const post = jest.spyOn(SupersetClient, 'post');
     const nativeFilters = {
       time: {
@@ -573,3 +573,33 @@ describe('cascade filter time range contract', () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+test.each(['ILIKE', 'NOT ILIKE', 'NOT IN'])(
+  'a %s parent uses the standard query fallback, not an IN batch',
+  async op => {
+    clearSellerfoxCascadeFilterOptionsCache();
+    const post = jest
+      .spyOn(SupersetClient, 'post')
+      .mockResolvedValue({ json: { result: {} } } as Awaited<
+        ReturnType<typeof SupersetClient.post>
+      >);
+    const nativeFilters = {
+      parent: {
+        filterType: 'filter_select',
+        targets: [{ datasetId: 175, column: { name: 'competitor' } }],
+      },
+    };
+    await expect(
+      getCascadeFilterOptions(73, 175, nativeFilters, {
+        parent: {
+          id: 'parent',
+          extraFormData: {
+            filters: [{ col: 'competitor', op, val: '%深圳%' }],
+          },
+        },
+      }),
+    ).rejects.toThrow('Cascade batch does not support this filter operator');
+    expect(post).not.toHaveBeenCalled();
+    post.mockRestore();
+  },
+);

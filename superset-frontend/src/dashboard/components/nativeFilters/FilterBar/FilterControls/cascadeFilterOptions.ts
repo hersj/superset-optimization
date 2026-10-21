@@ -224,7 +224,18 @@ const getPayload = (
         return;
       }
       const column = filter.col;
-      if (typeof column === 'string' && columnSet.has(column) && 'val' in filter) {
+      if (
+        typeof column === 'string' &&
+        columnSet.has(column) &&
+        'val' in filter
+      ) {
+        // The batch endpoint represents IN only; use the standard query path
+        // for patterns or exclusions so it preserves the actual predicate.
+        if (filter.op !== 'IN') {
+          throw new Error(
+            'Cascade batch does not support this filter operator',
+          );
+        }
         const values = toArray(filter.val);
         if (values.length) {
           appliedFilters[column] = values;
