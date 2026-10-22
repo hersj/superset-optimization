@@ -96,6 +96,9 @@ test('keeps query data and colors as complete SKUs while limiting axis labels', 
   const original = JSON.stringify(chart.queriesData);
   const result = transformProps(chart);
   expect(result.skuSelection?.names).toHaveLength(3);
+  expect(result.echartOptions.backgroundColor).toBe(
+    supersetTheme.colorBgContainer,
+  );
   expect(result.echartOptions.yAxis).toEqual(
     expect.objectContaining({
       triggerEvent: true,

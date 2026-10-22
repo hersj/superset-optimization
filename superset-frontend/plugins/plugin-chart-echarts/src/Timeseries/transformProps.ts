@@ -1064,6 +1064,7 @@ export default function transformProps(
       width: Math.max(72, Math.min(190, width * 0.3)),
       overflow: 'truncate',
       rotate: 0,
+      color: theme.colorTextSecondary,
     };
     categoryAxis.triggerEvent = true;
     categoryAxis.data = [
@@ -1088,6 +1089,7 @@ export default function transformProps(
 
   const echartOptions: EChartsCoreOption = {
     useUTC: true,
+    ...(skuSelection ? { backgroundColor: theme.colorBgContainer } : {}),
     grid: {
       ...defaultGrid,
       ...padding,
@@ -1241,15 +1243,19 @@ export default function transformProps(
     legend: {
       ...legendProps,
       ...(customPeriod ? { itemWidth: 14, itemHeight: 9, itemGap: 16 } : {}),
-      ...(controlledTimeFormatter || customPeriod
+      ...(controlledTimeFormatter || customPeriod || skuSelection
         ? {
             textStyle: {
               ...legendProps.textStyle,
-              color: CUSTOM_TIME_TEXT_COLOR,
+              color: skuSelection
+                ? theme.colorTextSecondary
+                : CUSTOM_TIME_TEXT_COLOR,
             },
             selectorLabel: {
               ...legendProps.selectorLabel,
-              color: CUSTOM_TIME_TEXT_COLOR,
+              color: skuSelection
+                ? theme.colorTextSecondary
+                : CUSTOM_TIME_TEXT_COLOR,
             },
           }
         : {}),
