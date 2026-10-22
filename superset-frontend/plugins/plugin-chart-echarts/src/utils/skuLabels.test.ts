@@ -85,7 +85,7 @@ test('selection remains attached to full names when result set and alias collisi
   const next = buildSkuSelection('kk_sku', [c, b], state);
   expect(next.selected[key]).toBe(false);
   expect(next.selected[next.names.find(name => next.values[name] === c)!]).toBe(
-    true,
+    false,
   );
   expect(
     buildSkuSelection('other_sku', [b], state).selected,
@@ -130,13 +130,22 @@ test('selection applies immediately and survives new query objects, empty select
   }
   const none = Object.fromEntries(original.names.map(key => [key, false]));
   expect(transformProps(props(none)).skuSelection?.selected).toEqual(none);
+  expect(transformProps(props(none)).echartOptions.yAxis).toEqual(
+    expect.objectContaining({ data: [] }),
+  );
   expect(transformProps(props({}, 'shop_name')).skuSelection).toBeUndefined();
 });
 
 test('legacy short aliases never combine different complete SKU series', () => {
   const rows = [{ SKU简称: 'TL-香薰7-1 · 2512', salesA: 10, salesB: 20 }];
   const before = JSON.stringify(rows);
-  const result = expandSkuAliases(rows, 'SKU简称', { salesA: a, salesB: b });
+  const result = expandSkuAliases(rows, 'SKU简称', {
+    SKU简称: 'LEFT(kk_sku, 4)',
+    kk_sku: 'kk_sku',
+    配送数量: 'SUM(shipped_num)',
+    salesA: a,
+    salesB: b,
+  });
   expect(result.data).toEqual([
     { SKU简称: a, salesA: 10, salesB: null },
     { SKU简称: b, salesA: null, salesB: 20 },
@@ -163,10 +172,17 @@ test('legacy short aliases never combine different complete SKU series', () => {
         GenericDataType.Numeric,
         GenericDataType.Numeric,
       ],
-      label_map: { salesA: [a], salesB: [b] },
+      label_map: {
+        SKU简称: ['LEFT(kk_sku, 4)'],
+        kk_sku: ['kk_sku'],
+        配送数量: ['SUM(shipped_num)'],
+        salesA: ['配送数量', a],
+        salesB: ['配送数量', b],
+      },
     },
   ];
   const transformed = transformProps(chart);
+  expect(transformed.skuSelection!.names).toHaveLength(2);
   expect(Object.values(transformed.skuSelection!.values)).toEqual(
     expect.arrayContaining([a, b]),
   );

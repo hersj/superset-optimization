@@ -33,11 +33,19 @@ export function expandSkuAliases(
   seriesValues: Record<string, string>,
 ) {
   const axisValues: Record<string, string> = {};
-  const entries = Object.entries(seriesValues);
+  const entries = Object.entries(seriesValues).filter(
+    ([key]) => key !== field && data.some(row => Object.hasOwn(row, key)),
+  );
   const expanded = data.flatMap(row => {
     const values = [
       ...new Set(
-        entries.filter(([key]) => row[key] != null).map(([, value]) => value),
+        entries
+          .filter(
+            ([key]) =>
+              row[key] != null &&
+              (typeof row[key] !== 'number' || Number.isFinite(row[key])),
+          )
+          .map(([, value]) => value),
       ),
     ];
     return values.map(value => {
@@ -78,6 +86,10 @@ export function buildSkuSelection(
   const labels: Record<string, string> = {};
   const fullValues: Record<string, string> = {};
   const selected: LegendState = {};
+  const scopePrefix = `sku:${JSON.stringify([field]).slice(0, -1)},`;
+  const hasSavedSelection = Object.keys(state).some(key =>
+    key.startsWith(scopePrefix),
+  );
   aliases.forEach((members, alias) => {
     members.forEach(value => {
       const key = `sku:${JSON.stringify([field, value])}`;
@@ -93,7 +105,7 @@ export function buildSkuSelection(
       }
       labels[key] = label;
       fullValues[key] = value;
-      selected[key] = state[key] ?? true;
+      selected[key] = state[key] ?? !hasSavedSelection;
     });
   });
   const counts = new Map<string, number>();
