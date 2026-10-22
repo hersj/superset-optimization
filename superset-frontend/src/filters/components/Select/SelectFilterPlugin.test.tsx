@@ -1417,7 +1417,7 @@ test('explicit contains selections retain their exact values after remount and d
   expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
     '深圳',
   );
-  expect(screen.getByLabelText('匹配方式：gender')).toHaveTextContent('精确');
+  expect(screen.queryByLabelText('匹配方式：gender')).not.toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: '匹配方式：gender' }),
   ).not.toBeInTheDocument();
@@ -1522,7 +1522,7 @@ test('matching mode stays in the filter title and clear all clears remembered se
       showOverflow={false}
     />,
   );
-  expect(heading).toHaveTextContent('包含');
+  expect(heading).toHaveTextContent('模糊');
   expect(
     screen
       .getByRole('button', { name: '匹配方式：gender' })

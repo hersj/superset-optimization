@@ -23,6 +23,7 @@ import {
   fireEvent,
   waitFor,
   within,
+  userEvent,
 } from 'spec/helpers/testing-library';
 import InlineMatchSelect from './InlineMatchSelect';
 import type { SelectValue } from './types';
@@ -81,6 +82,38 @@ async function open(props = {}) {
   return { view, panel: await screen.findByLabelText('匹配选项：shop') };
 }
 
+test('one pointer click opens names and clicking the input keeps them open', async () => {
+  render(<Harness />);
+  const input = screen.getByRole('textbox', { name: '搜索选项：shop' });
+  await userEvent.click(input);
+  await waitFor(() =>
+    expect(screen.getByText('华南-US', { exact: true })).toBeVisible(),
+  );
+  await userEvent.click(input);
+  expect(screen.getByText('华南-US', { exact: true })).toBeVisible();
+  await userEvent.click(document.body);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('checkbox', { name: '华南-US' }),
+    ).not.toBeInTheDocument(),
+  );
+});
+
+test('the count button opens on its first pointer click and toggles closed', async () => {
+  render(<Harness />);
+  const count = screen.getByRole('button', { name: '展开选项：shop' });
+  await userEvent.click(count);
+  await waitFor(() =>
+    expect(screen.getByText('华南-US', { exact: true })).toBeVisible(),
+  );
+  await userEvent.click(count);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('checkbox', { name: '华南-US' }),
+    ).not.toBeInTheDocument(),
+  );
+});
+
 test('checkboxes and both bulk actions only change current matching values', async () => {
   const { panel } = await open();
   expect(within(panel).getAllByRole('checkbox')).toHaveLength(3);
@@ -127,15 +160,17 @@ test('composition never emits committed pinyin and stale options cannot be selec
   expect(within(panel).queryByRole('checkbox')).not.toBeInTheDocument();
 });
 
-test('mode menu stays inside the field and preserves selections', async () => {
+test('one click toggles fuzzy matching without a menu or an exact label', async () => {
   const { panel } = await open();
-  fireEvent.click(screen.getByRole('button', { name: '匹配方式：shop' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: '精确' }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: '匹配方式：shop' }),
-    ).toHaveTextContent('精确'),
-  );
+  const mode = screen.getByRole('button', { name: '匹配方式：shop' });
+  expect(mode).toHaveTextContent('模糊');
+  expect(mode).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(mode);
+  expect(mode).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  expect(screen.queryByText('精确')).not.toBeInTheDocument();
+  fireEvent.click(mode);
+  expect(mode).toHaveAttribute('aria-pressed', 'true');
   expect(changed).not.toHaveBeenCalled();
   for (const button of [
     screen.getByRole('button', { name: '匹配方式：shop' }),
@@ -158,7 +193,8 @@ test('single-selection filters do not offer batch selection and close on choose'
 
 test('disabling contains mode keeps the same checkboxes and bulk actions', async () => {
   const { panel } = await open({ allowFuzzyMatch: false });
-  expect(screen.getByLabelText('匹配方式：shop')).toHaveTextContent('精确');
+  expect(screen.queryByLabelText('匹配方式：shop')).not.toBeInTheDocument();
+  expect(screen.queryByText('精确')).not.toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: '匹配方式：shop' }),
   ).not.toBeInTheDocument();

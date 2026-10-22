@@ -23,7 +23,6 @@ import { t } from '@apache-superset/core/translation';
 import {
   Button,
   Checkbox,
-  Dropdown,
   Input,
   Popover,
   type InputRef,
@@ -53,11 +52,6 @@ type Props = {
 const Field = styled.div`
   width: 100%;
   min-width: 0;
-  .match-mode {
-    padding-inline: 0;
-    color: ${({ theme }) => theme.colorTextSecondary};
-    font-weight: normal;
-  }
   .match-count {
     padding-inline: 0;
     white-space: nowrap;
@@ -68,13 +62,13 @@ const Field = styled.div`
     overflow-wrap: anywhere;
   }
 `;
-const TitleMode = styled.span`
-  display: inline-flex;
+const MatchMode = styled(Button)`
+  padding-inline: 0;
   color: ${({ theme }) => theme.colorTextSecondary};
-  .match-mode {
-    padding-inline: 0;
-    color: inherit;
-    font-weight: normal;
+  font-weight: normal;
+  &[aria-pressed='true'] {
+    color: ${({ theme }) => theme.colorPrimary};
+    font-weight: ${({ theme }) => theme.fontWeightStrong};
   }
 `;
 const Options = styled.div`
@@ -155,41 +149,25 @@ export default function InlineMatchSelect({
   const selectedVisible = visible.filter(option =>
     selected.includes(option.value),
   );
-  const modeMenu = allowFuzzyMatch ? (
-    <Dropdown
-      menu={{
-        selectedKeys: [mode],
-        items: [
-          { key: 'contains', label: t('包含') },
-          { key: 'exact', label: t('精确') },
-        ],
-        onClick: ({ key }) => {
-          if (key === 'contains' || key === 'exact') onModeChange(key);
-        },
+  const modeToggle = allowFuzzyMatch ? (
+    <MatchMode
+      buttonStyle="link"
+      buttonSize="xsmall"
+      showMarginRight={false}
+      aria-label={`${t('匹配方式')}：${column}`}
+      aria-pressed={mode === 'contains'}
+      disabled={disabled}
+      onClick={event => {
+        event.stopPropagation();
+        onModeChange(mode === 'contains' ? 'exact' : 'contains');
       }}
-      trigger={['click']}
     >
-      <Button
-        className="match-mode"
-        buttonStyle="link"
-        buttonSize="xsmall"
-        showMarginRight={false}
-        aria-label={`${t('匹配方式')}：${column}`}
-        disabled={disabled}
-        onClick={event => event.stopPropagation()}
-      >
-        {mode === 'contains' ? t('包含') : t('精确')}⌄
-      </Button>
-    </Dropdown>
-  ) : (
-    <span className="match-mode" aria-label={`${t('匹配方式')}：${column}`}>
-      {t('精确')}
-    </span>
-  );
+      {t('模糊')}
+    </MatchMode>
+  ) : null;
   return (
     <Field ref={field}>
-      {matchModeContainer &&
-        createPortal(<TitleMode>{modeMenu}</TitleMode>, matchModeContainer)}
+      {matchModeContainer && createPortal(modeToggle, matchModeContainer)}
       <Popover
         trigger="click"
         placement="bottomLeft"
@@ -270,7 +248,7 @@ export default function InlineMatchSelect({
           ref={inputRef}
           value={keyword}
           aria-label={`${t('搜索选项')}：${column}`}
-          prefix={matchModeContainer ? undefined : modeMenu}
+          prefix={matchModeContainer ? undefined : modeToggle}
           suffix={
             <Button
               className="match-count"
@@ -291,6 +269,10 @@ export default function InlineMatchSelect({
           disabled={disabled}
           placeholder={t('搜索名称')}
           onFocus={() => active(true)}
+          onClick={() => {
+            // Focus opens the panel before Popover's click handler toggles it closed.
+            active(true);
+          }}
           onChange={event =>
             onKeywordChange(event.target.value, !composing.current)
           }

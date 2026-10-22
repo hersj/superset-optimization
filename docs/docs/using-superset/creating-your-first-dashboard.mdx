@@ -276,7 +276,7 @@ Sankey charts keep separate source and target nodes when shared labels would cre
 ### Selecting dashboard filter values
 
 Text filters use the name-selection panel on every dashboard. The **Allow fuzzy
-matching** setting only controls whether the title offers the **Contains** mode;
+matching** setting only controls whether the title offers the **模糊** toggle;
 with it disabled, the panel still supports exact named selections and bulk actions.
 Search for names and use the checkboxes to choose individual values. In a multi-select
 filter, **Select current results** and **Deselect all** affect the loaded matching
@@ -287,8 +287,10 @@ Saved keyword-based conditions keep their original behavior until the user expli
 chooses named values. Named selections and their search text are restored together;
 automatic dashboard refresh does not replace them with filter defaults.
 
-The compact **Exact / Contains** menu sits beside the filter title, leaving the
-input available for searching names. Calculated dataset columns use their saved
+Exact matching is the default and needs no label in the field. If fuzzy matching
+is enabled for a filter, click **模糊** beside its title to toggle it directly;
+the highlighted button means fuzzy matching is active. Clicking the search field
+or selection count opens the options on the first click. Calculated dataset columns use their saved
 expressions when loading options and applying parent selections, with the same
 time boundaries and row-level security as physical columns. Contribution values
 with a zero or missing denominator remain empty, including Decimal query results.
