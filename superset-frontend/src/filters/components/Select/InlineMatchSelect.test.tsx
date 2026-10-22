@@ -38,9 +38,11 @@ const searched = jest.fn();
 function Harness({
   loading = false,
   multiple = true,
+  allowFuzzyMatch = true,
 }: {
   loading?: boolean;
   multiple?: boolean;
+  allowFuzzyMatch?: boolean;
 }) {
   const [value, setValue] = useState<SelectValue>(['北美-US']);
   const [keyword, setKeyword] = useState('华南');
@@ -49,6 +51,7 @@ function Harness({
     <InlineMatchSelect
       column="shop"
       mode={mode}
+      allowFuzzyMatch={allowFuzzyMatch}
       keyword={keyword}
       value={value}
       options={options}
@@ -151,6 +154,23 @@ test('single-selection filters do not offer batch selection and close on choose'
   ).not.toBeInTheDocument();
   fireEvent.click(within(panel).getByRole('checkbox', { name: '华南-US' }));
   expect(changed).toHaveBeenLastCalledWith(['华南-US']);
+});
+
+test('disabling contains mode keeps the same checkboxes and bulk actions', async () => {
+  const { panel } = await open({ allowFuzzyMatch: false });
+  expect(screen.getByLabelText('匹配方式：shop')).toHaveTextContent('精确');
+  expect(
+    screen.queryByRole('button', { name: '匹配方式：shop' }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(within(panel).getByRole('button', { name: '全选当前结果' }));
+  expect(changed).toHaveBeenLastCalledWith([
+    '北美-US',
+    '华南-US',
+    '华南-CA',
+    '华南-UK',
+  ]);
+  fireEvent.click(within(panel).getByRole('button', { name: '取消全选' }));
+  expect(changed).toHaveBeenLastCalledWith(['北美-US']);
 });
 
 test('bulk selection supports null and zero values without string coercion', async () => {

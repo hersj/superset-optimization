@@ -205,8 +205,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     matchMode,
     clearAllTrigger,
   ]);
-  const showMatchMode =
-    allowFuzzyMatch !== false &&
+  const showValueSelection =
     appSection !== AppSection.FilterConfigModal &&
     (datatype === GenericDataType.String || matchMode === 'contains');
   const labelFormatter = useMemo(
@@ -606,13 +605,14 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               onChange={handleExclusionToggle}
             />
           )}
-          {showMatchMode ? (
+          {showValueSelection ? (
             <InlineMatchSelect
               column={col}
               mode={matchMode}
+              allowFuzzyMatch={allowFuzzyMatch}
               keyword={keyword}
               value={matchedValues}
-              options={uniqueOptions}
+              options={[...uniqueOptions].sort(sortComparator)}
               multiple={multiSelect}
               loading={
                 isRefreshing ||

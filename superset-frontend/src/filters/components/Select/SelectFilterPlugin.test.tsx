@@ -17,6 +17,7 @@
  * under the License.
  */
 import { AppSection, DataMask } from '@superset-ui/core';
+import { GenericDataType } from '@apache-superset/core/common';
 import { useState } from 'react';
 import {
   render,
@@ -80,13 +81,14 @@ const selectMultipleProps = {
 // eslint-disable-next-line no-restricted-globals -- TODO: Migrate from describe blocks
 describe('SelectFilterPlugin', () => {
   const setDataMask = jest.fn();
-  const getWrapper = (props = {}) =>
+  const getWrapper = (props = {}, appSection = AppSection.Dashboard) =>
     render(
       // @ts-expect-error
       <SelectFilterPlugin
         // @ts-expect-error
         {...transformProps({
           ...selectMultipleProps,
+          appSection,
           formData: { ...selectMultipleProps.formData, ...props },
         })}
         setDataMask={setDataMask}
@@ -147,12 +149,8 @@ describe('SelectFilterPlugin', () => {
       },
     });
 
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
-    userEvent.click(screen.getByTitle('girl'));
-    expect(
-      await screen.findByRole('option', { name: /girl/i }),
-    ).toBeInTheDocument();
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
         filters: [
@@ -167,18 +165,16 @@ describe('SelectFilterPlugin', () => {
         label: 'boy, girl',
         value: ['boy', 'girl'],
         excludeFilterValues: true,
+        valueSelection: true,
+        searchValue: '',
       },
     });
   });
 
   test('Remove multiple values when required', () => {
     getWrapper();
-    userEvent.click(
-      screen.getByRole('img', {
-        name: /close-circle/i,
-        hidden: true,
-      }),
-    );
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消全选' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
         adhoc_filters: [
@@ -193,24 +189,24 @@ describe('SelectFilterPlugin', () => {
         label: undefined,
         value: null,
         excludeFilterValues: true,
+        valueSelection: true,
+        searchValue: '',
       },
     });
   });
 
   test('Remove multiple values when not required', () => {
     getWrapper({ enableEmptyFilter: false });
-    userEvent.click(
-      screen.getByRole('img', {
-        name: /close-circle/i,
-        hidden: true,
-      }),
-    );
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消全选' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {},
       filterState: {
         label: undefined,
         value: null,
         excludeFilterValues: true,
+        valueSelection: true,
+        searchValue: '',
       },
     });
   });
@@ -218,12 +214,8 @@ describe('SelectFilterPlugin', () => {
   test('Select single values with inverse', async () => {
     getWrapper({ multiSelect: false, inverseSelection: true });
 
-    // Get the main filter select (second combobox)
-    const filterSelect = screen.getAllByRole('combobox')[1];
-    userEvent.click(filterSelect);
-
-    expect(await screen.findByTitle('girl')).toBeInTheDocument();
-    userEvent.click(screen.getByTitle('girl'));
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
         filters: [
@@ -238,18 +230,16 @@ describe('SelectFilterPlugin', () => {
         label: 'girl (excluded)',
         value: ['girl'],
         excludeFilterValues: true,
+        valueSelection: true,
+        searchValue: '',
       },
     });
   });
 
   test('Select single null (empty) value', async () => {
     getWrapper();
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
-    expect(
-      await screen.findByRole('combobox', { name: 'test-filter' }),
-    ).toBeInTheDocument();
-    userEvent.click(screen.getByTitle(NULL_STRING));
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: NULL_STRING }));
     expect(setDataMask).toHaveBeenLastCalledWith({
       extraFormData: {
         filters: [
@@ -264,18 +254,16 @@ describe('SelectFilterPlugin', () => {
         label: `boy, ${NULL_STRING}`,
         value: ['boy', null],
         excludeFilterValues: true,
+        valueSelection: true,
+        searchValue: '',
       },
     });
   });
 
   test('receives the correct filter when search all options', async () => {
     getWrapper({ searchAllOptions: true, multiSelect: false });
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
-    expect(
-      await screen.findByRole('combobox', { name: 'test-filter' }),
-    ).toBeInTheDocument();
-    userEvent.click(screen.getByTitle('girl'));
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
         extraFormData: {
@@ -291,19 +279,28 @@ describe('SelectFilterPlugin', () => {
     );
   });
 
-  test('number of fired queries when searching', async () => {
+  test('searching options preserves selections and debounces the option query', async () => {
     getWrapper({ searchAllOptions: true });
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
+    const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'a' } });
     expect(
-      await screen.findByRole('combobox', { name: 'test-filter' }),
-    ).toBeInTheDocument();
-    await userEvent.type(
-      screen.getByRole('combobox', { name: 'test-filter' }),
-      'a',
+      setDataMask.mock.calls.filter(([mask]) => mask.ownState?.search === 'a'),
+    ).toHaveLength(0);
+    await waitFor(() =>
+      expect(setDataMask).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          ownState: expect.objectContaining({ search: 'a' }),
+          filterState: expect.objectContaining({
+            value: ['boy'],
+            searchValue: 'a',
+          }),
+        }),
+      ),
     );
-    userEvent.tab();
-    expect(setDataMask).toHaveBeenCalledTimes(2);
+    expect(
+      setDataMask.mock.calls.filter(([mask]) => mask.ownState?.search === 'a'),
+    ).toHaveLength(1);
   });
 
   test('Select big int value', async () => {
@@ -316,7 +313,7 @@ describe('SelectFilterPlugin', () => {
           ...selectMultipleProps,
           formData: { ...selectMultipleProps.formData, groupby: 'bval' },
         })}
-        coltypeMap={{ bval: 1 }}
+        coltypeMap={{ bval: GenericDataType.Numeric }}
         data={[{ bval: bigValue }]}
         setDataMask={jest.fn()}
         showOverflow={false}
@@ -391,7 +388,7 @@ describe('SelectFilterPlugin', () => {
   });
 
   test('Should not allow for new values when creatable is false', () => {
-    getWrapper({ creatable: false });
+    getWrapper({ creatable: false }, AppSection.FilterConfigModal);
     userEvent.type(
       screen.getByRole('combobox', { name: 'test-filter' }),
       'new value',
@@ -400,7 +397,7 @@ describe('SelectFilterPlugin', () => {
   });
 
   test('Should allow for new values when creatable is true', async () => {
-    getWrapper({ creatable: true });
+    getWrapper({ creatable: true }, AppSection.FilterConfigModal);
     userEvent.type(
       screen.getByRole('combobox', { name: 'test-filter' }),
       'new value',
@@ -471,15 +468,14 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
 
     // When sortMetric is specified, options should appear in the original data order
     // (zebra, alpha, beta) not alphabetically sorted
-    const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('zebra');
-    expect(options[1]).toHaveTextContent('alpha');
-    expect(options[2]).toHaveTextContent('beta');
+    const options = screen.getAllByRole('checkbox');
+    expect(options[0]).toHaveAccessibleName('zebra');
+    expect(options[1]).toHaveAccessibleName('alpha');
+    expect(options[2]).toHaveAccessibleName('beta');
   });
 
   test('applies alphabetical sorting when sortMetric is not specified', () => {
@@ -545,15 +541,14 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
 
     // When sortMetric is not specified, options should be sorted alphabetically
     // (alpha, beta, zebra)
-    const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('alpha');
-    expect(options[1]).toHaveTextContent('beta');
-    expect(options[2]).toHaveTextContent('zebra');
+    const options = screen.getAllByRole('checkbox');
+    expect(options[0]).toHaveAccessibleName('alpha');
+    expect(options[1]).toHaveAccessibleName('beta');
+    expect(options[2]).toHaveAccessibleName('zebra');
   });
 
   test('applies descending alphabetical sorting when sortAscending is false and no sortMetric', () => {
@@ -619,15 +614,14 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
 
     // When sortAscending is false and no sortMetric, options should be sorted
     // in descending alphabetical order (zebra, beta, alpha)
-    const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('zebra');
-    expect(options[1]).toHaveTextContent('beta');
-    expect(options[2]).toHaveTextContent('alpha');
+    const options = screen.getAllByRole('checkbox');
+    expect(options[0]).toHaveAccessibleName('zebra');
+    expect(options[1]).toHaveAccessibleName('beta');
+    expect(options[2]).toHaveAccessibleName('alpha');
   });
 
   test('preserves backend order even when sortAscending is false and sortMetric is specified', () => {
@@ -693,15 +687,14 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    const filterSelect = screen.getAllByRole('combobox')[0];
-    userEvent.click(filterSelect);
+    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
 
     // When sortMetric is specified, original order should be preserved regardless
     // of sortAscending value (zebra, alpha, beta)
-    const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('zebra');
-    expect(options[1]).toHaveTextContent('alpha');
-    expect(options[2]).toHaveTextContent('beta');
+    const options = screen.getAllByRole('checkbox');
+    expect(options[0]).toHaveAccessibleName('zebra');
+    expect(options[1]).toHaveAccessibleName('alpha');
+    expect(options[2]).toHaveAccessibleName('beta');
   });
 });
 
@@ -719,6 +712,7 @@ test('Select boolean FALSE value in single-select mode', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -796,6 +790,7 @@ test('Select boolean TRUE value in single-select mode', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -873,6 +868,7 @@ test('Select both boolean values in multi-select mode', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -950,6 +946,7 @@ test('Select boolean filter with null values', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }, { is_active: null }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -1028,6 +1025,7 @@ test('Clear boolean FALSE value', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -1099,6 +1097,7 @@ test('Clear boolean TRUE value', async () => {
       {
         ...selectMultipleProps.queriesData[0],
         colnames: ['is_active'],
+        coltypes: [GenericDataType.Boolean],
         data: [{ is_active: true }, { is_active: false }],
         applied_filters: [{ column: 'is_active' }],
       },
@@ -1409,9 +1408,97 @@ test('explicit contains selections retain their exact values after remount and d
         filterState: expect.objectContaining({
           value: ['深圳科技'],
           matchMode: 'exact',
+          searchValue: '深圳',
+          valueSelection: true,
         }),
       }),
     ),
+  );
+  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
+    '深圳',
+  );
+  expect(screen.getByLabelText('匹配方式：gender')).toHaveTextContent('精确');
+  expect(
+    screen.queryByRole('button', { name: '匹配方式：gender' }),
+  ).not.toBeInTheDocument();
+});
+
+test('disabled contains mode keeps old exact selections and immediate named multiselect', async () => {
+  const setDataMask = jest.fn();
+  const view = render(
+    <ControlledMatchFilter
+      allowFuzzyMatch={false}
+      saved={{ value: ['boy'] }}
+      setDataMask={setDataMask}
+    />,
+  );
+  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  fireEvent.focus(input);
+  expect(await screen.findByRole('checkbox', { name: 'boy' })).toBeChecked();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'girl' }));
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'IN', val: ['boy', 'girl'] }],
+        },
+        filterState: expect.objectContaining({
+          value: ['boy', 'girl'],
+          valueSelection: true,
+        }),
+      }),
+    ),
+  );
+  fireEvent.change(input, { target: { value: 'bo' } });
+  const saved =
+    setDataMask.mock.calls[setDataMask.mock.calls.length - 1][0].filterState;
+  view.unmount();
+  render(
+    <ControlledMatchFilter
+      allowFuzzyMatch={false}
+      saved={saved}
+      setDataMask={setDataMask}
+    />,
+  );
+  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
+    'bo',
+  );
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'IN', val: ['boy', 'girl'] }],
+        },
+        filterState: expect.objectContaining({
+          searchValue: 'bo',
+          value: ['boy', 'girl'],
+        }),
+      }),
+    ),
+  );
+});
+
+test('empty text option results keep the named panel and the remembered selection', () => {
+  const props = transformProps({
+    ...selectMultipleProps,
+    queriesData: [
+      { ...selectMultipleProps.queriesData[0], data: [], rowcount: 0 },
+    ],
+  });
+  const setDataMask = jest.fn();
+  render(
+    <SelectFilterPlugin
+      {...props}
+      showOverflow={false}
+      setDataMask={setDataMask}
+    />,
+  );
+  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+  expect(screen.getByRole('status')).toHaveTextContent('无匹配项');
+  expect(setDataMask).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      filterState: expect.objectContaining({ value: ['boy'] }),
+    }),
   );
 });
 

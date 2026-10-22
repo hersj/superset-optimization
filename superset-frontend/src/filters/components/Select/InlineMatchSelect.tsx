@@ -34,6 +34,7 @@ type Option = { value: string | number | null; label: ReactNode };
 type Props = {
   column: string;
   mode: SelectFilterMatchMode;
+  allowFuzzyMatch?: boolean;
   keyword: string;
   value: SelectValue;
   options: Option[];
@@ -90,6 +91,7 @@ const Options = styled.div`
 export default function InlineMatchSelect({
   column,
   mode,
+  allowFuzzyMatch = true,
   keyword,
   value,
   options,
@@ -139,7 +141,7 @@ export default function InlineMatchSelect({
   const selectedVisible = visible.filter(option =>
     selected.includes(option.value),
   );
-  const modeMenu = (
+  const modeMenu = allowFuzzyMatch ? (
     <Dropdown
       menu={{
         selectedKeys: [mode],
@@ -165,6 +167,10 @@ export default function InlineMatchSelect({
         {mode === 'contains' ? t('包含') : t('精确')}⌄
       </Button>
     </Dropdown>
+  ) : (
+    <span className="match-mode" aria-label={`${t('匹配方式')}：${column}`}>
+      {t('精确')}
+    </span>
   );
   return (
     <Field ref={field}>

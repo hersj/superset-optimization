@@ -66,7 +66,7 @@ const config: ControlPanelConfig = {
               label: t('允许模糊匹配'),
               default: allowFuzzyMatch,
               description: t(
-                '仅对该筛选器启用精确/模糊切换及匹配名称预览，适用于文本字段。',
+                '控制该文本筛选器是否提供“包含”模式。关闭后仍可选择具体名称、全选和取消全选。',
               ),
             },
           },
