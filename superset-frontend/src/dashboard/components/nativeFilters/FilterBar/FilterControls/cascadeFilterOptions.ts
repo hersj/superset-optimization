@@ -265,7 +265,7 @@ const getPayload = (
   return {
     dataset_id: datasetId,
     columns: options.search ? [options.search.column] : columns,
-    ...(options.search ? { search: options.search, limit: 5 } : {}),
+    ...(options.search ? { search: options.search, limit: 1000 } : {}),
     applied_filters: appliedFilters,
     ...(Object.keys(filterOperators).length
       ? { filter_operators: filterOperators }

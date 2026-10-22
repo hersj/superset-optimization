@@ -653,7 +653,7 @@ test('preview requests only its own column with a five-name cap and retains pare
     expect.objectContaining({
       jsonPayload: expect.objectContaining({
         columns: ['competitor'],
-        limit: 5,
+        limit: 1000,
         search: { column: 'competitor', value: '深圳' },
         applied_filters: { site: ['US'] },
       }),

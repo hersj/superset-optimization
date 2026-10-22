@@ -19,7 +19,6 @@
 /* eslint-disable no-param-reassign */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
-import { createPortal } from 'react-dom';
 import {
   AppSection,
   DataMask,
@@ -36,9 +35,6 @@ import { debounce, isUndefined } from 'lodash';
 import { useImmerReducer } from 'use-immer';
 import {
   FormItem,
-  Button,
-  Input,
-  Popover,
   LabeledValue,
   Select,
   Space,
@@ -56,6 +52,7 @@ import {
 } from '../../utils';
 import { FilterPluginStyle, StatusMessage } from '../common';
 import { PluginFilterSelectProps, SelectValue } from './types';
+import InlineMatchSelect from './InlineMatchSelect';
 
 type DataMaskAction =
   | { type: 'ownState'; ownState: JsonObject }
@@ -67,6 +64,8 @@ type DataMaskAction =
         label?: string;
         excludeFilterValues?: boolean;
         matchMode?: SelectFilterMatchMode;
+        valueSelection?: boolean;
+        searchValue?: string;
       };
     };
 
@@ -142,7 +141,6 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     filterBarOrientation,
     clearAllTrigger,
     onClearAllComplete,
-    matchModeContainer,
     previewSearch,
   } = props;
   const {
@@ -173,19 +171,40 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     allowFuzzyMatch !== false && filterState.matchMode === 'contains'
       ? 'contains'
       : 'exact';
-  const [keyword, setKeyword] = useState(String(filterState.value?.[0] ?? ''));
+  const [keyword, setKeyword] = useState(
+    String(
+      filterState.searchValue ??
+        (filterState.matchMode === 'contains' && !filterState.valueSelection
+          ? filterState.value?.[0]
+          : '') ??
+        '',
+    ),
+  );
   const isComposing = useRef(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const isKeywordFocused = useRef(false);
   useEffect(() => {
-    if (clearAllTrigger || matchMode !== 'contains') {
+    if (clearAllTrigger) {
       setKeyword('');
       isComposing.current = false;
       isKeywordFocused.current = false;
     } else if (!isKeywordFocused.current && !isComposing.current) {
-      setKeyword(String(filterState.value?.[0] ?? ''));
+      setKeyword(
+        String(
+          filterState.searchValue ??
+            (matchMode === 'contains' && !filterState.valueSelection
+              ? filterState.value?.[0]
+              : '') ??
+            '',
+        ),
+      );
     }
-  }, [filterState.value?.[0], matchMode, clearAllTrigger]);
+  }, [
+    filterState.searchValue,
+    filterState.value?.[0],
+    filterState.valueSelection,
+    matchMode,
+    clearAllTrigger,
+  ]);
   const showMatchMode =
     allowFuzzyMatch !== false &&
     appSection !== AppSection.FilterConfigModal &&
@@ -228,12 +247,20 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   }, [filterBarOrientation]);
 
   const updateDataMask = useCallback(
-    (values: SelectValue, nextMatchMode: SelectFilterMatchMode = matchMode) => {
+    (
+      values: SelectValue,
+      nextMatchMode: SelectFilterMatchMode = matchMode,
+      valueSelection = filterState.valueSelection === true,
+      searchValue = filterState.searchValue as string | undefined,
+    ) => {
       const emptyFilter =
         enableEmptyFilter && !inverseSelection && !values?.length;
 
       const suffix = inverseSelection && values?.length ? t(' (excluded)') : '';
-      const prefix = nextMatchMode === 'contains' ? `${t('模糊匹配')}：` : '';
+      const prefix =
+        nextMatchMode === 'contains' && !valueSelection
+          ? `${t('模糊匹配')}：`
+          : '';
       dispatchDataMask({
         type: 'filterState',
         extraFormData: getSelectExtraFormData(
@@ -241,7 +268,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
           values,
           emptyFilter,
           excludeFilterValues && inverseSelection,
-          nextMatchMode,
+          valueSelection ? 'exact' : nextMatchMode,
         ),
         filterState: {
           ...filterState,
@@ -258,6 +285,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               ? undefined
               : values,
           excludeFilterValues,
+          ...(valueSelection ? { valueSelection: true, searchValue } : {}),
         },
       });
     },
@@ -388,7 +416,10 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
         type: 'ownState',
         ownState: { search: '', searchMatchMode: 'exact' },
       });
-      updateDataMask(null, 'exact');
+      updateDataMask(
+        filterState.valueSelection ? filterState.value : null,
+        'exact',
+      );
       return;
     }
 
@@ -506,7 +537,8 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
         },
       });
 
-      updateDataMask(null);
+      updateDataMask(null, matchMode, filterState.valueSelection === true, '');
+      setKeyword('');
       setSearch('');
       onClearAllComplete?.(formData.nativeFilterId);
     }
@@ -521,7 +553,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
           filterState.value,
           !filterState.value?.length,
           excludeFilterValues && inverseSelection,
-          matchMode,
+          filterState.valueSelection ? 'exact' : matchMode,
         ),
         filterState: {
           ...(filterState as {
@@ -540,28 +572,18 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     setExcludeFilterValues(value === 'true');
   };
 
-  const matchModeButton = showMatchMode && (
-    <Button
-      type="text"
-      size="small"
-      style={{ paddingInline: 4, height: 20, fontSize: 12 }}
-      aria-label={`${t('匹配方式')}：${col}`}
-      aria-pressed={matchMode === 'contains'}
-      title={
-        matchMode === 'contains' ? t('切换为精确匹配') : t('切换为模糊匹配')
-      }
-      onClick={() => {
-        onSearch.cancel();
-        setSearch('');
-        setPreviewOpen(false);
-        dispatchDataMask({ type: 'ownState', ownState: { search: '' } });
-        updateDataMask(null, matchMode === 'contains' ? 'exact' : 'contains');
-      }}
-      disabled={isDisabled}
-    >
-      {matchMode === 'contains' ? t('模糊') : t('精确')}
-    </Button>
-  );
+  const legacyContains =
+    matchMode === 'contains' && !filterState.valueSelection;
+  const matchedValues =
+    legacyContains && filterState.value?.length
+      ? uniqueOptions
+          .filter(option =>
+            String(option.label)
+              .toLocaleLowerCase()
+              .includes(keyword.trim().toLocaleLowerCase()),
+          )
+          .map(option => option.value)
+      : filterState.value;
 
   return (
     <FilterPluginStyle height={height} width={width}>
@@ -569,13 +591,10 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
         validateStatus={filterState.validateStatus}
         extra={formItemExtra}
       >
-        {matchModeContainer &&
-          createPortal(matchModeButton, matchModeContainer)}
         <StyledSpace
           appSection={appSection}
           inverseSelection={inverseSelection}
         >
-          {!matchModeContainer && matchModeButton}
           {appSection !== AppSection.FilterConfigModal && inverseSelection && (
             <Select
               className="exclude-select"
@@ -587,78 +606,61 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               onChange={handleExclusionToggle}
             />
           )}
-          {matchMode === 'contains' ? (
-            <Popover
-              trigger="focus"
-              placement="rightTop"
-              open={previewOpen && Boolean(keyword.trim())}
-              onOpenChange={setPreviewOpen}
-              title={t('匹配名称预览（最多 5 个）')}
-              content={
-                <div role="status" aria-live="polite" style={{ maxWidth: 320 }}>
-                  {isRefreshing || previewSearch !== keyword ? (
-                    t('正在查找匹配名称…')
-                  ) : data.length ? (
-                    <ul style={{ margin: 0, paddingInlineStart: 16 }}>
-                      {data.slice(0, 5).map(row => (
-                        <li key={String(row[col])}>
-                          {labelFormatter(row[col], datatype)}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    t('没有匹配的名称')
-                  )}
-                </div>
+          {showMatchMode ? (
+            <InlineMatchSelect
+              column={col}
+              mode={matchMode}
+              keyword={keyword}
+              value={matchedValues}
+              options={uniqueOptions}
+              multiple={multiSelect}
+              loading={
+                isRefreshing ||
+                (matchMode === 'contains' &&
+                  Boolean(keyword) &&
+                  previewSearch !== undefined &&
+                  previewSearch !== keyword)
               }
-            >
-              <Input
-                aria-label={`${t('模糊匹配关键词')}：${col}`}
-                allowClear
-                value={keyword}
-                placeholder={t('输入名称中包含的关键词')}
-                onChange={event => {
-                  const value = event.target.value;
-                  setKeyword(value);
-                  if (!isComposing.current) {
-                    updateDataMask(value.trim() ? [value] : null);
-                    onSearch(value);
-                  }
-                }}
-                onCompositionStart={() => {
-                  isComposing.current = true;
-                  onSearch.cancel();
-                  setPreviewOpen(false);
-                }}
-                onCompositionEnd={event => {
-                  isComposing.current = false;
-                  const value = event.currentTarget.value;
-                  setKeyword(value);
-                  updateDataMask(value.trim() ? [value] : null);
-                  onSearch(value);
-                  setPreviewOpen(isKeywordFocused.current);
-                }}
-                onFocus={() => {
-                  isKeywordFocused.current = true;
-                  setPreviewOpen(true);
-                  setFilterActive(true);
-                  onSearch(keyword);
+              disabled={isDisabled}
+              inputRef={inputRef}
+              onActiveChange={active => {
+                isKeywordFocused.current = active;
+                setFilterActive(active);
+                if (active) {
                   setFocusedFilter();
-                }}
-                onBlur={() => {
-                  isKeywordFocused.current = false;
-                  setPreviewOpen(false);
-                  setFilterActive(false);
-                  unsetFocusedFilter();
-                }}
-                onMouseEnter={setHoveredFilter}
-                onMouseLeave={unsetHoveredFilter}
-                onKeyDown={event => {
-                  if (event.key === 'Escape') setPreviewOpen(false);
-                }}
-                disabled={isDisabled}
-              />
-            </Popover>
+                  onSearch(keyword);
+                } else unsetFocusedFilter();
+              }}
+              onKeywordChange={(value, committed) => {
+                setKeyword(value);
+                isComposing.current = !committed;
+                if (!committed) {
+                  onSearch.cancel();
+                  return;
+                }
+                // Old keyword predicates stay valid until an explicit selection replaces them.
+                if (legacyContains)
+                  updateDataMask(
+                    value.trim() ? [value] : null,
+                    matchMode,
+                    false,
+                    value,
+                  );
+                else updateDataMask(filterState.value, matchMode, true, value);
+                onSearch(value);
+              }}
+              onModeChange={mode => {
+                onSearch.cancel();
+                dispatchDataMask({
+                  type: 'ownState',
+                  ownState: { search: '', searchMatchMode: mode },
+                });
+                updateDataMask(matchedValues, mode, true, keyword);
+              }}
+              onChange={values =>
+                updateDataMask(values, matchMode, true, keyword)
+              }
+            />
           ) : (
             <Select
               name={formData.nativeFilterId}
