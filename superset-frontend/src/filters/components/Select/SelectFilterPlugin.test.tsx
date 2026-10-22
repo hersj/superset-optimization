@@ -1274,16 +1274,29 @@ test('resets dependent filter to first item when value does not exist in data', 
 
 function ControlledMatchFilter({
   saved,
+  names,
   allowFuzzyMatch = true,
   setDataMask = jest.fn(),
 }: {
   saved?: DataMask['filterState'];
+  names?: string[];
   allowFuzzyMatch?: boolean;
   setDataMask?: (mask: DataMask) => void;
 }) {
   const [filterState, setFilterState] = useState(saved ?? { value: null });
   const props = transformProps({
     ...selectMultipleProps,
+    ...(names
+      ? {
+          queriesData: [
+            {
+              ...selectMultipleProps.queriesData[0],
+              data: names.map(gender => ({ gender })),
+              rowcount: names.length,
+            },
+          ],
+        }
+      : {}),
     filterState,
     formData: {
       ...selectMultipleProps.formData,
@@ -1351,11 +1364,13 @@ test('keeps Chinese composition local and saves only the committed search value'
   await waitFor(() =>
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        extraFormData: { filters: [{ col: 'gender', op: 'IN', val: ['boy'] }] },
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'ILIKE', val: '%深圳%' }],
+        },
         filterState: expect.objectContaining({
           searchValue: '深圳',
-          value: ['boy'],
-          valueSelection: true,
+          value: ['深圳'],
+          valueSelection: false,
         }),
       }),
     ),
@@ -1574,4 +1589,157 @@ test('commits checked names as IN values while preserving the contains search mo
       }),
     ),
   );
+});
+
+test('fuzzy typing selects every matching name automatically and replaces the previous selection', async () => {
+  const setDataMask = jest.fn();
+  const names = ['华南-US', '华南-CA', '北美-US'];
+  const view = render(
+    <ControlledMatchFilter
+      names={names}
+      saved={{ value: ['北美-US'], matchMode: 'exact' }}
+      setDataMask={setDataMask}
+    />,
+  );
+  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const mode = screen.getByRole('button', { name: '匹配方式：gender' });
+  expect(mode).toHaveTextContent('精确');
+  fireEvent.click(mode);
+  expect(mode).toHaveTextContent('模糊');
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: '华南' } });
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extraFormData: {
+          filters: [{ col: 'gender', op: 'ILIKE', val: '%华南%' }],
+        },
+        filterState: expect.objectContaining({
+          value: ['华南'],
+          matchMode: 'contains',
+          valueSelection: false,
+          searchValue: '华南',
+        }),
+      }),
+    ),
+  );
+  expect(screen.getByRole('checkbox', { name: '华南-US' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: '华南-CA' })).toBeChecked();
+  expect(
+    screen.getByRole('button', { name: '展开选项：gender' }),
+  ).toHaveTextContent('已选 2');
+  const saved = setDataMask.mock.calls.at(-1)[0].filterState;
+  view.unmount();
+  const restored = render(
+    <ControlledMatchFilter
+      names={names}
+      saved={saved}
+      setDataMask={setDataMask}
+    />,
+  );
+  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+  expect(screen.getByRole('checkbox', { name: '华南-US' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: '华南-CA' })).toBeChecked();
+  // A refreshed option list inherits the saved predicate, including new matches.
+  restored.rerender(
+    <ControlledMatchFilter
+      names={[...names, '华南-UK']}
+      saved={saved}
+      setDataMask={setDataMask}
+    />,
+  );
+  expect(screen.getByRole('checkbox', { name: '华南-UK' })).toBeChecked();
+  expect(
+    screen.getByRole('button', { name: '展开选项：gender' }),
+  ).toHaveTextContent('已选 3');
+});
+
+test('exact searches keep selections and switching to fuzzy applies the current keyword', async () => {
+  const setDataMask = jest.fn();
+  render(<ControlledMatchFilter setDataMask={setDataMask} />);
+  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'bo' } });
+  expect(screen.getByRole('checkbox', { name: 'boy' })).not.toBeChecked();
+  expect(setDataMask.mock.calls.at(-1)[0].extraFormData.filters ?? []).toEqual(
+    [],
+  );
+  fireEvent.click(screen.getByRole('button', { name: '匹配方式：gender' }));
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData).toEqual({
+      filters: [{ col: 'gender', op: 'ILIKE', val: '%bo%' }],
+    }),
+  );
+  expect(screen.getByRole('checkbox', { name: 'boy' })).toBeChecked();
+  expect(setDataMask.mock.calls.at(-1)[0].ownState).toEqual(
+    expect.objectContaining({ search: 'bo', searchMatchMode: 'contains' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: '匹配方式：gender' }));
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData).toEqual({
+      filters: [{ col: 'gender', op: 'IN', val: ['boy'] }],
+    }),
+  );
+  expect(
+    screen.getByRole('button', { name: '匹配方式：gender' }),
+  ).toHaveTextContent('精确');
+});
+
+test('no fuzzy matches keep the predicate and clearing the keyword removes it', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <ControlledMatchFilter
+      saved={{ matchMode: 'contains', value: null }}
+      setDataMask={setDataMask}
+    />,
+  );
+  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'not found' } });
+  expect(screen.getByRole('status')).toHaveTextContent('无匹配项');
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData).toEqual({
+      filters: [{ col: 'gender', op: 'ILIKE', val: '%not found%' }],
+    }),
+  );
+  fireEvent.change(input, { target: { value: '' } });
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        extraFormData: {},
+        filterState: expect.objectContaining({ value: null, searchValue: '' }),
+      }),
+    ),
+  );
+});
+
+test('manual deselection overrides auto matches until the next fuzzy keyword', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <ControlledMatchFilter
+      names={['华南-US', '华南-CA', '北美-US']}
+      saved={{
+        matchMode: 'contains',
+        value: ['北美-US'],
+        valueSelection: true,
+      }}
+      setDataMask={setDataMask}
+    />,
+  );
+  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: '华南' } });
+  fireEvent.click(await screen.findByRole('checkbox', { name: '华南-CA' }));
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData).toEqual({
+      filters: [{ col: 'gender', op: 'IN', val: ['华南-US'] }],
+    }),
+  );
+  fireEvent.change(input, { target: { value: '北美' } });
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0].extraFormData).toEqual({
+      filters: [{ col: 'gender', op: 'ILIKE', val: '%北美%' }],
+    }),
+  );
+  expect(screen.getByRole('checkbox', { name: '北美-US' })).toBeChecked();
 });

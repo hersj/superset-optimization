@@ -162,7 +162,7 @@ export default function InlineMatchSelect({
         onModeChange(mode === 'contains' ? 'exact' : 'contains');
       }}
     >
-      {t('模糊')}
+      {mode === 'contains' ? t('模糊') : t('精确')}
     </MatchMode>
   ) : null;
   return (

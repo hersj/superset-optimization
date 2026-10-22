@@ -160,17 +160,18 @@ test('composition never emits committed pinyin and stale options cannot be selec
   expect(within(panel).queryByRole('checkbox')).not.toBeInTheDocument();
 });
 
-test('one click toggles fuzzy matching without a menu or an exact label', async () => {
+test('one click switches the current exact or fuzzy label without a menu', async () => {
   const { panel } = await open();
   const mode = screen.getByRole('button', { name: '匹配方式：shop' });
   expect(mode).toHaveTextContent('模糊');
   expect(mode).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(mode);
   expect(mode).toHaveAttribute('aria-pressed', 'false');
+  expect(mode).toHaveTextContent('精确');
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-  expect(screen.queryByText('精确')).not.toBeInTheDocument();
   fireEvent.click(mode);
   expect(mode).toHaveAttribute('aria-pressed', 'true');
+  expect(mode).toHaveTextContent('模糊');
   expect(changed).not.toHaveBeenCalled();
   for (const button of [
     screen.getByRole('button', { name: '匹配方式：shop' }),

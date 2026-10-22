@@ -285,7 +285,9 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               ? undefined
               : values,
           excludeFilterValues,
-          ...(valueSelection ? { valueSelection: true, searchValue } : {}),
+          ...(valueSelection || nextMatchMode === 'contains'
+            ? { valueSelection, searchValue }
+            : {}),
         },
       });
     },
@@ -572,10 +574,10 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     setExcludeFilterValues(value === 'true');
   };
 
-  const legacyContains =
+  const keywordSelection =
     matchMode === 'contains' && !filterState.valueSelection;
   const matchedValues =
-    legacyContains && filterState.value?.length
+    keywordSelection && filterState.value?.length
       ? uniqueOptions
           .filter(option =>
             String(option.label)
@@ -640,8 +642,8 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
                   onSearch.cancel();
                   return;
                 }
-                // Old keyword predicates stay valid until an explicit selection replaces them.
-                if (legacyContains)
+                // Keep the keyword predicate so every match is selected beyond the option preview limit.
+                if (matchMode === 'contains')
                   updateDataMask(
                     value.trim() ? [value] : null,
                     matchMode,
@@ -655,9 +657,14 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
                 onSearch.cancel();
                 dispatchDataMask({
                   type: 'ownState',
-                  ownState: { search: '', searchMatchMode: mode },
+                  ownState: {
+                    search: mode === 'contains' ? keyword : '',
+                    searchMatchMode: mode,
+                  },
                 });
-                updateDataMask(matchedValues, mode, true, keyword);
+                if (mode === 'contains' && keyword.trim())
+                  updateDataMask([keyword], mode, false, keyword);
+                else updateDataMask(matchedValues, mode, true, keyword);
               }}
               onChange={values =>
                 updateDataMask(values, matchMode, true, keyword)

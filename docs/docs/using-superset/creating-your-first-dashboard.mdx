@@ -192,17 +192,17 @@ slices and dashboards of your own.
 Use **允许模糊匹配** separately in each text filter's settings to offer
 **精确匹配** (exact match, the default) and
 **模糊匹配** (contains match). Exact match uses the selected complete values.
-Use the compact button beside the filter title to switch modes. Chinese input
-composition is committed only after the characters are confirmed. While typing,
-a temporary popover previews at most five matching names within the current
-parent and time filters. The chart keeps its existing update behavior; preview
-does not add an Apply step. The option defaults to enabled to preserve existing
+The compact button beside the filter title displays **精确** or **模糊**; click
+it to switch directly without a menu. In fuzzy mode, entering a keyword automatically
+selects every matching name and updates the charts without a Select all or Apply
+step. Chinese input composition is committed only after the characters are confirmed.
+The option defaults to enabled to preserve existing
 filters and remembered keywords; turn it off for filters needing only exact selection.
 Disabling it clears any remembered contains keyword so it cannot stay active invisibly.
 Contains match accepts one keyword and filters all matching rows, independently
 of the number of dropdown options loaded. It ignores letter case and treats
-`%`, `_`, and backslashes as literal characters. Switching modes clears the
-previous value; clearing the keyword removes the condition. The chosen mode and
+`%`, `_`, and backslashes as literal characters. Switching to fuzzy mode applies
+the current keyword; clearing the keyword removes the condition. The chosen mode and
 keyword use the dashboard's existing filter-state restore behavior.
 
 ### Manage access to Dashboards
@@ -276,7 +276,7 @@ Sankey charts keep separate source and target nodes when shared labels would cre
 ### Selecting dashboard filter values
 
 Text filters use the name-selection panel on every dashboard. The **Allow fuzzy
-matching** setting only controls whether the title offers the **模糊** toggle;
+matching** setting only controls whether the title offers the **精确 / 模糊** toggle;
 with it disabled, the panel still supports exact named selections and bulk actions.
 Search for names and use the checkboxes to choose individual values. In a multi-select
 filter, **Select current results** and **Deselect all** affect the loaded matching
@@ -287,9 +287,11 @@ Saved keyword-based conditions keep their original behavior until the user expli
 chooses named values. Named selections and their search text are restored together;
 automatic dashboard refresh does not replace them with filter defaults.
 
-Exact matching is the default and needs no label in the field. If fuzzy matching
-is enabled for a filter, click **模糊** beside its title to toggle it directly;
-the highlighted button means fuzzy matching is active. Clicking the search field
+Exact matching is the default. If fuzzy matching is enabled for a filter, the title
+button displays its current mode: **精确** or **模糊**. In fuzzy mode, entering or
+changing the keyword automatically selects all matches, including values beyond
+the loaded option preview. Individual deselection changes the selection to explicit
+names; entering another keyword selects all matches again. Clicking the search field
 or selection count opens the options on the first click. Calculated dataset columns use their saved
 expressions when loading options and applying parent selections, with the same
 time boundaries and row-level security as physical columns. Contribution values
