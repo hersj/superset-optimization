@@ -18,7 +18,13 @@
  */
 import { useState } from 'react';
 import { ensureIsArray, LegendState } from '@superset-ui/core';
-import { Button, Checkbox, Input, Popover } from '@superset-ui/core/components';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Popover,
+  Tooltip,
+} from '@superset-ui/core/components';
 import { styled } from '@apache-superset/core/theme';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { RefObject } from 'react';
@@ -52,6 +58,7 @@ const Panel = styled.div`
     flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
+    white-space: pre-line;
   }
 `;
 
@@ -60,6 +67,8 @@ type Props = {
   groups: LegendGroupMetadata;
   onChange: (payload: { selected: LegendState }) => void;
   echartRef: RefObject<EchartsHandler | null>;
+  itemLabel?: string;
+  fullLabels?: Record<string, string>;
 };
 
 export default function LegendSelector({
@@ -67,6 +76,8 @@ export default function LegendSelector({
   groups,
   onChange,
   echartRef,
+  itemLabel = '指标',
+  fullLabels,
 }: Props) {
   const [search, setSearch] = useState('');
   const legend = ensureIsArray(options.legend)[0] as
@@ -97,7 +108,7 @@ export default function LegendSelector({
       : text;
   };
   const matches = names.filter(name =>
-    `${label(name)} ${name}`
+    `${label(name)} ${fullLabels?.[name] ?? name}`
       .toLocaleLowerCase()
       .includes(search.trim().toLocaleLowerCase()),
   );
@@ -122,10 +133,10 @@ export default function LegendSelector({
               ?.dispatchAction({ type: 'downplay' });
         }}
         content={
-          <Panel aria-label="指标选择面板">
+          <Panel aria-label={`${itemLabel}选择面板`}>
             <Input
-              aria-label="搜索指标"
-              placeholder="搜索指标名称"
+              aria-label={`搜索${itemLabel}`}
+              placeholder={`搜索${itemLabel}完整名称或尾码`}
               allowClear
               value={search}
               onChange={event => setSearch(event.target.value)}
@@ -136,31 +147,60 @@ export default function LegendSelector({
                 onClick={() =>
                   onChange({
                     selected: Object.fromEntries(
-                      names.map(name => [name, true]),
+                      names.map(name => [
+                        name,
+                        itemLabel === 'SKU' && !matches.includes(name)
+                          ? selected[name]
+                          : true,
+                      ]),
                     ),
                   })
                 }
               >
-                显示全部
+                {itemLabel === 'SKU' ? '全选结果' : '显示全部'}
               </Button>
+              {itemLabel === 'SKU' && (
+                <Button
+                  buttonSize="small"
+                  onClick={() =>
+                    onChange({
+                      selected: {
+                        ...selected,
+                        ...Object.fromEntries(
+                          matches.map(name => [name, false]),
+                        ),
+                      },
+                    })
+                  }
+                >
+                  取消结果
+                </Button>
+              )}
               <Button
                 buttonSize="small"
                 onClick={() =>
                   onChange({
                     selected: Object.fromEntries(
-                      names.map(name => [name, !selected[name]]),
+                      names.map(name => [
+                        name,
+                        itemLabel === 'SKU' && !matches.includes(name)
+                          ? selected[name]
+                          : !selected[name],
+                      ]),
                     ),
                   })
                 }
               >
-                反选全部
+                {itemLabel === 'SKU' ? '反选结果' : '反选全部'}
               </Button>
               <span>
                 {matches.length} / {names.length}
               </span>
             </div>
             <div className="legend-list">
-              {matches.length === 0 && <div role="status">没有匹配的指标</div>}
+              {matches.length === 0 && (
+                <div role="status">没有匹配的{itemLabel}</div>
+              )}
               {matches.map(name => (
                 <div
                   className="legend-row"
@@ -169,6 +209,7 @@ export default function LegendSelector({
                   onMouseLeave={() => highlight(name, false)}
                 >
                   <Checkbox
+                    aria-label={fullLabels?.[name]}
                     checked={selected[name]}
                     onChange={event =>
                       onChange({
@@ -176,11 +217,13 @@ export default function LegendSelector({
                       })
                     }
                   >
-                    {label(name)}
+                    <Tooltip title={fullLabels?.[name]}>
+                      <span>{label(name)}</span>
+                    </Tooltip>
                   </Checkbox>
                   <Button
                     buttonSize="small"
-                    aria-label={`仅看此项：${label(name)}`}
+                    aria-label={`仅看此项：${fullLabels?.[name] ?? label(name)}`}
                     onClick={() =>
                       onChange({
                         selected: getLegendStateChange(
@@ -201,7 +244,7 @@ export default function LegendSelector({
         }
       >
         <Button buttonSize="small">
-          指标选择（{Object.values(selected).filter(Boolean).length}/
+          {itemLabel}选择（{Object.values(selected).filter(Boolean).length}/
           {names.length}）
         </Button>
       </Popover>

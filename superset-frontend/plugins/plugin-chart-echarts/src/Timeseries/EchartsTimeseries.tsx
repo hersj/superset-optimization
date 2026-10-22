@@ -17,6 +17,7 @@
  * under the License.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '@apache-superset/core/translation';
 import {
   DTTM_ALIAS,
   BinaryQueryObjectFilterClause,
@@ -37,6 +38,7 @@ import { formatSeriesName } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
 import LegendSelector from '../components/LegendSelector';
+import { Button, Typography } from '@superset-ui/core/components';
 
 const TIMER_DURATION = 300;
 
@@ -70,6 +72,7 @@ export default function EchartsTimeseries({
   onLegendScroll,
   matrixDimensions,
   matrixTimeGrain,
+  skuSelection,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const dataZoomStorageKey =
@@ -87,6 +90,7 @@ export default function EchartsTimeseries({
   const clickTimer = useRef<ReturnType<typeof setTimeout>>();
   const extraControlRef = useRef<HTMLDivElement>(null);
   const [extraControlHeight, setExtraControlHeight] = useState(0);
+  const [skuDetail, setSkuDetail] = useState<string>();
   useEffect(() => {
     const element = extraControlRef.current;
     if (!element) {
@@ -276,6 +280,14 @@ export default function EchartsTimeseries({
    */
   const eventHandlers: EventHandlers = {
     click: props => {
+      if (
+        skuSelection &&
+        (props.componentType === 'xAxis' || props.componentType === 'yAxis') &&
+        props.value != null
+      ) {
+        setSkuDetail(String(props.value));
+        return;
+      }
       if (matrixDimensions && props.data?.dimensionValues) {
         if (clickTimer.current) clearTimeout(clickTimer.current);
         if (emitCrossFilters) {
@@ -353,7 +365,9 @@ export default function EchartsTimeseries({
           return;
         }
         const values = [
-          ...(eventParams.name ? [eventParams.name] : []),
+          ...(eventParams.name
+            ? [skuSelection?.axisValues?.[eventParams.name] ?? eventParams.name]
+            : []),
           ...(labelMap[seriesName] ?? []),
         ];
         const groupBy = ensureIsArray(formData.groupby);
@@ -462,6 +476,27 @@ export default function EchartsTimeseries({
   return (
     <>
       <div ref={extraControlRef}>
+        {skuSelection && (
+          <LegendSelector
+            itemLabel="SKU"
+            fullLabels={skuSelection.values}
+            options={{
+              legend: {
+                data: skuSelection.names,
+                selected: skuSelection.selected,
+              },
+            }}
+            groups={{
+              groups: {},
+              labels: skuSelection.labels,
+              kinds: {},
+              parents: {},
+              stateKeys: {},
+            }}
+            onChange={payload => onLegendStateChanged?.(payload.selected)}
+            echartRef={echartRef}
+          />
+        )}
         <LegendSelector
           options={echartOptions}
           groups={legendGroups}
@@ -469,6 +504,17 @@ export default function EchartsTimeseries({
           echartRef={echartRef}
         />
         <ExtraControls formData={formData} setControlValue={setControlValue} />
+        {skuDetail && (
+          <div
+            aria-label={t('SKU完整名称')}
+            style={{ overflowWrap: 'anywhere' }}
+          >
+            <Typography.Paragraph copyable>{skuDetail}</Typography.Paragraph>
+            <Button buttonSize="small" onClick={() => setSkuDetail(undefined)}>
+              收起
+            </Button>
+          </div>
+        )}
       </div>
       <Echart
         ref={echartRef}

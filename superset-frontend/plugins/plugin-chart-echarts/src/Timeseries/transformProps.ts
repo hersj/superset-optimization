@@ -17,7 +17,7 @@
  * under the License.
  */
 /* eslint-disable camelcase */
-import { invert } from 'lodash';
+import { escape, invert } from 'lodash';
 import { alignPeriodAxis } from '../utils/periodAxis';
 import { t } from '@apache-superset/core/translation';
 import {
@@ -130,6 +130,7 @@ import {
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import { getMetricDisplayName } from '../utils/metricDisplayName';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
+import { buildSkuSelection, expandSkuAliases } from '../utils/skuLabels';
 
 /*
  * 功能审计（可重写规格）：折线图点击聚焦富提示框系列
@@ -301,7 +302,7 @@ export default function transformProps(
   const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
     ? selectedPeriod
     : undefined;
-  const rebasedData = maskCustomPeriodCurrentData(
+  const unfilteredData = maskCustomPeriodCurrentData(
     rebaseForecastDatum(data, verboseMap),
     xAxisLabel,
     xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
@@ -309,6 +310,47 @@ export default function transformProps(
     String(chartProps.rawFormData.comparison_type ?? 'values'),
   );
   const isHorizontal = orientation === OrientationType.Horizontal;
+  const isSkuAxis =
+    seriesType === EchartsTimeseriesSeriesType.Bar &&
+    xAxisType === AxisType.Category &&
+    /sku/i.test(JSON.stringify(chartProps.rawFormData?.x_axis ?? xAxisOrig));
+  const skuGroupIndex = groupBy.findIndex(column =>
+    /sku/i.test(typeof column === 'string' ? column : (column.label ?? '')),
+  );
+  const aliasedSkuData =
+    isSkuAxis && /简称/.test(xAxisLabel) && skuGroupIndex >= 0
+      ? expandSkuAliases(
+          unfilteredData,
+          xAxisLabel,
+          Object.fromEntries(
+            Object.entries(labelMap)
+              .filter(([, values]) => values.length >= groupBy.length)
+              .map(([key, values]) => [
+                key,
+                String(values[values.length - groupBy.length + skuGroupIndex]),
+              ]),
+          ),
+        )
+      : undefined;
+  const skuData = aliasedSkuData?.data ?? unfilteredData;
+  const skuSelection = isSkuAxis
+    ? {
+        ...buildSkuSelection(
+          xAxisLabel,
+          skuData.map(row => String(row[xAxisLabel] ?? '')),
+          legendState,
+        ),
+        axisValues: aliasedSkuData?.axisValues,
+      }
+    : undefined;
+  const visibleSkus = new Set(
+    skuSelection?.names
+      .filter(key => skuSelection.selected[key])
+      .map(key => skuSelection.values[key]),
+  );
+  const rebasedData = skuSelection
+    ? skuData.filter(row => visibleSkus.has(String(row[xAxisLabel] ?? '')))
+    : skuData;
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
     rebasedData,
     {
@@ -753,7 +795,12 @@ export default function transformProps(
   const addXAxisLabelOffset =
     !!xAxisTitle && convertInteger(xAxisTitleMargin) !== 0;
   const hasTimeCompare = array.length > 0;
-  const legendVisible = hasTimeCompare ? true : showLegend;
+  const legendVisible =
+    skuSelection && colorByPrimaryAxis
+      ? false
+      : hasTimeCompare
+        ? true
+        : showLegend;
   const padding = getPadding(
     legendVisible,
     legendOrientation,
@@ -1001,6 +1048,32 @@ export default function transformProps(
         (yAxis as any).data = categoryData;
       }
     }
+  }
+
+  if (skuSelection) {
+    const categoryAxis = isHorizontal ? yAxis : xAxis;
+    const labels = Object.fromEntries(
+      skuSelection.names.map(key => [
+        skuSelection.values[key],
+        skuSelection.labels[key],
+      ]),
+    );
+    categoryAxis.axisLabel = {
+      ...categoryAxis.axisLabel,
+      formatter: (value: string) => labels[value] ?? value,
+      width: Math.max(72, Math.min(190, width * 0.3)),
+      overflow: 'truncate',
+      rotate: 0,
+    };
+    categoryAxis.triggerEvent = true;
+    categoryAxis.data = [
+      ...new Set(rebasedData.map(row => String(row[xAxisLabel] ?? ''))),
+    ];
+    categoryAxis.name = 'SKU';
+    categoryAxis.tooltip = {
+      show: true,
+      formatter: ({ value }: { value: string }) => escape(String(value)),
+    };
   }
 
   const legendProps = getLegendProps(
@@ -1317,6 +1390,7 @@ export default function transformProps(
     width,
     legendData,
     legendGroups,
+    skuSelection,
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,

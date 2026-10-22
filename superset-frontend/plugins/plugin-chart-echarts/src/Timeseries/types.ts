@@ -38,6 +38,7 @@ import {
   TitleFormData,
 } from '../types';
 import type { LegendGroupMetadata } from '../utils/series';
+import type { SkuSelection } from '../utils/skuLabels';
 
 export enum OrientationType {
   Vertical = 'vertical',
@@ -116,6 +117,7 @@ export type TimeseriesChartTransformedProps =
     CrossFilterTransformedProps & {
       legendData?: OptionName[];
       legendGroups?: LegendGroupMetadata;
+      skuSelection?: SkuSelection;
       isRefreshing?: boolean;
       xValueFormatter: TimeFormatter | StringConstructor;
       xAxis: {

@@ -27,6 +27,7 @@ import {
 import type { LegendState } from '@superset-ui/core';
 import type { EChartsType } from 'echarts/core';
 import LegendSelector from './LegendSelector';
+import { buildSkuSelection } from '../utils/skuLabels';
 import {
   buildLegendGroupMetadata,
   getLegendStateChange,
@@ -177,4 +178,43 @@ test('duplicate labels remain independently addressable', async () => {
   expect(
     screen.getByRole('checkbox', { name: '费用（Query B:费用）' }),
   ).not.toBeChecked();
+});
+
+test('SKU panel searches full names and bulk changes only matching results', async () => {
+  const sku = buildSkuSelection('kk_sku', [
+    'TL-香薰7-1-黑色-很长的规格-同尾码123456789',
+    'TL-香薰7-1-白色-很长的规格-同尾码123456789',
+    'FL-直杆布-白色',
+  ]);
+  render(
+    <LegendSelector
+      itemLabel="SKU"
+      fullLabels={sku.values}
+      options={{ legend: { data: sku.names, selected: sku.selected } }}
+      groups={{
+        groups: {},
+        labels: sku.labels,
+        kinds: {},
+        parents: {},
+        stateKeys: {},
+      }}
+      onChange={changed}
+      echartRef={echartRef}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'SKU选择（3/3）' }));
+  const panel = await screen.findByLabelText('SKU选择面板');
+  fireEvent.change(within(panel).getByRole('textbox'), {
+    target: { value: '黑色' },
+  });
+  expect(within(panel).getAllByRole('checkbox')).toHaveLength(1);
+  fireEvent.click(within(panel).getByRole('button', { name: '取消结果' }));
+  const black = sku.names.find(key => sku.values[key].includes('黑色'))!;
+  expect(changed).toHaveBeenLastCalledWith({
+    selected: { ...sku.selected, [black]: false },
+  });
+  fireEvent.click(within(panel).getByRole('button', { name: '反选结果' }));
+  expect(changed).toHaveBeenLastCalledWith({
+    selected: { ...sku.selected, [black]: false },
+  });
 });
