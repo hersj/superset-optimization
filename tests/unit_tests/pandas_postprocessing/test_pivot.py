@@ -17,7 +17,7 @@
 
 import numpy as np
 import pytest
-from pandas import DataFrame, to_datetime
+from pandas import DataFrame, NA, to_datetime
 
 from superset.exceptions import InvalidPostProcessingError
 from superset.utils.pandas_postprocessing import flatten, pivot
@@ -96,6 +96,22 @@ def test_pivot_query_order_does_not_restore_dropped_null_categories():
         preserve_row_order=True,
     )
     assert result.index.tolist() == ["A"]
+
+
+@pytest.mark.parametrize("missing", [None, np.nan, NA])
+def test_pivot_query_order_keeps_retained_null_category_position(missing):
+    source = DataFrame({"lt": ["B", missing, "A"], "profit": [30.0, 20.0, 10.0]})
+    result = pivot(
+        source,
+        index=["lt"],
+        aggregates={"profit": {"operator": "mean"}},
+        preserve_row_order=True,
+        drop_missing_columns=False,
+    )
+    assert result.index[0] == "B"
+    assert result.index[2] == "A"
+    assert result.index.isna().tolist() == [False, True, False]
+    assert result["profit"].tolist() == [30.0, 20.0, 10.0]
 
 
 def test_pivot_query_order_keeps_generated_totals():
