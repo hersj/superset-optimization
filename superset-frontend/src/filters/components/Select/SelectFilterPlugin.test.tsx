@@ -1502,7 +1502,7 @@ test('empty text option results keep the named panel and the remembered selectio
   );
 });
 
-test('new matching controls stay inside the input and clear remembered search on clear all', () => {
+test('matching mode stays in the filter title and clear all clears remembered search', () => {
   const props = transformProps({
     ...selectMultipleProps,
     formData: { ...selectMultipleProps.formData, allowFuzzyMatch: true },
@@ -1522,12 +1522,12 @@ test('new matching controls stay inside the input and clear remembered search on
       showOverflow={false}
     />,
   );
-  expect(heading).toBeEmptyDOMElement();
+  expect(heading).toHaveTextContent('包含');
   expect(
     screen
       .getByRole('button', { name: '匹配方式：gender' })
       .closest('.ant-input-affix-wrapper'),
-  ).toBeInTheDocument();
+  ).not.toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
     'bo',
   );

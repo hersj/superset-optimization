@@ -404,12 +404,29 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             if self._time_ranges is not None
             else getattr(dataset, "main_dttm_col", None)
         )
+        calculated_columns = {
+            column.column_name: column
+            for column in dataset.columns
+            if column.expression
+        }
+
+        def column_sql(name: str) -> str:
+            # Resolve only used expressions through the same path as chart queries.
+            column = calculated_columns.get(name)
+            if column is None:
+                return quote_identifier(name)
+            expression = column.get_sqla_col(
+                template_processor=dataset.get_template_processor()
+            )
+            return f"({expression})"
+
+        time_expression = column_sql(time_column) if time_column else None
         subqueries = []
         # 每个维度值都有独立的 UNION 子查询，RLS 不能只加在外层，否则
         # 子查询的分组结果可能已经包含规则外数据。rls_clauses 保留完整布尔分组。
 
         for column_index, column in enumerate(self._columns):
-            quoted_column = quote_identifier(column)
+            quoted_column = column_sql(column)
             where_clauses = [f"{quoted_column} IS NOT NULL", *rls_clauses]
             params[f"column_{column_index}"] = column
             params[f"limit_{column_index}"] = self._limit
@@ -435,7 +452,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                     param_name = f"column_{column_index}_parent_{parent_index}_values"
                     operator = self._filter_operators.get(parent_column, "IN")
                     is_pattern = operator in {"ILIKE", "NOT ILIKE"}
-                    parent_expression = quote_identifier(parent_column)
+                    parent_expression = column_sql(parent_column)
                     parent_expression = (
                         f"CAST({parent_expression} AS TEXT)"
                         if is_pattern
@@ -459,15 +476,15 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                     params[f"range_{index}_since"] = start
                     params[f"range_{index}_until"] = end
                     clauses.append(
-                        f"({quote_identifier(time_column)} >= :range_{index}_since "
-                        f"AND {quote_identifier(time_column)} < :range_{index}_until)"
+                        f"({time_expression} >= :range_{index}_since "
+                        f"AND {time_expression} < :range_{index}_until)"
                     )
                 where_clauses.append("(" + " OR ".join(clauses) + ")")
             elif since is not None and time_column:
-                where_clauses.append(f"{quote_identifier(time_column)} >= :since")
+                where_clauses.append(f"{time_expression} >= :since")
                 params["since"] = since
             if self._time_ranges is None and until is not None and time_column:
-                where_clauses.append(f"{quote_identifier(time_column)} < :until")
+                where_clauses.append(f"{time_expression} < :until")
                 params["until"] = until
 
             subqueries.append(

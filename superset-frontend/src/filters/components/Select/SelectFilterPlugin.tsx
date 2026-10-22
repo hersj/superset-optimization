@@ -142,6 +142,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     clearAllTrigger,
     onClearAllComplete,
     previewSearch,
+    matchModeContainer,
   } = props;
   const {
     enableEmptyFilter,
@@ -610,6 +611,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               column={col}
               mode={matchMode}
               allowFuzzyMatch={allowFuzzyMatch}
+              matchModeContainer={matchModeContainer}
               keyword={keyword}
               value={matchedValues}
               options={[...uniqueOptions].sort(sortComparator)}

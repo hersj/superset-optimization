@@ -17,6 +17,7 @@
  * under the License.
  */
 import { useRef, useState, ReactNode, Ref } from 'react';
+import { createPortal } from 'react-dom';
 import { styled } from '@apache-superset/core/theme';
 import { t } from '@apache-superset/core/translation';
 import {
@@ -35,6 +36,7 @@ type Props = {
   column: string;
   mode: SelectFilterMatchMode;
   allowFuzzyMatch?: boolean;
+  matchModeContainer?: HTMLElement | null;
   keyword: string;
   value: SelectValue;
   options: Option[];
@@ -53,6 +55,8 @@ const Field = styled.div`
   min-width: 0;
   .match-mode {
     padding-inline: 0;
+    color: ${({ theme }) => theme.colorTextSecondary};
+    font-weight: normal;
   }
   .match-count {
     padding-inline: 0;
@@ -62,6 +66,15 @@ const Field = styled.div`
     margin-top: 4px;
     color: ${({ theme }) => theme.colorTextSecondary};
     overflow-wrap: anywhere;
+  }
+`;
+const TitleMode = styled.span`
+  display: inline-flex;
+  color: ${({ theme }) => theme.colorTextSecondary};
+  .match-mode {
+    padding-inline: 0;
+    color: inherit;
+    font-weight: normal;
   }
 `;
 const Options = styled.div`
@@ -92,6 +105,7 @@ export default function InlineMatchSelect({
   column,
   mode,
   allowFuzzyMatch = true,
+  matchModeContainer,
   keyword,
   value,
   options,
@@ -174,6 +188,8 @@ export default function InlineMatchSelect({
   );
   return (
     <Field ref={field}>
+      {matchModeContainer &&
+        createPortal(<TitleMode>{modeMenu}</TitleMode>, matchModeContainer)}
       <Popover
         trigger="click"
         placement="bottomLeft"
@@ -254,7 +270,7 @@ export default function InlineMatchSelect({
           ref={inputRef}
           value={keyword}
           aria-label={`${t('搜索选项')}：${column}`}
-          prefix={modeMenu}
+          prefix={matchModeContainer ? undefined : modeMenu}
           suffix={
             <Button
               className="match-count"

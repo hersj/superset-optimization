@@ -18,9 +18,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from numbers import Number
 from typing import Any
 
 from flask_babel import gettext as _
+from numpy import nan
 from pandas import DataFrame, MultiIndex
 
 from superset.exceptions import InvalidPostProcessingError
@@ -57,6 +59,15 @@ def contribution(
     """
     contribution_df = df.copy()
     numeric_df = contribution_df.select_dtypes(include=["number", Decimal])
+    # Decimal columns use object dtype, which also includes text dimensions.
+    numeric_df = numeric_df[
+        [
+            col
+            for col in numeric_df
+            if numeric_df[col].dtype != object
+            or all(isinstance(value, Number) for value in numeric_df[col].dropna())
+        ]
+    ].astype(float)
     numeric_df.fillna(0, inplace=True)
     # verify column selections
     if columns:
@@ -88,13 +99,12 @@ def contribution(
                 total = contribution_totals.get(col)
                 rename_col = rename_columns[i]
                 if total is None or total == 0:
-                    contribution_df[rename_col] = 0
+                    contribution_df[rename_col] = nan
                 else:
-                    contribution_df[rename_col] = numeric_df_view[col] / total
+                    contribution_df[rename_col] = numeric_df_view[col] / float(total)
         else:
-            numeric_df_view = numeric_df_view / numeric_df_view.values.sum(
-                axis=0, keepdims=True
-            )
+            totals = numeric_df_view.sum(axis=0)
+            numeric_df_view = numeric_df_view.div(totals.where(totals != 0))
             contribution_df[rename_columns] = numeric_df_view
         return contribution_df
 
@@ -158,7 +168,10 @@ def calculate_row_contribution(
     :param rename_columns: A list of new column names for the contribution columns.
     """  # noqa: E501
     # calculate the row sum considering only the selected columns
-    row_sum_except_selected = df.loc[:, columns].sum(axis=1)
+    numeric_values = df.loc[:, columns].astype(float)
+    row_sum_except_selected = numeric_values.sum(axis=1)
 
     # update the dataframe cells with the row contribution percentage
-    df[rename_columns] = df.loc[:, columns].div(row_sum_except_selected, axis=0)
+    df[rename_columns] = numeric_values.div(
+        row_sum_except_selected.where(row_sum_except_selected != 0), axis=0
+    )

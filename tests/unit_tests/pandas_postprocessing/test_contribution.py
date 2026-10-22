@@ -16,6 +16,7 @@
 # under the License.
 
 from datetime import datetime
+from decimal import Decimal
 
 import pytest
 from numpy import nan
@@ -124,3 +125,48 @@ def test_contribution_with_time_shift_columns():
     assert_array_equal(processed_df["a__1 week ago"].tolist(), [0.5, 0.5])
     assert_array_equal(processed_df["b__1 week ago"].tolist(), [0.25, 0.25])
     assert_array_equal(processed_df["c__1 week ago"].tolist(), [0.25, 0.25])
+
+
+@pytest.mark.parametrize("number", [float, Decimal])
+@pytest.mark.parametrize("orientation", list(PostProcessingContributionOrientation))
+def test_zero_total_contributions_are_undefined(number, orientation):
+    df = DataFrame({"a": [number(0), number(0)], "b": [number(2), number(6)]})
+    result = contribution(df, orientation=orientation)
+    if orientation == PostProcessingContributionOrientation.COLUMN:
+        assert result["a"].isna().all()
+        assert_array_equal(result["b"].tolist(), [0.25, 0.75])
+    else:
+        assert_array_equal(result["a"].tolist(), [0, 0])
+        assert_array_equal(result["b"].tolist(), [1, 1])
+
+
+@pytest.mark.parametrize("orientation", list(PostProcessingContributionOrientation))
+def test_decimal_cancelling_totals_preserve_original_values(orientation):
+    df = DataFrame({"a": [Decimal(1), Decimal(-1)], "b": [Decimal(-1), Decimal(1)]})
+    result = contribution(
+        df,
+        orientation=orientation,
+        columns=["a", "b"],
+        rename_columns=["pct_a", "pct_b"],
+    )
+    assert result[["pct_a", "pct_b"]].isna().all().all()
+    assert result[["a", "b"]].equals(df)
+
+
+@pytest.mark.parametrize("total", [None, 0, Decimal(0), Decimal(8)])
+def test_decimal_contribution_with_supplied_total(total):
+    result = contribution(
+        DataFrame({"a": [Decimal(2), Decimal(6)]}),
+        contribution_totals={"a": total},
+    )
+    if not total:
+        assert result["a"].isna().all()
+    else:
+        assert_array_equal(result["a"].tolist(), [0.25, 0.75])
+
+
+def test_decimal_contribution_keeps_text_dimensions():
+    df = DataFrame({"sku": ["a", "b"], "value": [Decimal(2), Decimal(6)]})
+    result = contribution(df, columns=["value"], rename_columns=["share"])
+    assert result[["sku", "value"]].equals(df)
+    assert_array_equal(result["share"].tolist(), [0.25, 0.75])

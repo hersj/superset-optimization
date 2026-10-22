@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from flask import g
-from sqlalchemy import bindparam, or_, text
+from sqlalchemy import bindparam, literal_column, or_, text
 from sqlalchemy.dialects.postgresql import dialect as postgresql_dialect
 
 from superset.commands.dashboard.cascade_filter_options import (
@@ -39,6 +39,46 @@ class FakeRows(list):
 
 def setup_function():
     clear_cascade_filter_options_cache()
+
+
+def test_calculated_columns_are_resolved_for_options_search_and_parent_filters():
+    expression = (
+        "jsonb_build_array(commodity_sku::text, shop_id::text, asin::text)::text"
+    )
+    identity = MagicMock(column_name="v3_sku_identity", expression=expression)
+    identity.get_sqla_col.return_value = literal_column(expression).label(
+        "v3_sku_identity"
+    )
+    dataset = MagicMock(schema="public", table_name="profit_dws_daily_v3_usd")
+    dataset.columns = [identity]
+    dataset.main_dttm_col = "biz_day"
+    command = GetCascadeFilterOptionsCommand(
+        87,
+        184,
+        ["v3_sku_identity", "shop_name"],
+        applied_filters={"v3_sku_identity": ['["sku", "shop", "asin"]']},
+        search={"column": "v3_sku_identity", "value": "sku%_"},
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={
+            "parent_columns_by_column": {"shop_name": ["v3_sku_identity"]},
+        }
+    )
+    statement, params = command._build_statement(
+        dataset, datetime(2026, 10, 1), datetime(2026, 11, 1), ["(shop_id = 42)"]
+    )
+    sql = str(statement)
+    assert 'to_jsonb("v3_sku_identity")' not in sql
+    assert f"to_jsonb(({expression}))" in sql
+    assert f"CAST(({expression}) AS TEXT) ILIKE :search" in sql
+    assert f"({expression}) IN " in sql
+    assert sql.count("(shop_id = 42)") == 2
+    assert params["search"] == r"%sku\%\_%"
+    assert params["column_1_parent_0_values"] == ['["sku", "shop", "asin"]']
+    assert identity.get_sqla_col.call_count == 2
+    identity.get_sqla_col.assert_called_with(
+        template_processor=dataset.get_template_processor.return_value
+    )
 
 
 def test_point_cascade_compiles_union_in_every_column_with_rls():
