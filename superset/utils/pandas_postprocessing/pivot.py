@@ -78,8 +78,14 @@ def pivot(  # pylint: disable=too-many-arguments
         df[columns] = df[columns].fillna(value=column_fill_value)
 
     aggregate_funcs = _get_aggregate_funcs(df, aggregates)
+    # Pivot canonicalizes missing keys to NaN; use the same keys for order lookup.
     row_order = (
-        df[index].drop_duplicates().set_index(index).index
+        df[index]
+        .astype(object)
+        .where(df[index].notna(), float("nan"))
+        .drop_duplicates()
+        .set_index(index)
+        .index
         if preserve_row_order
         and not any(is_datetime64_any_dtype(df[column]) for column in index)
         else None
