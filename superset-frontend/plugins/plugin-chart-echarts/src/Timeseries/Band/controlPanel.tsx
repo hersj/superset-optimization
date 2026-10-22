@@ -28,15 +28,8 @@ import {
   forceMaxInterval,
 } from '../../controls';
 
-const {
-  logAxis,
-  markerSize,
-  minorSplitLine,
-  opacity,
-  rowLimit,
-  truncateYAxis,
-  yAxisBounds,
-} = DEFAULT_FORM_DATA;
+const { logAxis, minorSplitLine, rowLimit, truncateYAxis, yAxisBounds } =
+  DEFAULT_FORM_DATA;
 
 const config: ControlPanelConfig = {
   controlPanelSections: [

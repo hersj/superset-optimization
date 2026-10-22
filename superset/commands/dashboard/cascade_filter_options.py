@@ -16,7 +16,6 @@
 # under the License.
 from __future__ import annotations
 
-import json
 import time
 from collections import OrderedDict
 from copy import deepcopy
@@ -30,6 +29,7 @@ from superset.commands.base import BaseCommand
 from superset.common.utils.time_range_utils import get_since_until_from_time_range
 from superset.connectors.sqla.models import SqlaTable
 from superset.models.dashboard import Dashboard
+from superset.utils import json
 
 GENERIC_STRING_TYPE = 1
 CASCADE_FILTER_OPTIONS_CACHE_TTL_SECONDS = 30
@@ -85,7 +85,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
     def __init__(
         self,
         dashboard_id: int,
-        dataset_id: int,
+        dataset_id: int | None,
         columns: list[str],
         applied_filters: dict[str, list[Any]] | None = None,
         time_range: str | None = None,
@@ -116,8 +116,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
     def run(self) -> dict[str, dict[str, Any]]:
         self.validate()
         cache_key = self._get_cache_key()
-        cached_result = _get_cached_options(cache_key)
-        if cached_result is not None:
+        if (cached_result := _get_cached_options(cache_key)) is not None:
             return cached_result
 
         dataset = self._get_dataset()
@@ -169,7 +168,9 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         )
 
     def _get_dataset(self) -> SqlaTable:
-        return db.session.query(SqlaTable).filter(SqlaTable.id == self._dataset_id).one()
+        return (
+            db.session.query(SqlaTable).filter(SqlaTable.id == self._dataset_id).one()
+        )
 
     def _get_filter_metadata(self) -> dict[str, Any]:
         if self._filter_metadata is None:
@@ -256,6 +257,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 where_clauses.append(f"{quote_identifier(time_column)} < :until")
                 params["until"] = until
 
+            # Identifiers are quoted above; filter values and limits stay bound.
             subqueries.append(
                 f"""
 SELECT
@@ -263,20 +265,24 @@ SELECT
   to_jsonb({quoted_column}) AS __value,
   {quoted_column}::text AS __sort
 FROM {table_name}
-WHERE {' AND '.join(where_clauses)}
+WHERE {" AND ".join(where_clauses)}
 GROUP BY {quoted_column}
 ORDER BY {quoted_column} ASC
 LIMIT :limit_{column_index}
-"""
+"""  # noqa: S608
             )
 
+        union_sql = " UNION ALL ".join(
+            f"SELECT * FROM ({subquery}) AS cascade_options_{index}"  # noqa: S608
+            for index, subquery in enumerate(subqueries)
+        )
         sql = f"""
 SELECT __column, __value
 FROM (
-  {' UNION ALL '.join(f'SELECT * FROM ({subquery}) AS cascade_options_{index}' for index, subquery in enumerate(subqueries))}
+  {union_sql}
 ) AS cascade_options
 ORDER BY __column ASC, __sort ASC
-"""
+"""  # noqa: S608
         statement = text(sql)
         if bindparams:
             statement = statement.bindparams(*bindparams)

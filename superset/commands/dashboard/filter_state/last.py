@@ -16,7 +16,7 @@
 # under the License.
 from __future__ import annotations
 
-from typing import Optional
+from typing import cast, Optional
 
 from superset.commands.base import BaseCommand
 from superset.commands.dashboard.filter_state.utils import check_access
@@ -29,11 +29,11 @@ from superset.utils.core import get_user_id
 LAST_FILTER_STATE_KEY_PREFIX = "last_filter_state"
 
 
-def last_filter_state_key(user_id: int) -> str:
+def last_filter_state_key(user_id: Optional[int]) -> str:
     return f"{LAST_FILTER_STATE_KEY_PREFIX}:{user_id}"
 
 
-def get_last_filter_state_cache_key(resource_id: int, user_id: int) -> str:
+def get_last_filter_state_cache_key(resource_id: int, user_id: Optional[int]) -> str:
     return cache_key(resource_id, last_filter_state_key(user_id))
 
 
@@ -44,7 +44,7 @@ class UpsertLastFilterStateCommand(BaseCommand):
     def run(self) -> bool:
         self.validate()
         resource_id = self._cmd_params.resource_id
-        value = self._cmd_params.value
+        value = cast(str, self._cmd_params.value)  # API schema requires a string value.
         owner = get_user_id()
         key = get_last_filter_state_cache_key(resource_id, owner)
         entry: Entry = {"owner": owner, "value": value}
@@ -63,8 +63,8 @@ class GetLastFilterStateCommand(BaseCommand):
         self.validate()
         owner = get_user_id()
         key = get_last_filter_state_cache_key(self._cmd_params.resource_id, owner)
-        entry: Entry = cache_manager.filter_state_cache.get(key) or {}
-        if entry.get("owner") != owner:
+        entry: Optional[Entry] = cache_manager.filter_state_cache.get(key)
+        if not entry or entry.get("owner") != owner:
             return None
         return entry.get("value")
 
@@ -80,8 +80,8 @@ class DeleteLastFilterStateCommand(BaseCommand):
         self.validate()
         owner = get_user_id()
         key = get_last_filter_state_cache_key(self._cmd_params.resource_id, owner)
-        entry: Entry = cache_manager.filter_state_cache.get(key) or {}
-        if entry.get("owner") != owner:
+        entry: Optional[Entry] = cache_manager.filter_state_cache.get(key)
+        if not entry or entry.get("owner") != owner:
             return False
         return cache_manager.filter_state_cache.delete(key)
 

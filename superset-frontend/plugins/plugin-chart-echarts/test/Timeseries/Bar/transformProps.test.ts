@@ -37,7 +37,7 @@ test.each(
       { [xAxis]: 'M', profit: 30 },
     ];
     if (!ascending) data.reverse();
-    const formData = {
+    const formData: SqlaFormData = {
       ...DEFAULT_FORM_DATA,
       datasource: '3__table',
       viz_type: 'echarts_timeseries_bar',
