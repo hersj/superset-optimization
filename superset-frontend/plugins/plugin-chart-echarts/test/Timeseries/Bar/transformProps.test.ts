@@ -17,11 +17,68 @@
  * under the License.
  */
 import { ChartProps, SqlaFormData } from '@superset-ui/core';
+import { GenericDataType } from '@apache-superset/core/common';
 import { supersetTheme } from '@apache-superset/core/theme';
 import { EchartsTimeseriesChartProps } from '../../../src/types';
 import transformProps from '../../../src/Timeseries/transformProps';
 import { DEFAULT_FORM_DATA } from '../../../src/Timeseries/constants';
 import { EchartsTimeseriesSeriesType } from '../../../src/Timeseries/types';
+
+test.each(
+  ['kk_sku', 'lt', 'operator_engineer_name'].flatMap(xAxis =>
+    [true, false].map(ascending => ({ xAxis, ascending })),
+  ),
+)(
+  'horizontal category output retains query order for $xAxis (ascending=$ascending)',
+  ({ xAxis, ascending }) => {
+    const data = [
+      { [xAxis]: 'Z', profit: -10 },
+      { [xAxis]: 'A', profit: 0 },
+      { [xAxis]: 'M', profit: 30 },
+    ];
+    if (!ascending) data.reverse();
+    const formData = {
+      ...DEFAULT_FORM_DATA,
+      datasource: '3__table',
+      viz_type: 'echarts_timeseries_bar',
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      orientation: 'horizontal',
+      x_axis: xAxis,
+      metrics: ['profit'],
+      groupby: [],
+    };
+    const before = JSON.stringify(formData);
+    const chartProps = new ChartProps({
+      width: 800,
+      height: 600,
+      formData,
+      theme: supersetTheme,
+      queriesData: [
+        {
+          data,
+          colnames: [xAxis, 'profit'],
+          coltypes: [GenericDataType.String, GenericDataType.Numeric],
+        },
+      ],
+    });
+    const { echartOptions } = transformProps(
+      chartProps as EchartsTimeseriesChartProps,
+    );
+    expect(echartOptions.yAxis).toMatchObject({
+      type: 'category',
+      data: data.map(row => row[xAxis]),
+    });
+    const [profitSeries] = echartOptions.series as {
+      data: ([number, string] | { value: [number, string] })[];
+    }[];
+    expect(
+      profitSeries.data.map(point =>
+        Array.isArray(point) ? point : point.value,
+      ),
+    ).toEqual(data.map(row => [row.profit, row[xAxis]]));
+    expect(JSON.stringify(formData)).toBe(before);
+  },
+);
 
 describe('Bar Chart X-axis Time Formatting', () => {
   const baseFormData: SqlaFormData = {

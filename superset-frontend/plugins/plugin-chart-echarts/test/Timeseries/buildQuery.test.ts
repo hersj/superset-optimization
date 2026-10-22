@@ -19,14 +19,24 @@
 import { SqlaFormData, VizType } from '@superset-ui/core';
 import buildQuery from '../../src/Timeseries/buildQuery';
 
-test.each([true, false])(
-  'categorical bars preserve selected query sorting (descending=%s) without mutating saved form data',
-  orderDesc => {
+test.each(
+  ['kk_sku', 'lt', 'operator_engineer_name'].flatMap(xAxis =>
+    [true, false].flatMap(orderDesc =>
+      ['horizontal', 'vertical'].map(orientation => ({
+        xAxis,
+        orderDesc,
+        orientation,
+      })),
+    ),
+  ),
+)(
+  'categorical bars preserve selected query sorting ($xAxis, $orientation, descending=$orderDesc) without mutating saved form data',
+  ({ xAxis, orderDesc, orientation }) => {
     const formData = {
       datasource: '5__table',
       viz_type: VizType.Bar,
-      orientation: 'horizontal',
-      x_axis: 'lt',
+      orientation,
+      x_axis: xAxis,
       metrics: ['profit'],
       timeseries_limit_metric: 'sales',
       order_desc: orderDesc,
