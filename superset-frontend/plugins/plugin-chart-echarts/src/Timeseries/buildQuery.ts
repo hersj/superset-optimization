@@ -25,6 +25,7 @@ import {
   normalizeOrderBy,
   PostProcessingPivot,
   QueryFormData,
+  VizType,
 } from '@superset-ui/core';
 import {
   contributionOperator,
@@ -98,6 +99,11 @@ export default function buildQuery(formData: QueryFormData) {
     )
       ? timeComparePivotOperator(effectiveFormData, baseQueryObject)
       : pivotOperator(effectiveFormData, baseQueryObject);
+
+    if (pivotOperatorInRuntime && effectiveFormData.viz_type === VizType.Bar) {
+      // Keep the selected SQL order through pivot; explicit axis sorting still wins.
+      pivotOperatorInRuntime.options.preserve_row_order = true;
+    }
 
     const columns = [
       ...(isXAxisSet(effectiveFormData)
