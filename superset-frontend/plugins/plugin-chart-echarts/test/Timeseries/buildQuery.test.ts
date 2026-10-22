@@ -19,6 +19,84 @@
 import { SqlaFormData, VizType } from '@superset-ui/core';
 import buildQuery from '../../src/Timeseries/buildQuery';
 
+test.each([true, false])(
+  'categorical bars preserve selected query sorting (descending=%s) without mutating saved form data',
+  orderDesc => {
+    const formData = {
+      datasource: '5__table',
+      viz_type: VizType.Bar,
+      orientation: 'horizontal',
+      x_axis: 'lt',
+      metrics: ['profit'],
+      timeseries_limit_metric: 'sales',
+      order_desc: orderDesc,
+      row_limit: 15,
+      groupby: [],
+    };
+    const before = JSON.stringify(formData);
+    const [query] = buildQuery(formData).queries;
+    expect(query.orderby).toEqual([['sales', !orderDesc]]);
+    expect(
+      query.post_processing?.find(op => op?.operation === 'pivot'),
+    ).toMatchObject({
+      options: { preserve_row_order: true },
+    });
+    expect(query.metrics).toEqual(['profit']);
+    expect(query.row_limit).toBe(15);
+    expect(JSON.stringify(formData)).toBe(before);
+  },
+);
+
+test('category ordering keeps explicit axis sorting and leaves other chart types unchanged', () => {
+  const formData = {
+    datasource: '5__table',
+    viz_type: VizType.Bar,
+    x_axis: 'lt',
+    metrics: ['profit'],
+    timeseries_limit_metric: 'profit',
+    x_axis_sort: 'profit',
+    x_axis_sort_asc: true,
+    groupby: [],
+  };
+  expect(buildQuery(formData).queries[0].post_processing).toContainEqual({
+    operation: 'sort',
+    options: { by: 'profit', ascending: true },
+  });
+  const [lineQuery] = buildQuery({
+    ...formData,
+    viz_type: VizType.Line,
+  }).queries;
+  expect(
+    lineQuery.post_processing?.find(op => op?.operation === 'pivot')?.options,
+  ).not.toHaveProperty('preserve_row_order');
+});
+
+test('bar time comparisons preserve current-query order without sorting by a comparison metric', () => {
+  const [query] = buildQuery({
+    datasource: '5__table',
+    viz_type: VizType.Bar,
+    x_axis: 'lt',
+    metrics: ['profit'],
+    timeseries_limit_metric: 'profit',
+    order_desc: false,
+    groupby: [],
+    time_compare: ['1 month ago'],
+    comparison_type: 'values',
+  }).queries;
+  expect(query.orderby).toEqual([['profit', true]]);
+  expect(
+    query.post_processing?.find(op => op?.operation === 'pivot'),
+  ).toMatchObject({
+    options: {
+      preserve_row_order: true,
+      aggregates: {
+        profit: { operator: 'mean' },
+        'profit__1 month ago': { operator: 'mean' },
+      },
+    },
+  });
+});
+
 describe('Timeseries buildQuery', () => {
   const formData = {
     datasource: '5__table',

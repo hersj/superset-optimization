@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 from flask_babel import gettext as _
 from pandas import DataFrame
+from pandas.api.types import is_datetime64_any_dtype
 
 from superset.constants import NULL_STRING, PandasAxis
 from superset.exceptions import InvalidPostProcessingError
@@ -39,6 +40,7 @@ def pivot(  # pylint: disable=too-many-arguments
     combine_value_with_metric: bool = False,
     marginal_distributions: Optional[bool] = None,
     marginal_distribution_name: Optional[str] = None,
+    preserve_row_order: bool = False,
 ) -> DataFrame:
     """
     Perform a pivot operation on a DataFrame.
@@ -58,6 +60,8 @@ def pivot(  # pylint: disable=too-many-arguments
     :param marginal_distributions: Add totals for row/column. Default to False
     :param marginal_distribution_name: Name of row/column with marginal distribution.
            Default to 'All'.
+    :param preserve_row_order: Keep categorical rows in query order. Temporal indexes
+           retain their chronological order.
     :return: A pivot table
     :raises InvalidPostProcessingError: If the request in incorrect
     """
@@ -74,6 +78,12 @@ def pivot(  # pylint: disable=too-many-arguments
         df[columns] = df[columns].fillna(value=column_fill_value)
 
     aggregate_funcs = _get_aggregate_funcs(df, aggregates)
+    row_order = (
+        df[index].drop_duplicates().set_index(index).index
+        if preserve_row_order
+        and not any(is_datetime64_any_dtype(df[column]) for column in index)
+        else None
+    )
 
     # TODO (villebro): Pandas 1.0.3 doesn't yet support NamedAgg in pivot_table.
     #  Remove once/if support is added.
@@ -105,5 +115,11 @@ def pivot(  # pylint: disable=too-many-arguments
 
     if combine_value_with_metric:
         df = df.stack(0).unstack()
+
+    if row_order is not None:
+        # Pivot sorts category names; restore SQL ordering without adding dropped rows.
+        query_rows = row_order[row_order.isin(df.index)]
+        generated_rows = df.index[~df.index.isin(query_rows)]
+        df = df.reindex(query_rows.append(generated_rows))
 
     return df
