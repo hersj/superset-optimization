@@ -54,6 +54,8 @@ export const HorizontalOverflowFilterControlTitle = styled(
 
 export const VerticalFilterControlTitleBox = styled.div`
   display: flex;
+  flex: 1;
+  gap: ${({ theme }) => theme.sizeUnit * 2}px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
