@@ -134,6 +134,13 @@ test('mode menu stays inside the field and preserves selections', async () => {
     ).toHaveTextContent('精确'),
   );
   expect(changed).not.toHaveBeenCalled();
+  for (const button of [
+    screen.getByRole('button', { name: '匹配方式：shop' }),
+    screen.getByRole('button', { name: '展开选项：shop' }),
+    within(panel).getByRole('button', { name: '全选当前结果' }),
+    within(panel).getByRole('button', { name: '取消全选' }),
+  ])
+    expect(button).toHaveClass('superset-button-link');
   expect(within(panel).getAllByRole('checkbox')).toHaveLength(3);
 });
 

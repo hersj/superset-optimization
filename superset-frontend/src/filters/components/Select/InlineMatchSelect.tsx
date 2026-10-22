@@ -155,8 +155,9 @@ export default function InlineMatchSelect({
     >
       <Button
         className="match-mode"
-        type="text"
-        size="small"
+        buttonStyle="link"
+        buttonSize="xsmall"
+        showMarginRight={false}
         aria-label={`${t('匹配方式')}：${column}`}
         disabled={disabled}
         onClick={event => event.stopPropagation()}
@@ -180,8 +181,9 @@ export default function InlineMatchSelect({
             {multiple && (
               <div className="match-actions">
                 <Button
-                  type="link"
-                  size="small"
+                  buttonStyle="link"
+                  buttonSize="xsmall"
+                  showMarginRight={false}
                   aria-label={t('全选当前结果')}
                   disabled={
                     disabled ||
@@ -200,8 +202,9 @@ export default function InlineMatchSelect({
                   {t('全选')}
                 </Button>
                 <Button
-                  type="link"
-                  size="small"
+                  buttonStyle="link"
+                  buttonSize="xsmall"
+                  showMarginRight={false}
                   disabled={disabled || busy || !selectedVisible.length}
                   onClick={() =>
                     change(
@@ -249,8 +252,9 @@ export default function InlineMatchSelect({
           suffix={
             <Button
               className="match-count"
-              type="text"
-              size="small"
+              buttonStyle="link"
+              buttonSize="xsmall"
+              showMarginRight={false}
               disabled={disabled}
               aria-label={`${t('展开选项')}：${column}`}
               onClick={event => {
