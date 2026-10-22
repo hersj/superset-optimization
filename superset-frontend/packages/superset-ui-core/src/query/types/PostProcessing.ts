@@ -116,6 +116,7 @@ interface _PostProcessingPivot {
     marginal_distribution_name?: string;
     marginal_distributions?: boolean;
     metric_fill_value?: any;
+    preserve_row_order?: boolean;
   };
 }
 export type PostProcessingPivot = _PostProcessingPivot | DefaultPostProcessing;

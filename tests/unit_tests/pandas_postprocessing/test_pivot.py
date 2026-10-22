@@ -25,6 +25,93 @@ from tests.unit_tests.fixtures.dataframes import categories_df
 from tests.unit_tests.pandas_postprocessing.utils import AGGREGATES_SINGLE
 
 
+@pytest.mark.parametrize("metric", ["profit", "sales", "quantity"])
+@pytest.mark.parametrize("ascending", [True, False])
+def test_pivot_preserves_query_order_for_categories(metric, ascending):
+    source = DataFrame(
+        {
+            "lt": ["B", "A", "D", "C"],
+            "profit": [-10, 30, 0, 20],
+            "sales": [90, 10, 40, 30],
+            "quantity": [1, 4, 2, 3],
+        }
+    ).sort_values(metric, ascending=ascending)
+    original = source.copy(deep=True)
+    result = flatten(
+        pivot(
+            df=source,
+            index=["lt"],
+            aggregates={"profit": {"operator": "mean"}},
+            preserve_row_order=True,
+        )
+    )
+    assert result["lt"].tolist() == source["lt"].tolist()
+    assert result["profit"].tolist() == source["profit"].tolist()
+    assert result.columns.tolist() == ["lt", "profit"]
+    assert source.equals(original)
+
+
+def test_pivot_query_order_does_not_change_default_or_time_axis_order():
+    source = DataFrame({"lt": ["B", "A"], "profit": [20, 10]})
+    assert pivot(
+        source, index=["lt"], aggregates={"profit": {"operator": "mean"}}
+    ).index.tolist() == ["A", "B"]
+    source["day"] = to_datetime(["2026-10-02", "2026-10-01"])
+    result = pivot(
+        source,
+        index=["day"],
+        aggregates={"profit": {"operator": "mean"}},
+        preserve_row_order=True,
+    )
+    assert result.index.tolist() == to_datetime(["2026-10-01", "2026-10-02"]).tolist()
+
+
+def test_pivot_query_order_preserves_groups_and_unknown_values():
+    source = DataFrame(
+        {
+            "lt": ["B", "A", "B", "A"],
+            "shop": ["X", "X", "Y", "Y"],
+            "profit": [20.0, 10.0, np.nan, -5.0],
+        }
+    )
+    result = pivot(
+        source,
+        index=["lt"],
+        columns=["shop"],
+        aggregates={"profit": {"operator": "mean"}},
+        preserve_row_order=True,
+        drop_missing_columns=False,
+    )
+    assert result.index.tolist() == ["B", "A"]
+    assert np.isnan(result.loc["B", ("profit", "Y")])
+    assert result.loc["A", ("profit", "Y")] == -5.0
+
+
+def test_pivot_query_order_does_not_restore_dropped_null_categories():
+    source = DataFrame({"lt": [None, "B", "A"], "profit": [30.0, np.nan, 10.0]})
+    result = pivot(
+        source,
+        index=["lt"],
+        aggregates={"profit": {"operator": "mean"}},
+        preserve_row_order=True,
+    )
+    assert result.index.tolist() == ["A"]
+
+
+def test_pivot_query_order_keeps_generated_totals():
+    source = DataFrame({"lt": ["B", "A"], "profit": [20.0, -5.0]})
+    result = pivot(
+        source,
+        index=["lt"],
+        aggregates={"profit": {"operator": "sum"}},
+        preserve_row_order=True,
+        marginal_distributions=True,
+        marginal_distribution_name="Total",
+    )
+    assert result.index.tolist() == ["B", "A", "Total"]
+    assert result.loc["Total", "profit"] == 15.0
+
+
 def test_pivot_without_columns():
     """
     Make sure pivot without columns returns correct DataFrame

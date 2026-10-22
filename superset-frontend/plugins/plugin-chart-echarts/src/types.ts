@@ -170,7 +170,7 @@ export interface TitleFormData {
   yAxisTitlePosition: string;
 }
 
-export type StackType = boolean | null | Partial<StackControlsValue>;
+export type StackType = boolean | null | Partial<StackControlsValue> | 'band';
 
 export interface TreePathInfo {
   name: string;

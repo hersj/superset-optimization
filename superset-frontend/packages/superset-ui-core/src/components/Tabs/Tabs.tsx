@@ -100,7 +100,7 @@ const StyledTabs = ({
   />
 );
 
-const StyledTabPane = styled(AntdTabs.TabPane)``;
+const StyledTabPane: typeof AntdTabs.TabPane = styled(AntdTabs.TabPane)``;
 
 const Tabs = Object.assign(StyledTabs, {
   TabPane: StyledTabPane,

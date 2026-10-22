@@ -11,6 +11,13 @@ import useBaseUrl from "@docusaurus/useBaseUrl";
 
 Apache Superset enables users to explore data interactively through SQL queries, visual query builders, and rich visualizations, making it easier to understand datasets before building charts and dashboards.
 
+For category bar charts, the displayed categories retain the query's selected sort
+metric and ascending or descending order after pivot processing. Changing the sort
+metric does not require adding it as a displayed series. An explicit X/Y-axis sort
+setting takes precedence; series/legend sorting is independent of category ordering.
+Time axes retain chronological order. This behavior does not rewrite saved chart
+metrics, filters, styles, or dashboard layouts.
+
 In this tutorial, we will introduce key concepts in Apache Superset through the exploration of a real dataset which contains the flights made by employees of a UK-based organization in 2011.
 
 The following information about each flight is given:

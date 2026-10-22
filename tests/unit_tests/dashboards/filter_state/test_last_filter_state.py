@@ -36,6 +36,7 @@ class FakeCache:
 
 def test_last_filter_state_is_scoped_by_user_and_dashboard(mocker):
     from superset.commands.dashboard.filter_state.last import (
+        DeleteLastFilterStateCommand,
         GetLastFilterStateCommand,
         UpsertLastFilterStateCommand,
     )
@@ -79,3 +80,12 @@ def test_last_filter_state_is_scoped_by_user_and_dashboard(mocker):
     )
     assert GetLastFilterStateCommand(CommandParameters(resource_id=8)).run() is None
     assert set(cache.timeouts.values()) == {0}
+
+    assert DeleteLastFilterStateCommand(CommandParameters(resource_id=8)).run() is False
+    assert DeleteLastFilterStateCommand(CommandParameters(resource_id=7)).run() is True
+    assert GetLastFilterStateCommand(CommandParameters(resource_id=7)).run() is None
+    get_user_id.return_value = 202
+    assert (
+        GetLastFilterStateCommand(CommandParameters(resource_id=7)).run()
+        == user_two_value
+    )
