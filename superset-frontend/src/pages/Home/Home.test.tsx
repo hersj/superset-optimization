@@ -26,6 +26,7 @@ import {
 import { isFeatureEnabled, getExtensionsRegistry } from '@superset-ui/core';
 import Welcome from 'src/pages/Home';
 import setupCodeOverrides from 'src/setup/setupCodeOverrides';
+import { LocalStorageKeys, setItem } from 'src/utils/localStorageHelpers';
 
 const chartsEndpoint = 'glob:*/api/v1/chart/?*';
 const chartInfoEndpoint = 'glob:*/api/v1/chart/_info?*';
@@ -42,6 +43,7 @@ fetchMock.get(chartsEndpoint, {
   result: [
     {
       slice_name: 'ChartyChart',
+      viz_type: 'table',
       changed_on_utc: '24 Feb 2014 10:13:14',
       url: '/fakeUrl/explore',
       id: '4',
@@ -92,9 +94,11 @@ const mockRecentActivityResult = [
   },
 ];
 
-fetchMock.get(recentActivityEndpoint, {
-  result: mockRecentActivityResult,
-});
+fetchMock.get(
+  recentActivityEndpoint,
+  { result: mockRecentActivityResult },
+  { name: recentActivityEndpoint },
+);
 
 fetchMock.get(chartInfoEndpoint, {
   permissions: [],
@@ -219,6 +223,35 @@ test('Without sql role - calls api methods in parallel on page load', async () =
   expect(fetchMock.callHistory.calls(savedQueryEndpoint)).toHaveLength(0);
   expect(fetchMock.callHistory.calls(dashboardsEndpoint)).toHaveLength(2);
 });
+
+test.each([403, 500])(
+  'renders accessible home content when recent activity returns %s',
+  async status => {
+    setItem(LocalStorageKeys.HomepageCollapseState, [
+      'recents',
+      'dashboards',
+      'charts',
+    ]);
+    fetchMock.modifyRoute(recentActivityEndpoint, {
+      response: { status, body: { message: 'Recent activity unavailable' } },
+    });
+
+    try {
+      await renderWelcome();
+
+      expect(await screen.findByText('Dashboard_Test')).toBeInTheDocument();
+      expect(await screen.findByText('ChartyChart')).toBeInTheDocument();
+      expect(await screen.findByRole('tab', { name: 'Viewed' })).toBeVisible();
+      expect(fetchMock.callHistory.calls(dashboardsEndpoint)).toHaveLength(2);
+      expect(fetchMock.callHistory.calls(chartsEndpoint)).toHaveLength(2);
+    } finally {
+      setItem(LocalStorageKeys.HomepageCollapseState, []);
+      fetchMock.modifyRoute(recentActivityEndpoint, {
+        response: { result: mockRecentActivityResult },
+      });
+    }
+  },
+);
 
 // Mock specific to the tests related to the toggle switch
 fetchMock.get('glob:*/api/v1/dashboard/*', {

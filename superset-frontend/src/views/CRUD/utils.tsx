@@ -245,27 +245,6 @@ export const getFilteredChartsandDashboards = (
     });
 };
 
-export const getRecentActivityObjs = (
-  userId: string | number,
-  recent: string,
-  addDangerToast: (arg1: string, arg2: any) => any,
-  filters: Filter[],
-) =>
-  SupersetClient.get({ endpoint: recent }).then(recentsRes => {
-    const res: any = {};
-    const distinctRes = lruCache<RecentActivity>(6);
-    recentsRes.json.result.reverse().forEach((record: RecentActivity) => {
-      distinctRes.set(record.item_url, record);
-    });
-    return getFilteredChartsandDashboards(addDangerToast, filters).then(
-      ({ other }) => {
-        res.other = other;
-        res.viewed = distinctRes.values().reverse();
-        return res;
-      },
-    );
-  });
-
 export const createFetchRelated = createFetchResourceMethod('related');
 export const createFetchDistinct = createFetchResourceMethod('distinct');
 
@@ -319,6 +298,32 @@ export function createErrorHandler(
     handleErrorFunc(parsedError.message || parsedError.error);
   };
 }
+
+export const getRecentActivityObjs = (
+  userId: string | number,
+  recent: string,
+  addDangerToast: (message: string) => void,
+  filters: Filter[],
+) =>
+  Promise.all([
+    // Recent-activity access must not block the accessible charts and dashboards.
+    SupersetClient.get({ endpoint: recent })
+      .then(({ json }) => json.result as RecentActivity[])
+      .catch(
+        createErrorHandler(errMsg =>
+          addDangerToast(
+            t('There was an issue fetching your recent activity: %s', errMsg),
+          ),
+        ),
+      ),
+    getFilteredChartsandDashboards(addDangerToast, filters),
+  ]).then(([recents, { other }]) => {
+    const distinctRes = lruCache<RecentActivity>(6);
+    (recents ?? []).reverse().forEach(record => {
+      distinctRes.set(record.item_url, record);
+    });
+    return { other, viewed: distinctRes.values().reverse() };
+  });
 
 export function handleChartDelete(
   { id, slice_name: sliceName }: Chart,
