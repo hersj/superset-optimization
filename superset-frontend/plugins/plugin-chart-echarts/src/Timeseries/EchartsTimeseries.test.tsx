@@ -602,5 +602,9 @@ test('SKU ranking shares the existing private viewport restore and name-detail i
   const click = mockEchart.mock.calls.at(-1)?.[0].eventHandlers?.click;
   act(() => click?.({ componentType: 'yAxis', value: sku }));
   expect(screen.getByLabelText('SKU完整名称')).toHaveTextContent(sku);
+  expect(screen.getByLabelText('SKU完整名称')).toHaveStyle({
+    position: 'absolute',
+    top: '100%',
+  });
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });

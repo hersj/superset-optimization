@@ -39,8 +39,21 @@ import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
 import LegendSelector from '../components/LegendSelector';
 import { Button, Typography } from '@superset-ui/core/components';
+import { styled } from '@apache-superset/core/theme';
 
 const TIMER_DURATION = 300;
+
+const SkuDetail = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  padding: 8px;
+  overflow-wrap: anywhere;
+  background: ${({ theme }) => theme.colorBgContainer};
+  color: ${({ theme }) => theme.colorText};
+`;
 
 export default function EchartsTimeseries({
   formData,
@@ -477,7 +490,7 @@ export default function EchartsTimeseries({
 
   return (
     <>
-      <div ref={extraControlRef}>
+      <div ref={extraControlRef} style={{ position: 'relative' }}>
         {skuSelection && (
           <LegendSelector
             itemLabel="SKU"
@@ -507,15 +520,12 @@ export default function EchartsTimeseries({
         />
         <ExtraControls formData={formData} setControlValue={setControlValue} />
         {skuDetail && (
-          <div
-            aria-label={t('SKU完整名称')}
-            style={{ overflowWrap: 'anywhere' }}
-          >
+          <SkuDetail aria-label={t('SKU完整名称')}>
             <Typography.Paragraph copyable>{skuDetail}</Typography.Paragraph>
             <Button buttonSize="small" onClick={() => setSkuDetail(undefined)}>
               收起
             </Button>
-          </div>
+          </SkuDetail>
         )}
       </div>
       <Echart

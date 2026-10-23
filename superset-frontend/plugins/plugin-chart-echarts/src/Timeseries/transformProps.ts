@@ -1425,7 +1425,8 @@ export default function transformProps(
     const rowsInView = Math.max(
       1,
       Math.floor(
-        (height - 112) /
+        // The SKU and metric selectors occupy two 32px toolbar rows.
+        (height - 176) /
           Math.max(64, labelLines * 16 + 12 + skuBarsPerRow * 20),
       ),
     );
