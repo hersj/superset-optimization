@@ -355,6 +355,10 @@ export default function transformProps(
     ]) ?? [],
   );
   const skuRanking = Boolean(skuSelection && isHorizontal);
+  const skuBarsPerRow = Math.max(
+    1,
+    ensureIsArray(metrics).length * (array.length + 1),
+  );
   const rebasedData = skuSelection
     ? skuData.filter(row => visibleSkus.has(String(row[xAxisLabel] ?? '')))
     : skuData;
@@ -1073,7 +1077,7 @@ export default function transformProps(
             inside: true,
             align: 'left',
             verticalAlign: 'bottom',
-            padding: [0, 0, 14, 0],
+            padding: [0, 0, 10 + skuBarsPerRow * 8, 0],
             margin: 0,
             lineHeight: 16,
             fontSize: 13,
@@ -1420,7 +1424,10 @@ export default function transformProps(
     );
     const rowsInView = Math.max(
       1,
-      Math.floor((height - 112) / Math.max(64, labelLines * 16 + 28)),
+      Math.floor(
+        (height - 112) /
+          Math.max(64, labelLines * 16 + 12 + skuBarsPerRow * 20),
+      ),
     );
     const start = rowCount > rowsInView ? 100 * (1 - rowsInView / rowCount) : 0;
     mergedEchartOptions = {

@@ -160,6 +160,16 @@ test('colliding names expose real differing tokens and stay unique across query 
   );
 });
 
+test('multiple metrics reserve space between names and grouped bars', () => {
+  const chart = props();
+  chart.formData.metrics = ['销售额', '毛利'];
+  expect(transformProps(chart).echartOptions.yAxis).toEqual(
+    expect.objectContaining({
+      axisLabel: expect.objectContaining({ padding: [0, 0, 26, 0] }),
+    }),
+  );
+});
+
 test('many SKU rows use an unlocked readable viewport while non-SKU charts keep their layout', () => {
   const chart = props();
   chart.queriesData[0].data = Array.from({ length: 50 }, (_, i) => ({
