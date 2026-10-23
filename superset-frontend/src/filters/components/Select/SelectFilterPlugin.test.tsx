@@ -1763,5 +1763,8 @@ test('field clear removes remembered fuzzy keyword and all values in one operati
       }),
     ),
   );
+  expect(setDataMask.mock.calls.at(-1)[0].ownState).toMatchObject({
+    search: '',
+  });
   expect(getMatchInput()).toHaveValue('');
 });

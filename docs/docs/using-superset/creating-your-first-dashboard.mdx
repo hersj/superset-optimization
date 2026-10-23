@@ -319,3 +319,8 @@ removes both the selected values and remembered keyword. Search remains inside t
 expanded options, with exact manual selection and automatic contains matching.
 Bulk actions only change matching results. The existing dashboard filter memory
 continues to restore the selection, mode and keyword after refresh.
+
+Pending filter changes are protected locally until the server save acknowledges them,
+so refreshing immediately after clearing cannot restore the previous keyword. This
+short-lived recovery is scoped to the user, dashboard and native filter URL key;
+explicit permalink and legacy URL filter states keep their priority.

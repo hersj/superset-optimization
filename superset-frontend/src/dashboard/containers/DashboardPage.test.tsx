@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { writePendingFilterState } from 'src/dashboard/util/pendingFilterState';
 import { URL_PARAMS } from 'src/constants';
 import { getUrlParam } from 'src/utils/urlUtils';
 import {
@@ -49,10 +50,11 @@ describe('loadDashboardDataMask', () => {
   beforeEach(() => {
     Object.keys(urlValues).forEach(key => delete urlValues[key]);
     jest.clearAllMocks();
+    localStorage.clear();
     mockGetUrlParam.mockImplementation(param => urlValues[param.name]);
   });
 
-  it('loads the current user last filter state when URL has no filter state', async () => {
+  test('loads the current user last filter state when URL has no filter state', async () => {
     mockGetLastFilterValue.mockResolvedValue({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -68,7 +70,7 @@ describe('loadDashboardDataMask', () => {
     expect(mockGetLastFilterValue).toHaveBeenCalledWith(51);
   });
 
-  it('prefers native_filters_key over the current user last filter state', async () => {
+  test('prefers native_filters_key over the current user last filter state', async () => {
     urlValues[URL_PARAMS.nativeFiltersKey.name] = 'abc123';
     mockGetFilterValue.mockResolvedValue({ fromKey: true });
 
@@ -82,7 +84,7 @@ describe('loadDashboardDataMask', () => {
     expect(mockGetLastFilterValue).not.toHaveBeenCalled();
   });
 
-  it('keeps legacy native_filters rison state over stored last filter state', async () => {
+  test('keeps legacy native_filters rison state over stored last filter state', async () => {
     urlValues[URL_PARAMS.nativeFiltersKey.name] = 'abc123';
     urlValues[URL_PARAMS.nativeFilters.name] = '(NATIVE_FILTER-1:())';
     mockGetFilterValue.mockResolvedValue({ fromKey: true });
@@ -97,7 +99,7 @@ describe('loadDashboardDataMask', () => {
     expect(mockGetLastFilterValue).not.toHaveBeenCalled();
   });
 
-  it('prefers permalink state over the current user last filter state', async () => {
+  test('prefers permalink state over the current user last filter state', async () => {
     urlValues[URL_PARAMS.permalinkKey.name] = 'permalink-1';
     mockGetPermalinkValue.mockResolvedValue({
       state: {
@@ -119,7 +121,7 @@ describe('loadDashboardDataMask', () => {
 });
 
 describe('shouldSaveLastFilterState', () => {
-  it('does not save the just-hydrated dashboard data mask again', () => {
+  test('does not save the just-hydrated dashboard data mask again', () => {
     const restoredDataMask = {
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     };
@@ -132,7 +134,7 @@ describe('shouldSaveLastFilterState', () => {
     ).toBe(false);
   });
 
-  it('saves when the user changes the hydrated dashboard data mask', () => {
+  test('saves when the user changes the hydrated dashboard data mask', () => {
     const restoredDataMask = {
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     };
@@ -146,5 +148,34 @@ describe('shouldSaveLastFilterState', () => {
         JSON.stringify(restoredDataMask),
       ),
     ).toBe(true);
+  });
+});
+
+test('an immediate reload restores the unsaved clear for this user and URL only', async () => {
+  mockGetUrlParam.mockImplementation(param =>
+    param.name === URL_PARAMS.nativeFiltersKey.name ? 'key' : undefined,
+  );
+  const cleared = { filter: { filterState: { value: null, searchValue: '' } } };
+  writePendingFilterState(1, 87, 'key', JSON.stringify(cleared));
+  await expect(loadDashboardDataMask(87, 1)).resolves.toMatchObject({
+    dataMask: cleared,
+    hasPendingFilterState: true,
+  });
+  mockGetFilterValue.mockResolvedValue({ fromServer: {} });
+  await expect(loadDashboardDataMask(87, 2)).resolves.toMatchObject({
+    dataMask: { fromServer: {} },
+  });
+});
+
+test('pending local state never overrides an explicit permalink', async () => {
+  mockGetUrlParam.mockImplementation(param =>
+    param.name === URL_PARAMS.permalinkKey.name ? 'shared' : undefined,
+  );
+  writePendingFilterState(1, 87, null, '{}');
+  mockGetPermalinkValue.mockResolvedValue({
+    state: { dataMask: { shared: {} } },
+  });
+  await expect(loadDashboardDataMask(87, 1)).resolves.toMatchObject({
+    dataMask: { shared: {} },
   });
 });
