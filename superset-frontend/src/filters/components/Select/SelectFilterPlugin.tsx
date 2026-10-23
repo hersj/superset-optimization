@@ -669,6 +669,13 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
               onChange={values =>
                 updateDataMask(values, matchMode, true, keyword)
               }
+              onClear={() => {
+                onSearch.cancel();
+                setKeyword('');
+                isComposing.current = false;
+                updateDataMask(null, matchMode, true, '');
+                onSearch('');
+              }}
             />
           ) : (
             <Select

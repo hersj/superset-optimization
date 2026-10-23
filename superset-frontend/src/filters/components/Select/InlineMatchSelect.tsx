@@ -24,8 +24,8 @@ import {
   Button,
   Checkbox,
   Input,
-  Popover,
-  type InputRef,
+  RawAntdSelect as Select,
+  type RefSelectProps,
 } from '@superset-ui/core/components';
 import type { SelectFilterMatchMode } from '../../utils';
 import type { SelectValue } from './types';
@@ -42,24 +42,40 @@ type Props = {
   multiple: boolean;
   loading: boolean;
   disabled: boolean;
-  inputRef?: Ref<InputRef>;
+  inputRef?: Ref<RefSelectProps>;
   onModeChange: (mode: SelectFilterMatchMode) => void;
   onKeywordChange: (value: string, committed: boolean) => void;
   onChange: (value: SelectValue) => void;
   onActiveChange: (open: boolean) => void;
+  onClear?: () => void;
 };
 
 const Field = styled.div`
   width: 100%;
   min-width: 0;
-  .match-count {
-    padding-inline: 0;
-    white-space: nowrap;
+  position: relative;
+  .match-empty-clear {
+    position: absolute;
+    inset-inline-end: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0;
   }
-  .match-summary {
-    margin-top: 4px;
-    color: ${({ theme }) => theme.colorTextSecondary};
-    overflow-wrap: anywhere;
+  .match-selected {
+    width: 100%;
+  }
+  .ant-select-selection-overflow-item:not(
+    .ant-select-selection-overflow-item-rest
+  ) {
+    max-width: calc(100% - 60px);
+  }
+  .ant-select-selection-item-content {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .match-selected .ant-select-clear {
+    opacity: 1;
   }
 `;
 const MatchMode = styled(Button)`
@@ -78,7 +94,7 @@ const Options = styled.div`
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    padding-bottom: 4px;
+    padding-block: 4px;
   }
   .match-actions span {
     margin-left: auto;
@@ -111,18 +127,25 @@ export default function InlineMatchSelect({
   onKeywordChange,
   onChange,
   onActiveChange,
+  onClear,
 }: Props) {
   const field = useRef<HTMLDivElement>(null);
   const composing = useRef(false);
+  const clearing = useRef(false);
   const [isComposing, setIsComposing] = useState(false);
   const [open, setOpen] = useState(false);
   const [popupWidth, setPopupWidth] = useState(220);
   const selected = value ?? [];
-  const visible = options.filter(option =>
-    String(option.label ?? option.value ?? '')
-      .toLocaleLowerCase()
-      .includes(keyword.trim().toLocaleLowerCase()),
-  );
+  const visible = options
+    .filter(option =>
+      String(option.label ?? option.value ?? '')
+        .toLocaleLowerCase()
+        .includes(keyword.trim().toLocaleLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        Number(selected.includes(b.value)) - Number(selected.includes(a.value)),
+    );
   const busy = loading || isComposing;
   const active = (next: boolean) => {
     setOpen(next);
@@ -168,16 +191,71 @@ export default function InlineMatchSelect({
   return (
     <Field ref={field}>
       {matchModeContainer && createPortal(modeToggle, matchModeContainer)}
-      <Popover
-        trigger="click"
-        placement="bottomLeft"
+      <Select
+        ref={inputRef}
+        className="match-selected"
+        aria-label={`${t('搜索选项')}：${column}`}
+        mode={multiple ? 'multiple' : undefined}
+        value={multiple ? selected : selected[0]}
+        options={options}
+        disabled={disabled}
+        showSearch={false}
+        allowClear={{
+          clearIcon: <span aria-label={`${t('清空选择')}：${column}`}>×</span>,
+        }}
+        maxTagCount="responsive"
+        maxTagPlaceholder={omitted => `+${omitted.length} …`}
+        placeholder={t('请选择')}
+        prefix={matchModeContainer ? undefined : modeToggle}
         open={open}
         onOpenChange={active}
-        content={
+        onClear={() => {
+          clearing.current = true;
+          onClear?.();
+          if (!onClear) change(null);
+        }}
+        onChange={values => {
+          if (clearing.current) {
+            clearing.current = false;
+            return;
+          }
+          change(
+            Array.isArray(values)
+              ? values
+              : values === undefined
+                ? null
+                : [values],
+          );
+        }}
+        popupRender={() => (
           <Options
             style={{ width: popupWidth }}
             aria-label={`${t('匹配选项')}：${column}`}
           >
+            <Input
+              value={keyword}
+              aria-label={`${t('搜索名称')}：${column}`}
+              placeholder={t('搜索名称')}
+              allowClear
+              disabled={disabled}
+              onFocus={() => onActiveChange(true)}
+              onChange={event =>
+                onKeywordChange(event.target.value, !composing.current)
+              }
+              onCompositionStart={() => {
+                composing.current = true;
+                setIsComposing(true);
+              }}
+              onCompositionEnd={event => {
+                composing.current = false;
+                setIsComposing(false);
+                onKeywordChange(event.currentTarget.value, true);
+              }}
+              onKeyDown={event => {
+                event.stopPropagation();
+                if (event.key === 'Escape' && !composing.current) active(false);
+              }}
+            />
             {multiple && (
               <div className="match-actions">
                 <Button
@@ -242,71 +320,26 @@ export default function InlineMatchSelect({
               )}
             </div>
           </Options>
-        }
-      >
-        <Input
-          ref={inputRef}
-          value={keyword}
-          aria-label={`${t('搜索选项')}：${column}`}
-          prefix={matchModeContainer ? undefined : modeToggle}
-          suffix={
-            <Button
-              className="match-count"
-              buttonStyle="link"
-              buttonSize="xsmall"
-              showMarginRight={false}
-              disabled={disabled}
-              aria-label={`${t('展开选项')}：${column}`}
-              onClick={event => {
-                event.stopPropagation();
-                active(!open);
-              }}
-            >
-              {t('已选')} {selected.length}⌄
-            </Button>
-          }
-          allowClear
+        )}
+      />
+      {!selected.length && keyword && (
+        <Button
+          className="match-empty-clear"
+          buttonStyle="link"
+          buttonSize="xsmall"
+          showMarginRight={false}
           disabled={disabled}
-          placeholder={t('搜索名称')}
-          onFocus={() => active(true)}
+          aria-label={`${t('清空选择')}：${column}`}
           onClick={() => {
-            // Focus opens the panel before Popover's click handler toggles it closed.
-            active(true);
+            if (onClear) onClear();
+            else {
+              onKeywordChange('', true);
+              change(null);
+            }
           }}
-          onChange={event =>
-            onKeywordChange(event.target.value, !composing.current)
-          }
-          onCompositionStart={() => {
-            composing.current = true;
-            setIsComposing(true);
-          }}
-          onCompositionEnd={event => {
-            composing.current = false;
-            setIsComposing(false);
-            onKeywordChange(event.currentTarget.value, true);
-          }}
-          onKeyDown={event => {
-            if (event.key === 'Escape' && !composing.current) active(false);
-          }}
-        />
-      </Popover>
-      {selected.length > 0 && (
-        <div className="match-summary">
-          {selected
-            .slice(0, 2)
-            .map(
-              value =>
-                options.find(option => option.value === value)?.label ??
-                String(value),
-            )
-            .map((label, index) => (
-              <span key={index}>
-                {index > 0 ? '、' : ''}
-                {label}
-              </span>
-            ))}
-          {selected.length > 2 ? t(' 等 %s 项', selected.length) : ''}
-        </div>
+        >
+          ×
+        </Button>
       )}
     </Field>
   );

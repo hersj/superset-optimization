@@ -32,6 +32,13 @@ import transformProps from './transformProps';
 
 jest.useFakeTimers();
 
+function getMatchInput() {
+  const field = screen.getByRole('combobox', { name: '搜索选项：gender' });
+  if (field.getAttribute('aria-expanded') !== 'true')
+    fireEvent.mouseDown(field);
+  return screen.getByRole('textbox', { name: '搜索名称：gender' });
+}
+
 const selectMultipleProps = {
   formData: {
     sortAscending: true,
@@ -149,7 +156,7 @@ describe('SelectFilterPlugin', () => {
       },
     });
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
@@ -173,7 +180,7 @@ describe('SelectFilterPlugin', () => {
 
   test('Remove multiple values when required', () => {
     getWrapper();
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(screen.getByRole('button', { name: '取消全选' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
@@ -197,7 +204,7 @@ describe('SelectFilterPlugin', () => {
 
   test('Remove multiple values when not required', () => {
     getWrapper({ enableEmptyFilter: false });
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(screen.getByRole('button', { name: '取消全选' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {},
@@ -214,7 +221,7 @@ describe('SelectFilterPlugin', () => {
   test('Select single values with inverse', async () => {
     getWrapper({ multiSelect: false, inverseSelection: true });
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenCalledWith({
       extraFormData: {
@@ -238,7 +245,7 @@ describe('SelectFilterPlugin', () => {
 
   test('Select single null (empty) value', async () => {
     getWrapper();
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(await screen.findByRole('checkbox', { name: NULL_STRING }));
     expect(setDataMask).toHaveBeenLastCalledWith({
       extraFormData: {
@@ -262,7 +269,7 @@ describe('SelectFilterPlugin', () => {
 
   test('receives the correct filter when search all options', async () => {
     getWrapper({ searchAllOptions: true, multiSelect: false });
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
     fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -281,7 +288,7 @@ describe('SelectFilterPlugin', () => {
 
   test('searching options preserves selections and debounces the option query', async () => {
     getWrapper({ searchAllOptions: true });
-    const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+    const input = getMatchInput();
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: 'a' } });
     expect(
@@ -468,7 +475,7 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
 
     // When sortMetric is specified, options should appear in the original data order
     // (zebra, alpha, beta) not alphabetically sorted
@@ -541,7 +548,7 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
 
     // When sortMetric is not specified, options should be sorted alphabetically
     // (alpha, beta, zebra)
@@ -614,7 +621,7 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
 
     // When sortAscending is false and no sortMetric, options should be sorted
     // in descending alphabetical order (zebra, beta, alpha)
@@ -687,7 +694,7 @@ describe('SelectFilterPlugin', () => {
       },
     );
 
-    fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+    fireEvent.focus(getMatchInput());
 
     // When sortMetric is specified, original order should be preserved regardless
     // of sortAscending value (zebra, alpha, beta)
@@ -1325,9 +1332,7 @@ test('restores an old contains keyword without converting it into an exact name'
       setDataMask={setDataMask}
     />,
   );
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    '深圳',
-  );
+  expect(getMatchInput()).toHaveValue('深圳');
   await waitFor(() =>
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1352,7 +1357,7 @@ test('keeps Chinese composition local and saves only the committed search value'
       setDataMask={setDataMask}
     />,
   );
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   fireEvent.focus(input);
   setDataMask.mockClear();
   fireEvent.compositionStart(input);
@@ -1403,9 +1408,7 @@ test('explicit contains selections retain their exact values after remount and d
       }),
     ),
   );
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    '深圳',
-  );
+  expect(getMatchInput()).toHaveValue('深圳');
   view.unmount();
   render(
     <ControlledMatchFilter
@@ -1429,9 +1432,7 @@ test('explicit contains selections retain their exact values after remount and d
       }),
     ),
   );
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    '深圳',
-  );
+  expect(getMatchInput()).toHaveValue('深圳');
   expect(screen.queryByLabelText('匹配方式：gender')).not.toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: '匹配方式：gender' }),
@@ -1447,7 +1448,7 @@ test('disabled contains mode keeps old exact selections and immediate named mult
       setDataMask={setDataMask}
     />,
   );
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   fireEvent.focus(input);
   expect(await screen.findByRole('checkbox', { name: 'boy' })).toBeChecked();
   fireEvent.click(screen.getByRole('checkbox', { name: 'girl' }));
@@ -1475,9 +1476,7 @@ test('disabled contains mode keeps old exact selections and immediate named mult
       setDataMask={setDataMask}
     />,
   );
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    'bo',
-  );
+  expect(getMatchInput()).toHaveValue('bo');
   await waitFor(() =>
     expect(setDataMask).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1508,7 +1507,7 @@ test('empty text option results keep the named panel and the remembered selectio
       setDataMask={setDataMask}
     />,
   );
-  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+  fireEvent.focus(getMatchInput());
   expect(screen.getByRole('status')).toHaveTextContent('无匹配项');
   expect(setDataMask).toHaveBeenLastCalledWith(
     expect.objectContaining({
@@ -1543,9 +1542,7 @@ test('matching mode stays in the filter title and clear all clears remembered se
       .getByRole('button', { name: '匹配方式：gender' })
       .closest('.ant-input-affix-wrapper'),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    'bo',
-  );
+  expect(getMatchInput()).toHaveValue('bo');
   view.rerender(
     <SelectFilterPlugin
       {...props}
@@ -1554,9 +1551,7 @@ test('matching mode stays in the filter title and clear all clears remembered se
       showOverflow={false}
     />,
   );
-  expect(screen.getByRole('textbox', { name: '搜索选项：gender' })).toHaveValue(
-    '',
-  );
+  expect(getMatchInput()).toHaveValue('');
   heading.remove();
 });
 
@@ -1573,7 +1568,7 @@ test('commits checked names as IN values while preserving the contains search mo
       setDataMask={setDataMask}
     />,
   );
-  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+  fireEvent.focus(getMatchInput());
   fireEvent.click(await screen.findByRole('checkbox', { name: 'girl' }));
   await waitFor(() =>
     expect(setDataMask).toHaveBeenLastCalledWith(
@@ -1601,7 +1596,7 @@ test('fuzzy typing selects every matching name automatically and replaces the pr
       setDataMask={setDataMask}
     />,
   );
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   const mode = screen.getByRole('button', { name: '匹配方式：gender' });
   expect(mode).toHaveTextContent('精确');
   fireEvent.click(mode);
@@ -1625,9 +1620,7 @@ test('fuzzy typing selects every matching name automatically and replaces the pr
   );
   expect(screen.getByRole('checkbox', { name: '华南-US' })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: '华南-CA' })).toBeChecked();
-  expect(
-    screen.getByRole('button', { name: '展开选项：gender' }),
-  ).toHaveTextContent('已选 2');
+  expect(screen.getByLabelText('匹配选项：gender')).toHaveTextContent('2/2');
   const saved = setDataMask.mock.calls.at(-1)[0].filterState;
   view.unmount();
   const restored = render(
@@ -1637,7 +1630,7 @@ test('fuzzy typing selects every matching name automatically and replaces the pr
       setDataMask={setDataMask}
     />,
   );
-  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：gender' }));
+  fireEvent.focus(getMatchInput());
   expect(screen.getByRole('checkbox', { name: '华南-US' })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: '华南-CA' })).toBeChecked();
   // A refreshed option list inherits the saved predicate, including new matches.
@@ -1649,15 +1642,13 @@ test('fuzzy typing selects every matching name automatically and replaces the pr
     />,
   );
   expect(screen.getByRole('checkbox', { name: '华南-UK' })).toBeChecked();
-  expect(
-    screen.getByRole('button', { name: '展开选项：gender' }),
-  ).toHaveTextContent('已选 3');
+  expect(screen.getByLabelText('匹配选项：gender')).toHaveTextContent('3/3');
 });
 
 test('exact searches keep selections and switching to fuzzy applies the current keyword', async () => {
   const setDataMask = jest.fn();
   render(<ControlledMatchFilter setDataMask={setDataMask} />);
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: 'bo' } });
   expect(screen.getByRole('checkbox', { name: 'boy' })).not.toBeChecked();
@@ -1693,7 +1684,7 @@ test('no fuzzy matches keep the predicate and clearing the keyword removes it', 
       setDataMask={setDataMask}
     />,
   );
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: 'not found' } });
   expect(screen.getByRole('status')).toHaveTextContent('无匹配项');
@@ -1726,7 +1717,7 @@ test('manual deselection overrides auto matches until the next fuzzy keyword', a
       setDataMask={setDataMask}
     />,
   );
-  const input = screen.getByRole('textbox', { name: '搜索选项：gender' });
+  const input = getMatchInput();
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: '华南' } });
   fireEvent.click(await screen.findByRole('checkbox', { name: '华南-CA' }));
@@ -1742,4 +1733,35 @@ test('manual deselection overrides auto matches until the next fuzzy keyword', a
     }),
   );
   expect(screen.getByRole('checkbox', { name: '北美-US' })).toBeChecked();
+});
+
+test('field clear removes remembered fuzzy keyword and all values in one operation', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <ControlledMatchFilter
+      names={['华南-US', '华南-CA', '北美-US']}
+      saved={{
+        matchMode: 'contains',
+        value: ['华南'],
+        valueSelection: false,
+        searchValue: '华南',
+      }}
+      setDataMask={setDataMask}
+    />,
+  );
+  fireEvent.mouseDown(screen.getByLabelText('清空选择：gender'));
+  await waitFor(() =>
+    expect(setDataMask.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        extraFormData: {},
+        filterState: expect.objectContaining({
+          value: null,
+          searchValue: '',
+          matchMode: 'contains',
+          valueSelection: true,
+        }),
+      }),
+    ),
+  );
+  expect(getMatchInput()).toHaveValue('');
 });

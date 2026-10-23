@@ -78,19 +78,17 @@ beforeEach(() => {
 });
 async function open(props = {}) {
   const view = render(<Harness {...props} />);
-  fireEvent.focus(screen.getByRole('textbox', { name: '搜索选项：shop' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '搜索选项：shop' }));
   return { view, panel: await screen.findByLabelText('匹配选项：shop') };
 }
 
-test('one pointer click opens names and clicking the input keeps them open', async () => {
+test('one pointer click opens names and outside click closes them', async () => {
   render(<Harness />);
-  const input = screen.getByRole('textbox', { name: '搜索选项：shop' });
+  const input = screen.getByRole('combobox', { name: '搜索选项：shop' });
   await userEvent.click(input);
   await waitFor(() =>
     expect(screen.getByText('华南-US', { exact: true })).toBeVisible(),
   );
-  await userEvent.click(input);
-  expect(screen.getByText('华南-US', { exact: true })).toBeVisible();
   await userEvent.click(document.body);
   await waitFor(() =>
     expect(
@@ -99,19 +97,15 @@ test('one pointer click opens names and clicking the input keeps them open', asy
   );
 });
 
-test('the count button opens on its first pointer click and toggles closed', async () => {
+test('keyboard opens the native field and Escape closes the options', async () => {
   render(<Harness />);
-  const count = screen.getByRole('button', { name: '展开选项：shop' });
-  await userEvent.click(count);
-  await waitFor(() =>
-    expect(screen.getByText('华南-US', { exact: true })).toBeVisible(),
-  );
-  await userEvent.click(count);
-  await waitFor(() =>
-    expect(
-      screen.queryByRole('checkbox', { name: '华南-US' }),
-    ).not.toBeInTheDocument(),
-  );
+  const field = screen.getByRole('combobox', { name: '搜索选项：shop' });
+  fireEvent.keyDown(field, { key: 'ArrowDown', keyCode: 40 });
+  expect(
+    await screen.findByRole('checkbox', { name: '华南-US' }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+  await waitFor(() => expect(field).toHaveAttribute('aria-expanded', 'false'));
 });
 
 test('checkboxes and both bulk actions only change current matching values', async () => {
@@ -131,7 +125,7 @@ test('checkboxes and both bulk actions only change current matching values', asy
   expect(
     within(panel).getByRole('button', { name: '取消全选' }),
   ).toBeDisabled();
-  expect(screen.getByText('北美-US')).toBeInTheDocument();
+  expect(changed).toHaveBeenLastCalledWith(['北美-US']);
   fireEvent.change(screen.getByRole('textbox'), { target: { value: '北美' } });
   expect(
     within(panel).getByRole('checkbox', { name: '北美-US' }),
@@ -175,7 +169,6 @@ test('one click switches the current exact or fuzzy label without a menu', async
   expect(changed).not.toHaveBeenCalled();
   for (const button of [
     screen.getByRole('button', { name: '匹配方式：shop' }),
-    screen.getByRole('button', { name: '展开选项：shop' }),
     within(panel).getByRole('button', { name: '全选当前结果' }),
     within(panel).getByRole('button', { name: '取消全选' }),
   ])
@@ -230,7 +223,36 @@ test('bulk selection supports null and zero values without string coercion', asy
       onActiveChange={jest.fn()}
     />,
   );
-  fireEvent.focus(screen.getByRole('textbox'));
+  fireEvent.mouseDown(screen.getByRole('combobox'));
   fireEvent.click(await screen.findByRole('button', { name: '全选当前结果' }));
   expect(changed).toHaveBeenLastCalledWith([0, null]);
+});
+
+test('selected names remain inside the field and clear resets both keyword and selection', async () => {
+  const clear = jest.fn();
+  const { container } = render(
+    <InlineMatchSelect
+      column="shop"
+      mode="exact"
+      keyword="华南"
+      value={['北美-US', '华南-US']}
+      options={options}
+      multiple
+      loading={false}
+      disabled={false}
+      onChange={changed}
+      onClear={clear}
+      onKeywordChange={searched}
+      onModeChange={jest.fn()}
+      onActiveChange={jest.fn()}
+    />,
+  );
+  expect(
+    container.querySelector('.ant-select-selection-overflow'),
+  ).toBeInTheDocument();
+  expect(container.querySelector('.match-summary')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText('清空选择：shop'));
+  expect(clear).toHaveBeenCalledTimes(1);
+  expect(searched).not.toHaveBeenCalled();
+  await waitFor(() => expect(changed).not.toHaveBeenCalled());
 });
