@@ -1118,6 +1118,7 @@ export default function transformProps(
     grid: {
       ...defaultGrid,
       ...padding,
+      ...(skuRanking ? { containLabel: false } : {}),
     },
     xAxis,
     yAxis,
@@ -1397,6 +1398,7 @@ export default function transformProps(
     ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)
     : alignedEchartOptions;
 
+  let minCategoryHeight: number | undefined;
   if (skuRanking) {
     const rowCount = visibleSkus.size;
     const labelWidth = Math.max(100, width - 64);
@@ -1422,12 +1424,12 @@ export default function transformProps(
           ),
       ),
     );
+    minCategoryHeight = Math.max(72, labelLines * 16 + 16 + skuBarsPerRow * 20);
     const rowsInView = Math.max(
       1,
       Math.floor(
         // The SKU and metric selectors occupy two 32px toolbar rows.
-        (height - 176) /
-          Math.max(64, labelLines * 16 + 12 + skuBarsPerRow * 20),
+        (height - 176) / minCategoryHeight,
       ),
     );
     const start = rowCount > rowsInView ? 100 * (1 - rowsInView / rowCount) : 0;
@@ -1449,16 +1451,6 @@ export default function transformProps(
           showDetail: false,
           filterMode: 'empty',
         },
-        {
-          type: 'inside',
-          yAxisIndex: 0,
-          start,
-          end: 100,
-          zoomOnMouseWheel: false,
-          moveOnMouseWheel: true,
-          moveOnMouseMove: true,
-          filterMode: 'empty',
-        },
       ],
       series: ensureIsArray(mergedEchartOptions.series as SeriesOption[]).map(
         entry =>
@@ -1466,7 +1458,7 @@ export default function transformProps(
             ? {
                 ...entry,
                 barMaxWidth: 14,
-                labelLayout: () => ({ x: width - 24, align: 'right' as const }),
+                labelLayout: () => ({ x: width - 48, align: 'right' as const }),
               }
             : entry,
       ),
@@ -1505,6 +1497,7 @@ export default function transformProps(
     legendData,
     legendGroups,
     skuSelection,
+    minCategoryHeight,
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,

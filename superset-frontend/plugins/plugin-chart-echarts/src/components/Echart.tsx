@@ -28,9 +28,16 @@ import {
   useState,
 } from 'react';
 import { useSelector } from 'react-redux';
+import { t } from '@apache-superset/core/translation';
 
 import { styled, useTheme } from '@apache-superset/core/theme';
-import { use, init, EChartsType, registerLocale } from 'echarts/core';
+import {
+  use,
+  init,
+  EChartsType,
+  EChartsCoreOption,
+  registerLocale,
+} from 'echarts/core';
 import {
   SankeyChart,
   PieChart,
@@ -48,7 +55,7 @@ import {
   SunburstChart,
   CustomChart,
 } from 'echarts/charts';
-import { CanvasRenderer } from 'echarts/renderers';
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import {
   TooltipComponent,
   TitleComponent,
@@ -67,6 +74,7 @@ import { EchartsHandler, EchartsProps, EchartsStylesProps } from '../types';
 import { DEFAULT_LOCALE } from '../constants';
 import { mergeEchartsThemeOverrides } from '../utils/themeOverrides';
 import {
+  getScrollableChartHeight,
   persistMatrixViewport,
   restoreMatrixViewport,
 } from '../utils/matrixViewport';
@@ -91,6 +99,7 @@ const Styles = styled.div<EchartsStylesProps>`
 // eslint-disable-next-line react-hooks/rules-of-hooks -- This is ECharts' use function, not a React hook
 use([
   CanvasRenderer,
+  SVGRenderer,
   BarChart,
   BoxplotChart,
   CustomChart,
@@ -141,11 +150,18 @@ function Echart(
     refs,
     vizType,
     dataZoomStorageKey,
+    minCategoryHeight,
   }: EchartsProps,
   ref: Ref<EchartsHandler>,
 ) {
   const theme = useTheme();
   const divRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(height);
+  const chartHeight = minCategoryHeight
+    ? Math.max(height, contentHeight)
+    : height;
+  const chartWidth = minCategoryHeight ? Math.max(1, width - 16) : width;
   if (refs) {
     // eslint-disable-next-line no-param-reassign
     refs.divRef = divRef;
@@ -190,13 +206,16 @@ function Echart(
       }
       if (!divRef.current) return;
       if (!chartRef.current) {
-        chartRef.current = init(divRef.current, null, { locale });
+        chartRef.current = init(divRef.current, null, {
+          locale,
+          // SVG avoids browser canvas dimension limits for long SKU lists.
+          renderer: minCategoryHeight ? 'svg' : 'canvas',
+        });
       }
       // did mount
-      handleSizeChange({ width, height });
       setDidMount(true);
     });
-  }, [locale, width, height, handleSizeChange]);
+  }, [locale, minCategoryHeight]);
 
   useEffect(() => {
     if (didMount) {
@@ -283,12 +302,26 @@ function Echart(
         animationOverride,
       );
 
-      const persistViewport = () => {
-        if (viewportKey && chartRef.current) {
-          persistMatrixViewport(chartRef.current.getOption(), viewportKey);
+      const resizeRows = (options: EChartsCoreOption) => {
+        if (minCategoryHeight) {
+          const nextHeight = getScrollableChartHeight(
+            options,
+            height,
+            minCategoryHeight,
+          );
+          setContentHeight(nextHeight);
+          chartRef.current?.resize({ width: chartWidth, height: nextHeight });
         }
       };
-      if (viewportKey) chartRef.current?.on('datazoom', persistViewport);
+      const persistViewport = () => {
+        if (chartRef.current) {
+          const options = chartRef.current.getOption();
+          if (viewportKey) persistMatrixViewport(options, viewportKey);
+          resizeRows(options);
+        }
+      };
+      if (viewportKey || minCategoryHeight)
+        chartRef.current?.on('datazoom', persistViewport);
 
       const notMerge = !isDashboardRefreshing;
       if (!notMerge) {
@@ -307,16 +340,19 @@ function Echart(
        * - 不变量与约束：切换数字显示或时间对比不得恢复旧图例；series、legend、tooltip、颜色和注释配置必须来自同一轮选项。
        * - 验证方式：Echart.test.tsx 断言刷新 setOption 同时 replaceMerge series/legend；标准和混合时序 transform 测试覆盖状态映射。
        */
-      chartRef.current?.setOption(
-        restoreMatrixViewport(themedEchartOptions, viewportKey),
-        {
-          notMerge,
-          replaceMerge: notMerge ? undefined : ['series', 'legend'],
-          lazyUpdate: isDashboardRefreshing,
-        },
+      const restoredOptions = restoreMatrixViewport(
+        themedEchartOptions,
+        viewportKey,
       );
+      resizeRows(restoredOptions);
+      chartRef.current?.setOption(restoredOptions, {
+        notMerge,
+        replaceMerge: notMerge ? undefined : ['series', 'legend'],
+        lazyUpdate: isDashboardRefreshing,
+      });
       return () => {
-        if (viewportKey) chartRef.current?.off('datazoom', persistViewport);
+        if (viewportKey || minCategoryHeight)
+          chartRef.current?.off('datazoom', persistViewport);
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isDashboardRefreshing intentionally excluded to prevent extra setOption calls
@@ -328,6 +364,9 @@ function Echart(
     theme,
     vizType,
     viewportKey,
+    minCategoryHeight,
+    height,
+    chartWidth,
   ]);
 
   useEffect(() => () => chartRef.current?.dispose(), []);
@@ -351,10 +390,85 @@ function Echart(
   }, [currentSelection]);
 
   useLayoutEffect(() => {
-    handleSizeChange({ width, height });
-  }, [width, height, handleSizeChange]);
+    handleSizeChange({ width: chartWidth, height: chartHeight });
+  }, [chartWidth, chartHeight, didMount, handleSizeChange]);
 
-  return <Styles ref={divRef} height={height} width={width} />;
+  const positionSlider = useCallback(() => {
+    if (!minCategoryHeight || !scrollRef.current) return;
+    chartRef.current?.setOption(
+      {
+        dataZoom: [
+          {
+            id: 'matrix-rows',
+            top: scrollRef.current.scrollTop + 38,
+            bottom: 'auto',
+            height: Math.max(40, height - 80),
+          },
+        ],
+      },
+      { silent: true },
+    );
+  }, [minCategoryHeight, height]);
+
+  useEffect(() => {
+    if (!minCategoryHeight || !scrollRef.current || !didMount) return;
+    if (viewportKey) {
+      try {
+        const saved: unknown = JSON.parse(
+          localStorage.getItem(`${viewportKey}:scroll`) ?? 'null',
+        );
+        if (typeof saved === 'number' && Number.isFinite(saved) && saved >= 0) {
+          scrollRef.current.scrollTop = saved;
+        }
+      } catch {
+        // Storage restrictions must not prevent chart navigation.
+      }
+    }
+    positionSlider();
+  }, [
+    viewportKey,
+    minCategoryHeight,
+    chartHeight,
+    height,
+    didMount,
+    echartOptions,
+    positionSlider,
+  ]);
+
+  const chart = <Styles ref={divRef} height={chartHeight} width={chartWidth} />;
+  return minCategoryHeight ? (
+    <div
+      ref={scrollRef}
+      role="region"
+      aria-label={t('SKU排行滚动区域')}
+      tabIndex={0}
+      style={{
+        height,
+        width,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        scrollbarGutter: 'stable',
+        overscrollBehavior: 'contain',
+      }}
+      onScroll={() => {
+        positionSlider();
+        if (viewportKey && scrollRef.current) {
+          try {
+            localStorage.setItem(
+              `${viewportKey}:scroll`,
+              JSON.stringify(scrollRef.current.scrollTop),
+            );
+          } catch {
+            /* Storage restrictions must not prevent chart navigation. */
+          }
+        }
+      }}
+    >
+      {chart}
+    </div>
+  ) : (
+    chart
+  );
 }
 
 export default forwardRef(Echart);

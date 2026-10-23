@@ -18,7 +18,11 @@
  */
 import { ensureIsArray } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
-import type { DataZoomComponentOption } from 'echarts/components';
+import type {
+  DataZoomComponentOption,
+  GridComponentOption,
+} from 'echarts/components';
+import type { YAXisComponentOption } from 'echarts/types/dist/shared';
 
 type Viewport = { start: number; end: number };
 
@@ -78,4 +82,29 @@ export function persistMatrixViewport(options: EChartsCoreOption, key: string) {
   } catch {
     // Storage restrictions must not prevent chart navigation.
   }
+}
+
+export function getScrollableChartHeight(
+  options: EChartsCoreOption,
+  viewportHeight: number,
+  minCategoryHeight: number,
+): number {
+  const [axis] = ensureIsArray(options.yAxis as YAXisComponentOption[]);
+  const count = axis?.data?.length ?? 0;
+  const zoom = ensureIsArray(
+    options.dataZoom as DataZoomComponentOption[],
+  ).find(item => item.id === 'matrix-rows');
+  const start = typeof zoom?.start === 'number' ? zoom.start : 0;
+  const end = typeof zoom?.end === 'number' ? zoom.end : 100;
+  // Category zoom rounds its endpoints; include the endpoint row in the height.
+  const visibleRows = count
+    ? Math.ceil(((count - 1) * (end - start)) / 100) + 1
+    : 0;
+  const [grid] = ensureIsArray(options.grid as GridComponentOption[]);
+  const top = typeof grid?.top === 'number' ? grid.top : 38;
+  const bottom = typeof grid?.bottom === 'number' ? grid.bottom : 42;
+  return Math.max(
+    viewportHeight,
+    visibleRows * minCategoryHeight + top + bottom,
+  );
 }

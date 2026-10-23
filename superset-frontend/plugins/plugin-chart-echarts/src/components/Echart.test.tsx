@@ -16,7 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { act, render, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { EChartsCoreOption } from 'echarts/core';
 import Echart from './Echart';
 
@@ -157,4 +163,80 @@ test('keeps other users and dashboards on their own ranges', async () => {
   expect(
     mockSetOption.mock.calls.at(-1)?.[0].dataZoom[0].start,
   ).toBeUndefined();
+});
+
+test('restored full range expands 100 SKU rows and retains scroll on refresh and remount', async () => {
+  const scope = '[87,839,"kk_sku"]';
+  const key = `echarts__matrix_viewport:${JSON.stringify([1, scope])}`;
+  localStorage.setItem(key, JSON.stringify({ start: 0, end: 100 }));
+  const options = {
+    yAxis: { data: Array.from({ length: 100 }, (_, i) => `SKU${i}`) },
+    grid: { top: 38, bottom: 42 },
+    dataZoom: [{ id: 'matrix-rows', yAxisIndex: 0, start: 97, end: 100 }],
+  };
+  const chart = () => (
+    <Echart
+      refs={{}}
+      width={800}
+      height={300}
+      minCategoryHeight={84}
+      echartOptions={{ ...options }}
+      dataZoomStorageKey={scope}
+    />
+  );
+  const first = render(chart());
+  await waitFor(() =>
+    expect(mockChart.resize).toHaveBeenCalledWith({ width: 784, height: 8480 }),
+  );
+  const region = screen.getByRole('region', { name: 'SKU排行滚动区域' });
+  expect(region.style.height).toBe('300px');
+  expect(region.style.overflowY).toBe('auto');
+  fireEvent.scroll(screen.getByRole('region'), { target: { scrollTop: 1260 } });
+  expect(localStorage.getItem(`${key}:scroll`)).toBe('1260');
+  first.rerender(chart());
+  expect(screen.getByRole('region').scrollTop).toBe(1260);
+  first.unmount();
+  render(chart());
+  await waitFor(() => expect(screen.getByRole('region').scrollTop).toBe(1260));
+  expect(mockChart.resize).toHaveBeenLastCalledWith({
+    width: 784,
+    height: 8480,
+  });
+});
+
+test('resizing the SKU slider grows the content without locking the chosen range', async () => {
+  const options = {
+    yAxis: { data: Array.from({ length: 100 }, (_, i) => `SKU${i}`) },
+    dataZoom: [
+      {
+        id: 'matrix-rows',
+        yAxisIndex: 0,
+        start: 97,
+        end: 100,
+        zoomLock: false,
+      },
+    ],
+  };
+  render(
+    <Echart
+      refs={{}}
+      width={800}
+      height={300}
+      minCategoryHeight={84}
+      echartOptions={options}
+      dataZoomStorageKey='[87,839,"kk_sku"]'
+    />,
+  );
+  await waitFor(() =>
+    expect(mockChart.on).toHaveBeenCalledWith('datazoom', expect.any(Function)),
+  );
+  mockChart.getOption.mockReturnValue({
+    ...options,
+    dataZoom: [{ id: 'matrix-rows', start: 50, end: 100 }],
+  });
+  act(() => mockChart.on.mock.calls.at(-1)?.[1]());
+  expect(mockChart.resize).toHaveBeenLastCalledWith({
+    width: 784,
+    height: 4364,
+  });
 });

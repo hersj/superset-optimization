@@ -86,6 +86,7 @@ export default function EchartsTimeseries({
   matrixDimensions,
   matrixTimeGrain,
   skuSelection,
+  minCategoryHeight,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const dataZoomStorageKey =
@@ -539,6 +540,7 @@ export default function EchartsTimeseries({
         selectedValues={selectedValues}
         vizType={formData.vizType}
         dataZoomStorageKey={dataZoomStorageKey}
+        minCategoryHeight={minCategoryHeight}
       />
     </>
   );

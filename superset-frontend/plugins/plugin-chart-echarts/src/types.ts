@@ -57,6 +57,7 @@ export interface EchartsProps {
   refs: Refs;
   vizType?: string;
   dataZoomStorageKey?: string;
+  minCategoryHeight?: number;
 }
 
 export interface EchartsHandler {

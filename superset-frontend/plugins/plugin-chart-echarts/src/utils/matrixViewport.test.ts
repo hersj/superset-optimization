@@ -16,7 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { persistMatrixViewport, restoreMatrixViewport } from './matrixViewport';
+import {
+  getScrollableChartHeight,
+  persistMatrixViewport,
+  restoreMatrixViewport,
+} from './matrixViewport';
 
 const options = {
   dataZoom: [
@@ -90,4 +94,25 @@ test('navigation works if browser storage is unavailable', () => {
       'range',
     ),
   ).not.toThrow();
+});
+
+test.each([10, 50, 100, 1000])(
+  'keeps all %s restored SKU rows readable',
+  count => {
+    const full = {
+      yAxis: { data: Array.from({ length: count }, (_, i) => String(i)) },
+      grid: { top: 38, bottom: 42 },
+      dataZoom: [{ id: 'matrix-rows', start: 0, end: 100 }],
+    };
+    expect(getScrollableChartHeight(full, 300, 84)).toBe(count * 84 + 80);
+  },
+);
+
+test('sizes a partial category window with inclusive rounded endpoints', () => {
+  const partial = {
+    yAxis: { data: Array.from({ length: 100 }, (_, i) => String(i)) },
+    dataZoom: [{ id: 'matrix-rows', start: 80, end: 100 }],
+  };
+  expect(getScrollableChartHeight(partial, 300, 84)).toBe(21 * 84 + 80);
+  expect(getScrollableChartHeight({ yAxis: { data: [] } }, 300, 84)).toBe(300);
 });

@@ -128,9 +128,10 @@ test('places every SKU name above the bar without changing full query keys', () 
         yAxisIndex: 0,
         zoomLock: false,
       }),
-      expect.objectContaining({ type: 'inside', moveOnMouseWheel: true }),
     ]),
   );
+  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(72);
+  expect(result.echartOptions.dataZoom).toHaveLength(1);
   expect(result.echartOptions.series).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
