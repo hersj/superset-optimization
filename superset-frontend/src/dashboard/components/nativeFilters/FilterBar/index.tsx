@@ -257,7 +257,11 @@ export const getPendingFilterState = (
       inScopeFilterIds,
     ),
   ).forEach(([id, mask]) => {
-    pending[id] = { ...mask, id };
+    pending[id] = {
+      ...(getInitialDataMask(id) as DataMaskWithId),
+      ...applied[id],
+      ...mask,
+    };
   });
   return pending;
 };

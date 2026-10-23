@@ -42,6 +42,7 @@ import FilterBar, {
 } from '.';
 import { FILTERS_CONFIG_MODAL_TEST_ID } from '../FiltersConfigModal/FiltersConfigModal';
 import * as dataMaskActions from 'src/dataMask/actions';
+import dataMaskReducer from 'src/dataMask/reducer';
 import {
   readPendingFilterState,
   writePendingFilterState,
@@ -187,9 +188,17 @@ describe('pending selection before automatic apply', () => {
     writePendingFilterState(1, 87, 'same-url', JSON.stringify(pending));
     applier.schedule(id, cleared);
     expect(apply).not.toHaveBeenCalled();
-    expect(readPendingFilterState(1, 87, 'same-url')).toEqual({
+    expect(readPendingFilterState(1, 87, 'same-url')).toMatchObject({
       [id]: { ...cleared, id },
     });
+    expect(JSON.stringify(pending)).toBe(
+      JSON.stringify(
+        dataMaskReducer(
+          applied,
+          dataMaskActions.updateDataMasks({ [id]: cleared }),
+        ),
+      ),
+    );
     applier.cancel();
   });
 
