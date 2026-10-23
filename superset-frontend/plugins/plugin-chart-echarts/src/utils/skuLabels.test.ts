@@ -127,6 +127,7 @@ test('places every SKU name above the bar without changing full query keys', () 
         id: 'matrix-rows',
         yAxisIndex: 0,
         zoomLock: false,
+        realtime: false,
       }),
     ]),
   );

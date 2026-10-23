@@ -1447,6 +1447,8 @@ export default function transformProps(
           top: 38,
           bottom: 42,
           zoomLock: false,
+          // Resize the scroll content after release so dragging keeps its handle.
+          realtime: false,
           show: rowCount > rowsInView,
           showDetail: false,
           filterMode: 'empty',
