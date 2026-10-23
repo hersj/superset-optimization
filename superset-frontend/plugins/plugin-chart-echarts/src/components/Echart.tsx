@@ -75,6 +75,8 @@ import { DEFAULT_LOCALE } from '../constants';
 import { mergeEchartsThemeOverrides } from '../utils/themeOverrides';
 import {
   getScrollableChartHeight,
+  persistSkuScroll,
+  restoreSkuScroll,
   persistMatrixViewport,
   restoreMatrixViewport,
 } from '../utils/matrixViewport';
@@ -157,6 +159,7 @@ function Echart(
   const theme = useTheme();
   const divRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollOptions = useRef(echartOptions);
   const [contentHeight, setContentHeight] = useState(height);
   const chartHeight = minCategoryHeight
     ? Math.max(height, contentHeight)
@@ -309,6 +312,7 @@ function Echart(
             height,
             minCategoryHeight,
           );
+          scrollOptions.current = options;
           setContentHeight(nextHeight);
           chartRef.current?.resize({ width: chartWidth, height: nextHeight });
         }
@@ -400,9 +404,9 @@ function Echart(
         dataZoom: [
           {
             id: 'matrix-rows',
-            top: scrollRef.current.scrollTop + 38,
+            top: scrollRef.current.scrollTop + 12,
             bottom: 'auto',
-            height: Math.max(40, height - 80),
+            height: Math.max(40, height - 40),
           },
         ],
       },
@@ -412,18 +416,12 @@ function Echart(
 
   useEffect(() => {
     if (!minCategoryHeight || !scrollRef.current || !didMount) return;
-    if (viewportKey) {
-      try {
-        const saved: unknown = JSON.parse(
-          localStorage.getItem(`${viewportKey}:scroll`) ?? 'null',
-        );
-        if (typeof saved === 'number' && Number.isFinite(saved) && saved >= 0) {
-          scrollRef.current.scrollTop = saved;
-        }
-      } catch {
-        // Storage restrictions must not prevent chart navigation.
-      }
-    }
+    scrollRef.current.scrollTop = restoreSkuScroll(
+      scrollOptions.current,
+      chartHeight,
+      height,
+      viewportKey,
+    );
     positionSlider();
   }, [
     viewportKey,
@@ -453,14 +451,12 @@ function Echart(
       onScroll={() => {
         positionSlider();
         if (viewportKey && scrollRef.current) {
-          try {
-            localStorage.setItem(
-              `${viewportKey}:scroll`,
-              JSON.stringify(scrollRef.current.scrollTop),
-            );
-          } catch {
-            /* Storage restrictions must not prevent chart navigation. */
-          }
+          persistSkuScroll(
+            scrollOptions.current,
+            chartHeight,
+            scrollRef.current.scrollTop,
+            viewportKey,
+          );
         }
       }}
     >

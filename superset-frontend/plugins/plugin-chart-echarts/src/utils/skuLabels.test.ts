@@ -20,7 +20,12 @@ import { ChartProps } from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import type { LegendState } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
-import { buildSkuSelection, expandSkuAliases } from './skuLabels';
+import {
+  buildSkuSelection,
+  expandSkuAliases,
+  layoutSkuRanking,
+  restoreSkuRankingView,
+} from './skuLabels';
 import transformProps from '../Timeseries/transformProps';
 import { DEFAULT_FORM_DATA } from '../Timeseries/constants';
 import {
@@ -93,7 +98,7 @@ test('selection remains attached to full names when result set and alias collisi
     buildSkuSelection('other_sku', [b], state).selected,
   ).not.toHaveProperty(key);
 });
-test('places every SKU name above the bar without changing full query keys', () => {
+test('aligns every SKU name beside the bar without changing full query keys', () => {
   const chart = props();
   const original = JSON.stringify(chart.queriesData);
   const result = transformProps(chart);
@@ -105,10 +110,10 @@ test('places every SKU name above the bar without changing full query keys', () 
     expect.objectContaining({
       triggerEvent: true,
       axisLabel: expect.objectContaining({
-        width: 656,
-        inside: true,
+        width: 280,
+        inside: false,
         align: 'left',
-        verticalAlign: 'bottom',
+        verticalAlign: 'middle',
         interval: 0,
         hideOverlap: false,
         overflow: 'break',
@@ -131,12 +136,12 @@ test('places every SKU name above the bar without changing full query keys', () 
       }),
     ]),
   );
-  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(72);
+  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(36);
   expect(result.echartOptions.dataZoom).toHaveLength(1);
   expect(result.echartOptions.series).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
-        barMaxWidth: 14,
+        barMaxWidth: 10,
         labelLayout: expect.any(Function),
       }),
     ]),
@@ -162,12 +167,12 @@ test('colliding names expose real differing tokens and stay unique across query 
   );
 });
 
-test('multiple metrics reserve space between names and grouped bars', () => {
+test('multiple metrics align names with grouped bars', () => {
   const chart = props();
   chart.formData.metrics = ['销售额', '毛利'];
   expect(transformProps(chart).echartOptions.yAxis).toEqual(
     expect.objectContaining({
-      axisLabel: expect.objectContaining({ padding: [0, 0, 26, 0] }),
+      axisLabel: expect.objectContaining({ padding: 0 }),
     }),
   );
 });
@@ -183,7 +188,7 @@ test('many SKU rows use an unlocked readable viewport while non-SKU charts keep 
     expect.arrayContaining([
       expect.objectContaining({
         id: 'matrix-rows',
-        show: true,
+        show: false,
         zoomLock: false,
         end: 100,
         start: expect.any(Number),
@@ -275,4 +280,37 @@ test('legacy short aliases never combine different complete SKU series', () => {
   expect(transformed.echartOptions.yAxis).toEqual(
     expect.objectContaining({ data: expect.arrayContaining([a, b]) }),
   );
+});
+
+test('compact layout keeps 36px rows and 44px comparison rows with adjustable preferences', () => {
+  const labels = { SKU1: 'SKU1', SKU2: 'SKU2' };
+  const options = {
+    yAxis: { data: Object.keys(labels) },
+    series: [{ type: 'bar' }],
+  };
+  expect(layoutSkuRanking(options, 900, labels, 1).minCategoryHeight).toBe(36);
+  expect(layoutSkuRanking(options, 900, labels, 2).minCategoryHeight).toBe(44);
+  expect(
+    layoutSkuRanking(options, 900, labels, 2, {
+      comfortable: true,
+      nameWidth: 40,
+      range: false,
+    }).minCategoryHeight,
+  ).toBe(52);
+  localStorage.setItem(
+    'view',
+    JSON.stringify({ comfortable: true, nameWidth: 45, range: true }),
+  );
+  expect(restoreSkuRankingView('view')).toEqual({
+    comfortable: true,
+    nameWidth: 45,
+    range: true,
+  });
+  expect(restoreSkuRankingView('other')).toEqual({
+    comfortable: false,
+    nameWidth: 40,
+    range: false,
+  });
+  localStorage.setItem('view', '{bad');
+  expect(restoreSkuRankingView('view').comfortable).toBe(false);
 });

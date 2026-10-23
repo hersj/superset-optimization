@@ -116,3 +116,28 @@ test('sizes a partial category window with inclusive rounded endpoints', () => {
   expect(getScrollableChartHeight(partial, 300, 84)).toBe(21 * 84 + 80);
   expect(getScrollableChartHeight({ yAxis: { data: [] } }, 300, 84)).toBe(300);
 });
+
+test('SKU anchor survives reorder, changed density and missing SKU, scoped to the user chart', () => {
+  const { persistSkuScroll, restoreSkuScroll } = require('./matrixViewport');
+  const options = {
+    yAxis: { inverse: true, data: ['A', 'B', 'C', 'D', 'E'] },
+    grid: { top: 12, bottom: 28 },
+  };
+  persistSkuScroll(options, 220, 48, 'user1:chart839');
+  const reordered = {
+    ...options,
+    yAxis: { inverse: true, data: ['A', 'C', 'D', 'B', 'E'] },
+  };
+  expect(restoreSkuScroll(reordered, 260, 44, 'user1:chart839')).toBe(144);
+  expect(restoreSkuScroll(reordered, 260, 44, 'user2:chart839')).toBe(0);
+  expect(
+    restoreSkuScroll(
+      { ...options, yAxis: { inverse: true, data: ['A', 'C', 'D', 'E'] } },
+      216,
+      44,
+      'user1:chart839',
+    ),
+  ).toBe(56);
+  persistSkuScroll(options, 220, 0, 'user1:chart839');
+  expect(restoreSkuScroll(options, 220, 44, 'user1:chart839')).toBe(0);
+});

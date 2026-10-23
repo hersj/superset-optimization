@@ -119,6 +119,7 @@ export type TimeseriesChartTransformedProps =
       legendGroups?: LegendGroupMetadata;
       skuSelection?: SkuSelection;
       minCategoryHeight?: number;
+      skuBarsPerRow?: number;
       isRefreshing?: boolean;
       xValueFormatter: TimeFormatter | StringConstructor;
       xAxis: {

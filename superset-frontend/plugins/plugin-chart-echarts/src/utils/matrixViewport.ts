@@ -108,3 +108,90 @@ export function getScrollableChartHeight(
     visibleRows * minCategoryHeight + top + bottom,
   );
 }
+
+// Anchor to identity rather than a pixel offset when rankings or row density change.
+export function getSkuScrollGeometry(
+  options: EChartsCoreOption,
+  height: number,
+) {
+  const [axis] = ensureIsArray(options.yAxis as YAXisComponentOption[]);
+  const categories = (axis?.data ?? []).map(String);
+  const zoom = ensureIsArray(
+    options.dataZoom as DataZoomComponentOption[],
+  ).find(item => item.id === 'matrix-rows');
+  const start = Math.round(
+    ((categories.length - 1) * (zoom?.start ?? 0)) / 100,
+  );
+  const end = Math.round(((categories.length - 1) * (zoom?.end ?? 100)) / 100);
+  const values = categories.slice(Math.max(0, start), end + 1);
+  if (!axis?.inverse) values.reverse();
+  const [grid] = ensureIsArray(options.grid as GridComponentOption[]);
+  const top = typeof grid?.top === 'number' ? grid.top : 38;
+  const bottom = typeof grid?.bottom === 'number' ? grid.bottom : 42;
+  return {
+    values,
+    top,
+    pitch: Math.max(1, (height - top - bottom) / Math.max(1, values.length)),
+  };
+}
+
+export function persistSkuScroll(
+  options: EChartsCoreOption,
+  height: number,
+  scrollTop: number,
+  key: string,
+) {
+  const { values, top, pitch } = getSkuScrollGeometry(options, height);
+  const index = Math.min(
+    values.length - 1,
+    Math.max(0, Math.floor((scrollTop - top) / pitch)),
+  );
+  try {
+    localStorage.setItem(`${key}:scroll`, JSON.stringify(scrollTop));
+    if (values[index])
+      localStorage.setItem(
+        `${key}:anchor`,
+        JSON.stringify({
+          value: values[index],
+          index,
+          offset: (scrollTop - top - index * pitch) / pitch,
+        }),
+      );
+  } catch {
+    /* Storage restrictions must not prevent chart navigation. */
+  }
+}
+
+export function restoreSkuScroll(
+  options: EChartsCoreOption,
+  height: number,
+  viewportHeight: number,
+  key?: string,
+): number {
+  if (!key) return 0;
+  let target = 0;
+  try {
+    const saved: unknown = JSON.parse(
+      localStorage.getItem(`${key}:scroll`) ?? 'null',
+    );
+    if (typeof saved === 'number' && Number.isFinite(saved)) target = saved;
+    const anchor = JSON.parse(localStorage.getItem(`${key}:anchor`) ?? 'null');
+    const { values, top, pitch } = getSkuScrollGeometry(options, height);
+    if (
+      typeof anchor?.value === 'string' &&
+      Number.isInteger(anchor.index) &&
+      anchor.index >= 0 &&
+      Number.isFinite(anchor.offset) &&
+      Math.abs(anchor.offset) <= 1 &&
+      values.length
+    ) {
+      const found = values.indexOf(anchor.value);
+      const index =
+        found < 0 ? Math.min(anchor.index, values.length - 1) : found;
+      target = top + (index + anchor.offset) * pitch;
+    }
+  } catch {
+    /* Invalid or unavailable preferences use the beginning of the list. */
+  }
+  return Math.max(0, Math.min(target, height - viewportHeight));
+}

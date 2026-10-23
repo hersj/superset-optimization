@@ -16,7 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import { t } from '@apache-superset/core/translation';
 import {
   DTTM_ALIAS,
@@ -38,8 +39,16 @@ import { formatSeriesName } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
 import LegendSelector from '../components/LegendSelector';
-import { Button, Typography } from '@superset-ui/core/components';
+import {
+  Button,
+  Typography,
+  Popover,
+  Checkbox,
+  Slider,
+} from '@superset-ui/core/components';
 import { styled } from '@apache-superset/core/theme';
+
+import { layoutSkuRanking, restoreSkuRankingView } from '../utils/skuLabels';
 
 const TIMER_DURATION = 300;
 
@@ -87,6 +96,7 @@ export default function EchartsTimeseries({
   matrixTimeGrain,
   skuSelection,
   minCategoryHeight,
+  skuBarsPerRow = 1,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const dataZoomStorageKey =
@@ -99,6 +109,52 @@ export default function EchartsTimeseries({
           matrixDimensions ? getColumnLabel(matrixDimensions[1]) : xAxis.label,
         ])
       : undefined;
+  const userId = useSelector(
+    (state: { user?: { userId?: number } }) => state.user?.userId,
+  );
+  const viewKey =
+    userId && dataZoomStorageKey
+      ? `echarts__sku_view:${JSON.stringify([userId, dataZoomStorageKey])}`
+      : undefined;
+  const [rankingView, setRankingView] = useState(() =>
+    restoreSkuRankingView(viewKey),
+  );
+  useEffect(() => setRankingView(restoreSkuRankingView(viewKey)), [viewKey]);
+  const rankingLayout = useMemo(
+    () =>
+      minCategoryHeight && skuSelection
+        ? layoutSkuRanking(
+            echartOptions,
+            width,
+            Object.fromEntries(
+              skuSelection.names.map(key => [
+                skuSelection.values[key],
+                skuSelection.labels[key],
+              ]),
+            ),
+            skuBarsPerRow,
+            rankingView,
+          )
+        : undefined,
+    [
+      echartOptions,
+      width,
+      skuSelection,
+      minCategoryHeight,
+      skuBarsPerRow,
+      rankingView,
+    ],
+  );
+  const changeRankingView = (next: typeof rankingView) => {
+    setRankingView(next);
+    if (viewKey) {
+      try {
+        localStorage.setItem(viewKey, JSON.stringify(next));
+      } catch {
+        /* Private browsing can disable storage. */
+      }
+    }
+  };
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
   const echartRef = useRef<EchartsHandler | null>(null);
   // eslint-disable-next-line no-param-reassign
@@ -491,7 +547,71 @@ export default function EchartsTimeseries({
 
   return (
     <>
-      <div ref={extraControlRef} style={{ position: 'relative' }}>
+      <div
+        ref={extraControlRef}
+        style={{
+          position: 'relative',
+          ...(minCategoryHeight
+            ? ({
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: 8,
+              } as const)
+            : {}),
+        }}
+      >
+        {minCategoryHeight && (
+          <Popover
+            trigger="click"
+            content={
+              <div style={{ width: 240 }}>
+                <Checkbox
+                  checked={rankingView.comfortable}
+                  onChange={e =>
+                    changeRankingView({
+                      ...rankingView,
+                      comfortable: e.target.checked,
+                    })
+                  }
+                >
+                  舒适行高
+                </Checkbox>
+                <div>名称宽度：{rankingView.nameWidth}%</div>
+                <Slider
+                  min={30}
+                  max={55}
+                  value={rankingView.nameWidth}
+                  onChange={value =>
+                    changeRankingView({
+                      ...rankingView,
+                      nameWidth: value as number,
+                    })
+                  }
+                />
+                <Checkbox
+                  checked={rankingView.range}
+                  onChange={e =>
+                    changeRankingView({
+                      ...rankingView,
+                      range: e.target.checked,
+                    })
+                  }
+                >
+                  显示范围滑块
+                </Checkbox>
+              </div>
+            }
+          >
+            <Button
+              buttonSize="small"
+              aria-label={rankingView.comfortable ? '舒适' : '紧凑'}
+            >
+              {rankingView.comfortable ? '舒适' : '紧凑'}
+            </Button>
+          </Popover>
+        )}
         {skuSelection && (
           <LegendSelector
             itemLabel="SKU"
@@ -534,13 +654,15 @@ export default function EchartsTimeseries({
         refs={refs}
         height={height - extraControlHeight}
         width={width}
-        echartOptions={echartOptions}
+        echartOptions={rankingLayout?.echartOptions ?? echartOptions}
         eventHandlers={eventHandlers}
         zrEventHandlers={zrEventHandlers}
         selectedValues={selectedValues}
         vizType={formData.vizType}
         dataZoomStorageKey={dataZoomStorageKey}
-        minCategoryHeight={minCategoryHeight}
+        minCategoryHeight={
+          rankingLayout?.minCategoryHeight ?? minCategoryHeight
+        }
       />
     </>
   );

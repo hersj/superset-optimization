@@ -130,7 +130,11 @@ import {
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import { getMetricDisplayName } from '../utils/metricDisplayName';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
-import { buildSkuSelection, expandSkuAliases } from '../utils/skuLabels';
+import {
+  buildSkuSelection,
+  expandSkuAliases,
+  layoutSkuRanking,
+} from '../utils/skuLabels';
 
 /*
  * 功能审计（可重写规格）：折线图点击聚焦富提示框系列
@@ -1400,39 +1404,6 @@ export default function transformProps(
 
   let minCategoryHeight: number | undefined;
   if (skuRanking) {
-    const rowCount = visibleSkus.size;
-    const labelWidth = Math.max(100, width - 64);
-    const labelLines = Math.max(
-      1,
-      ...Object.values(skuLabels).map(label =>
-        label
-          .split('\n')
-          .reduce(
-            (lines, line) =>
-              lines +
-              Math.max(
-                1,
-                Math.ceil(
-                  Array.from(line).reduce(
-                    (pixels, char) =>
-                      pixels + (char.codePointAt(0)! > 255 ? 13 : 7),
-                    0,
-                  ) / labelWidth,
-                ),
-              ),
-            0,
-          ),
-      ),
-    );
-    minCategoryHeight = Math.max(72, labelLines * 16 + 16 + skuBarsPerRow * 20);
-    const rowsInView = Math.max(
-      1,
-      Math.floor(
-        // The SKU and metric selectors occupy two 32px toolbar rows.
-        (height - 176) / minCategoryHeight,
-      ),
-    );
-    const start = rowCount > rowsInView ? 100 * (1 - rowsInView / rowCount) : 0;
     mergedEchartOptions = {
       ...mergedEchartOptions,
       dataZoom: [
@@ -1440,7 +1411,7 @@ export default function transformProps(
           id: 'matrix-rows',
           type: 'slider',
           yAxisIndex: 0,
-          start,
+          start: 0,
           end: 100,
           right: 0,
           width: 12,
@@ -1449,7 +1420,7 @@ export default function transformProps(
           zoomLock: false,
           // Resize the scroll content after release so dragging keeps its handle.
           realtime: false,
-          show: rowCount > rowsInView,
+          show: false,
           showDetail: false,
           filterMode: 'empty',
         },
@@ -1465,6 +1436,14 @@ export default function transformProps(
             : entry,
       ),
     };
+    const layout = layoutSkuRanking(
+      mergedEchartOptions,
+      width,
+      skuLabels,
+      skuBarsPerRow,
+    );
+    mergedEchartOptions = layout.echartOptions;
+    minCategoryHeight = layout.minCategoryHeight;
   }
 
   // If visualMap is configured, remove static itemStyle.color from series so
@@ -1500,6 +1479,7 @@ export default function transformProps(
     legendGroups,
     skuSelection,
     minCategoryHeight,
+    skuBarsPerRow,
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,

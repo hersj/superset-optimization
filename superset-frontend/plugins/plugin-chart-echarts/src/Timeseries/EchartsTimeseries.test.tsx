@@ -22,6 +22,7 @@ import {
   cleanup,
   act,
   screen,
+  fireEvent,
 } from '../../../../spec/helpers/testing-library';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
@@ -42,6 +43,11 @@ import {
 
 const mockEchart = jest.fn();
 const mockDispatchAction = jest.fn();
+jest.mock('react-redux', () => ({
+  ...jest.requireActual('react-redux'),
+  useSelector: (selector: (state: unknown) => unknown) =>
+    selector({ user: { userId: 1 } }),
+}));
 
 jest.mock('../components/Echart', () => {
   const { forwardRef, useImperativeHandle } =
@@ -607,4 +613,47 @@ test('SKU ranking shares the existing private viewport restore and name-detail i
     top: '100%',
   });
   expect(onLegendStateChanged).not.toHaveBeenCalled();
+});
+
+test('compact ranking preferences apply immediately and survive remount', async () => {
+  const scope = JSON.stringify([87, 839, 'kk_sku']);
+  const storageKey = `echarts__sku_view:${JSON.stringify([1, scope])}`;
+  localStorage.removeItem(storageKey);
+  const component = (
+    <EchartsTimeseries
+      {...defaultProps}
+      formData={{
+        ...defaultFormData,
+        orientation: OrientationType.Horizontal,
+        sliceId: 839,
+        dashboardId: 87,
+      }}
+      xAxis={{ label: 'kk_sku', type: AxisType.Category }}
+      minCategoryHeight={36}
+      skuBarsPerRow={1}
+      echartOptions={{
+        yAxis: { data: ['SKU1'] },
+        legend: { show: false },
+        series: [],
+      }}
+      skuSelection={{
+        names: ['key'],
+        values: { key: 'SKU1' },
+        labels: { key: 'SKU1' },
+        selected: { key: true },
+      }}
+    />
+  );
+  const view = render(component);
+  expect(screen.getByRole('button', { name: '紧凑' })).toBeInTheDocument();
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(36);
+  fireEvent.click(screen.getByRole('button', { name: '紧凑' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: '舒适行高' }));
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(52);
+  expect(JSON.parse(localStorage.getItem(storageKey)!).comfortable).toBe(true);
+  view.unmount();
+  render(component);
+  expect(screen.getByRole('button', { name: '舒适' })).toBeInTheDocument();
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(52);
+  localStorage.removeItem(storageKey);
 });
