@@ -300,7 +300,10 @@ with a zero or missing denominator remain empty, including Decimal query results
 Horizontal SKU bar charts default to compact aligned rows: unique short names on the
 left, bars in the middle and aligned values on the right. Compact rows use a 36px
 minimum (44px with two bars); longer distinguishing names expand instead of clipping.
-The compact/comfortable menu also adjusts name width and reveals an unlocked range
+Name columns automatically fit short names within 200–280px (less on narrow charts),
+leaving 16px before the bars. The compact/comfortable menu keeps manual width adjustments
+and can restore automatic width. Legacy untouched 40% widths become automatic; other
+manual widths remain. The menu also reveals an unlocked range
 slider. Extra rows scroll vertically rather than compressing their text. Display
 preferences, selected SKU identities, range and browsing position are private to the
 user, dashboard and chart and survive reloads and automatic refreshes. Browsing

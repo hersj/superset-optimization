@@ -110,7 +110,7 @@ test('aligns every SKU name beside the bar without changing full query keys', ()
     expect.objectContaining({
       triggerEvent: true,
       axisLabel: expect.objectContaining({
-        width: 280,
+        width: 224,
         inside: false,
         align: 'left',
         verticalAlign: 'middle',
@@ -304,13 +304,52 @@ test('compact layout keeps 36px rows and 44px comparison rows with adjustable pr
   expect(restoreSkuRankingView('view')).toEqual({
     comfortable: true,
     nameWidth: 45,
+    autoNameWidth: false,
     range: true,
   });
   expect(restoreSkuRankingView('other')).toEqual({
     comfortable: false,
     nameWidth: 40,
+    autoNameWidth: true,
     range: false,
   });
   localStorage.setItem('view', '{bad');
   expect(restoreSkuRankingView('view').comfortable).toBe(false);
+});
+
+test('automatic name columns stay compact on wide screens and preserve explicit manual widths', () => {
+  const labels = { SKU1: 'TL-极简圆12-1-11\nM66-D15-2307' };
+  const options = { yAxis: { data: Object.keys(labels) } };
+  const narrow = layoutSkuRanking(options, 900, labels, 1);
+  const wide = layoutSkuRanking(options, 2000, labels, 1);
+  expect(wide.echartOptions.grid).toEqual(narrow.echartOptions.grid);
+  expect(wide.echartOptions.grid).toMatchObject({ left: 248 });
+  expect(wide.echartOptions.yAxis).toMatchObject({
+    axisLabel: { width: 224, margin: 240, overflow: 'break' },
+  });
+  expect(
+    layoutSkuRanking(options, 360, labels, 1).echartOptions.grid,
+  ).toMatchObject({ left: 228 });
+  localStorage.setItem(
+    'legacy-width',
+    JSON.stringify({ nameWidth: 40, range: true }),
+  );
+  expect(restoreSkuRankingView('legacy-width')).toMatchObject({
+    autoNameWidth: true,
+    range: true,
+  });
+  localStorage.setItem(
+    'manual-width',
+    JSON.stringify({ nameWidth: 40, autoNameWidth: false }),
+  );
+  const manual = restoreSkuRankingView('manual-width');
+  expect(manual.autoNameWidth).toBe(false);
+  expect(
+    layoutSkuRanking(options, 2000, labels, 1, manual).echartOptions.grid,
+  ).toMatchObject({ left: 816 });
+  localStorage.setItem(
+    'small-width',
+    JSON.stringify({ nameWidth: 15, autoNameWidth: false }),
+  );
+  expect(restoreSkuRankingView('small-width').nameWidth).toBe(15);
 });

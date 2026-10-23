@@ -155,11 +155,13 @@ export function buildSkuSelection(
 export type SkuRankingView = {
   comfortable: boolean;
   nameWidth: number;
+  autoNameWidth?: boolean;
   range: boolean;
 };
 export const DEFAULT_SKU_RANKING_VIEW: SkuRankingView = {
   comfortable: false,
   nameWidth: 40,
+  autoNameWidth: true,
   range: false,
 };
 
@@ -171,9 +173,14 @@ export function restoreSkuRankingView(key?: string): SkuRankingView {
     return {
       comfortable: saved?.comfortable === true,
       range: saved?.range === true,
+      // Older preferences saved 40 even when only density or range changed.
+      autoNameWidth:
+        typeof saved?.autoNameWidth === 'boolean'
+          ? saved.autoNameWidth
+          : saved?.nameWidth == null || saved.nameWidth === 40,
       nameWidth:
         typeof saved?.nameWidth === 'number' && Number.isFinite(saved.nameWidth)
-          ? Math.max(30, Math.min(55, saved.nameWidth))
+          ? Math.max(10, Math.min(55, saved.nameWidth))
           : 40,
     };
   } catch {
@@ -189,9 +196,28 @@ export function layoutSkuRanking(
   barsPerRow: number,
   view: SkuRankingView = DEFAULT_SKU_RANKING_VIEW,
 ) {
+  const textWidth = (line: string) =>
+    Array.from(line).reduce(
+      (pixels, char) => pixels + (char.codePointAt(0)! > 255 ? 13 : 7),
+      0,
+    );
+  const automaticWidth = Math.min(
+    280,
+    Math.max(
+      200,
+      ...Object.values(labels).flatMap(label =>
+        label.split('\n').map(textWidth),
+      ),
+    ),
+  );
   const labelWidth = Math.max(
     100,
-    Math.floor((width * view.nameWidth) / 100) - 32,
+    Math.min(
+      width - 180,
+      view.autoNameWidth
+        ? automaticWidth
+        : Math.floor((width * view.nameWidth) / 100) - 32,
+    ),
   );
   const lines = Math.max(
     1,
@@ -200,17 +226,7 @@ export function layoutSkuRanking(
         .split('\n')
         .reduce(
           (count, line) =>
-            count +
-            Math.max(
-              1,
-              Math.ceil(
-                Array.from(line).reduce(
-                  (pixels, char) =>
-                    pixels + (char.codePointAt(0)! > 255 ? 13 : 7),
-                  0,
-                ) / labelWidth,
-              ),
-            ),
+            count + Math.max(1, Math.ceil(textWidth(line) / labelWidth)),
           0,
         ),
     ),

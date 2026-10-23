@@ -578,15 +578,32 @@ export default function EchartsTimeseries({
                 >
                   舒适行高
                 </Checkbox>
-                <div>名称宽度：{rankingView.nameWidth}%</div>
+                <Checkbox
+                  checked={rankingView.autoNameWidth}
+                  onChange={e =>
+                    changeRankingView({
+                      ...rankingView,
+                      autoNameWidth: e.target.checked,
+                    })
+                  }
+                >
+                  自动收窄名称列
+                </Checkbox>
+                <div>
+                  名称宽度：
+                  {rankingView.autoNameWidth
+                    ? '自动'
+                    : `${rankingView.nameWidth}%`}
+                </div>
                 <Slider
-                  min={30}
+                  min={10}
                   max={55}
                   value={rankingView.nameWidth}
                   onChange={value =>
                     changeRankingView({
                       ...rankingView,
                       nameWidth: value as number,
+                      autoNameWidth: false,
                     })
                   }
                 />
