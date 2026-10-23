@@ -85,6 +85,37 @@ describe('CustomTimeFilterPlugin', () => {
     }
   });
 
+  test('a restored BSR preset advances from the former profit cap to its same-day cap', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-23T10:00:00+08:00'));
+    try {
+      const setDataMask = jest.fn();
+      render(
+        <CustomTimeFilterPlugin
+          {...baseProps}
+          formData={{ ...baseProps.formData, dataLagDays: 0 }}
+          filterState={{ value: 'last_7d', grain: 'day' }}
+          ownState={{
+            activePreset: 'last_7d',
+            activeGrain: 'day',
+            lastRange: '2026-10-15 : 2026-10-22',
+            profitDataEndDate: '2026-10-21',
+          }}
+          setDataMask={setDataMask}
+        />,
+      );
+      expect(setDataMask).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          extraFormData: expect.objectContaining({
+            time_range: '2026-10-17 : 2026-10-24',
+          }),
+          ownState: expect.objectContaining({ profitDataEndDate: '2026-10-23' }),
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('keeps the restored custom range when changing time grain', () => {
     const setDataMask = jest.fn();
 
