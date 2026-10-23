@@ -48,6 +48,43 @@ describe('CustomTimeFilterPlugin', () => {
     jest.clearAllMocks();
   });
 
+  test('same-day BSR uses the custom calendar and publishes its own date cap', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-23T10:00:00+08:00'));
+    try {
+      const setDataMask = jest.fn();
+      render(
+        <CustomTimeFilterPlugin
+          {...baseProps}
+          formData={{
+            ...baseProps.formData,
+            dataLagDays: 0,
+            groupby: ['biz_day'],
+          }}
+          setDataMask={setDataMask}
+        />,
+      );
+      expect(setDataMask).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          extraFormData: expect.objectContaining({
+            filters: [
+              {
+                col: 'biz_day',
+                op: 'TEMPORAL_RANGE',
+                val: '2026-10-17 : 2026-10-24',
+              },
+            ],
+          }),
+          ownState: expect.objectContaining({ profitDataEndDate: '2026-10-23' }),
+        }),
+      );
+      expandFilter();
+      expect(screen.getByRole('button', { name: '2026-10-23' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '2026-10-24' })).toBeDisabled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('keeps the restored custom range when changing time grain', () => {
     const setDataMask = jest.fn();
 

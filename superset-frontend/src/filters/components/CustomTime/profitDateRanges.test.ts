@@ -12,6 +12,19 @@ describe('profitDateRanges', () => {
     expect(getProfitDataEndDate(now)).toBe('2026-06-30');
   });
 
+  test('same-day BSR keeps Shanghai day boundaries without changing profit defaults', () => {
+    const boundary = new Date('2026-10-22T16:00:00Z');
+    expect(getProfitDataEndDate(boundary, 0)).toBe('2026-10-23');
+    expect(getProfitDataEndDate('2026-10-22T15:59:59Z', 0)).toBe('2026-10-22');
+    expect(getProfitDataEndDate(boundary)).toBe('2026-10-21');
+    expect(getProfitPresetRange('last_7d', boundary, 0)?.timeRange).toBe(
+      '2026-10-17 : 2026-10-24',
+    );
+    expect(getProfitPresetRange('this_month', now, 0)?.timeRange).toBe(
+      '2026-07-01 : 2026-07-03',
+    );
+  });
+
   it('uses the profit data month for 本月 instead of the real calendar month', () => {
     expect(getProfitPresetRange('this_month', now)).toEqual({
       timeRange: '2026-06-01 : 2026-07-01',

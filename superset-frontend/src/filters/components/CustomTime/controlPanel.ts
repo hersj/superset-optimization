@@ -24,6 +24,21 @@ const config: ControlPanelConfig = {
       controlSetRows: [
         [
           {
+            name: 'dataLagDays',
+            config: {
+              type: 'SelectControl',
+              label: t('数据可用日期'),
+              default: 2,
+              choices: [
+                [2, '利润数据：T-2'],
+                [0, '当日数据：T（BSR）'],
+              ],
+              renderTrigger: true,
+            },
+          },
+        ],
+        [
+          {
             name: 'groupby',
             config: {
               ...sharedControls.groupby,

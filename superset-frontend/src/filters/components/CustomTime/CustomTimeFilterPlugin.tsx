@@ -408,10 +408,6 @@ function isDateRangeEndpoint(date: string, timeRange: string): boolean {
   );
 }
 
-function getDataEndDate(): string {
-  return getProfitDataEndDate();
-}
-
 function fiscalYearStartFromDate(dateStr: string): number {
   const [year, month] = dateStr.split('-').map(Number);
   return month >= 4 ? year : year - 1;
@@ -672,6 +668,12 @@ export default function CustomTimeFilterPlugin(props: any) {
     enableTimeGrain = true,
     enableCustomComparison = false,
   } = formData || {};
+  // Only explicitly configured same-day sources bypass the profit T-2 cap.
+  const dataLagDays = formData?.dataLagDays === 0 ? 0 : 2;
+  const getDataEndDate = useCallback(
+    () => getProfitDataEndDate(new Date(), dataLagDays),
+    [dataLagDays],
+  );
   const minimumCalendarDate = getConfiguredCalendarStartDate(
     formData?.calendarStartDate,
   );
@@ -856,13 +858,20 @@ export default function CustomTimeFilterPlugin(props: any) {
 
   const lastRangeRef = useRef<string>(savedRange);
 
-  const getPresetTimeRange = useCallback((presetKey: string): string => {
-    const profitPreset = getProfitPresetRange(presetKey);
-    if (profitPreset) {
-      return profitPreset.timeRange;
-    }
-    return DEFAULT_PRESETS.find(p => p.key === presetKey)?.duration || '';
-  }, []);
+  const getPresetTimeRange = useCallback(
+    (presetKey: string): string => {
+      const profitPreset = getProfitPresetRange(
+        presetKey,
+        new Date(),
+        dataLagDays,
+      );
+      if (profitPreset) {
+        return profitPreset.timeRange;
+      }
+      return DEFAULT_PRESETS.find(p => p.key === presetKey)?.duration || '';
+    },
+    [dataLagDays],
+  );
 
   const buildOwnState = useCallback(
     (overrides: Record<string, unknown> = {}) => {
@@ -905,6 +914,7 @@ export default function CustomTimeFilterPlugin(props: any) {
     },
     [
       activePreset,
+      getDataEndDate,
       enableCustomComparison,
       customComparisonMode,
       comparisonStartDate,

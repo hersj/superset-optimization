@@ -61,9 +61,9 @@ function range(start: Date, endExclusive: Date): string {
 /**
  * 功能审计（可重写规格）：利润数据可用截止日
  * - 功能目的与触发方式：为自定义时间筛选器计算数据日历的安全截止日。
- * - 输入契约：now 可为 Date、ISO 日期字符串或省略；省略时使用运行时日期。
- * - 输出契约：返回 YYYY-MM-DD 字符串，按数据延迟规则取上海时间 T-2。
- * - 处理流程：先统一输入日期类型，再转换上海时区并扣除两天。
+ * - 输入契约：now 为 Date、ISO 日期字符串或省略；dataLagDays 默认2，BSR显式配置0。
+ * - 输出契约：返回上海时间 YYYY-MM-DD；利润维持T-2，当日来源允许T。
+ * - 处理流程：统一输入类型，转换上海日期，再扣除配置的延迟天数。
  * - 业务规则：无效日期返回空字符串，避免筛选器渲染阶段抛出类型异常。
  * - 状态与副作用：纯计算，不写入数据库或缓存。
  * - 外部依赖：依赖 JavaScript Date 和既有日期格式化函数。
@@ -71,7 +71,10 @@ function range(start: Date, endExclusive: Date): string {
  * - 不变量与约束：同一有效时刻必须生成相同截止日。
  * - 验证方式：profitDateRanges.test.ts 覆盖 Date 和 ISO 字符串输入。
  */
-export function getProfitDataEndDate(now: Date | string = new Date()): string {
+export function getProfitDataEndDate(
+  now: Date | string = new Date(),
+  dataLagDays: 0 | 2 = 2,
+): string {
   const date = now instanceof Date ? now : new Date(now);
   if (Number.isNaN(date.getTime())) {
     return '';
@@ -84,14 +87,15 @@ export function getProfitDataEndDate(now: Date | string = new Date()): string {
       shanghaiNow.getUTCDate(),
     ),
   );
-  return fmtDate(addDays(businessToday, -2));
+  return fmtDate(addDays(businessToday, -dataLagDays));
 }
 
 export function getProfitPresetRange(
   presetKey: string,
   now: Date = new Date(),
+  dataLagDays: 0 | 2 = 2,
 ): ProfitPresetRange | null {
-  const dataEnd = parseDate(getProfitDataEndDate(now));
+  const dataEnd = parseDate(getProfitDataEndDate(now, dataLagDays));
   if (!dataEnd) {
     return null;
   }
