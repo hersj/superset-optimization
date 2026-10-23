@@ -64,7 +64,6 @@ import CrudThemeProvider from 'src/components/CrudThemeProvider';
 import type { DashboardChartStates } from 'src/dashboard/types/chartState';
 import {
   readPendingFilterState,
-  writePendingFilterState,
   clearPendingFilterState,
 } from 'src/dashboard/util/pendingFilterState';
 
@@ -345,19 +344,6 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
       hydratedFilterScope.current !== JSON.stringify([userId, id])
     )
       return;
-    const pendingText = serializeLastFilterState(dataMaskRef.current);
-    if (
-      shouldSaveLastFilterState(
-        dataMaskRef.current,
-        lastSavedDataMaskTextRef.current,
-      )
-    )
-      writePendingFilterState(
-        userId,
-        id,
-        getUrlParam(URL_PARAMS.nativeFiltersKey),
-        pendingText,
-      );
     const timer = setTimeout(() => {
       const dataMaskText = serializeLastFilterState(dataMaskRef.current);
       if (

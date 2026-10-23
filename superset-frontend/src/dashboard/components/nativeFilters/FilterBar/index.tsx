@@ -55,6 +55,7 @@ import { useImmer } from 'use-immer';
 import { isEmpty, isEqual, debounce } from 'lodash';
 import { getInitialDataMask } from 'src/dataMask/reducer';
 import { URL_PARAMS } from 'src/constants';
+import { writePendingFilterState } from 'src/dashboard/util/pendingFilterState';
 import { applicationRoot } from 'src/utils/getBootstrapData';
 import { getUrlParam } from 'src/utils/urlUtils';
 import { useTabId } from 'src/hooks/useTabId';
@@ -243,6 +244,24 @@ export const getAutoApplyDataMaskUpdates = (
     return updates;
   }, {});
 
+export const getPendingFilterState = (
+  selected: DataMaskStateWithId,
+  applied: DataMaskStateWithId,
+  inScopeFilterIds: Set<string>,
+) => {
+  const pending = { ...applied };
+  Object.entries(
+    getAutoApplyDataMaskUpdates(
+      Object.entries(selected),
+      applied,
+      inScopeFilterIds,
+    ),
+  ).forEach(([id, mask]) => {
+    pending[id] = { ...mask, id };
+  });
+  return pending;
+};
+
 export const createDebouncedDataMaskApplier = (
   apply: (entries: [string, Partial<DataMask>][]) => void,
   delay = AUTO_APPLY_DEBOUNCE_MS,
@@ -403,6 +422,25 @@ const FilterBar: FC<FiltersBarProps> = ({
     ) => {
       const dataMaskForRedux = getDataMaskForRedux(dataMask);
 
+      // Remember the draft before auto-apply waits; an immediate reload must keep it.
+      if (isInitialized && user?.userId && inScopeFilterIds.has(filter.id)) {
+        const pending = getPendingFilterState(
+          {
+            ...dataMaskSelectedRef.current,
+            [filter.id]: { ...dataMaskForRedux, id: filter.id },
+          },
+          dataMaskAppliedRef.current,
+          inScopeFilterIds,
+        );
+        dataMaskSelectedRef.current = pending;
+        writePendingFilterState(
+          user.userId,
+          dashboardId,
+          getUrlParam(URL_PARAMS.nativeFiltersKey),
+          JSON.stringify(pending),
+        );
+      }
+
       if (
         inScopeFilterIds.has(filter.id) &&
         shouldAutoApplyDataMask(
@@ -458,6 +496,9 @@ const FilterBar: FC<FiltersBarProps> = ({
       initializedFilters,
       setInitializedFilters,
       inScopeFilterIds,
+      isInitialized,
+      user?.userId,
+      dashboardId,
     ],
   );
 
