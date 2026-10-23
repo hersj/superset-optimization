@@ -76,11 +76,13 @@ export default function EchartsTimeseries({
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const dataZoomStorageKey =
-    matrixDimensions && formData.sliceId
+    (matrixDimensions ||
+      (skuSelection && formData.orientation === 'horizontal')) &&
+    formData.sliceId
       ? JSON.stringify([
           formData.dashboardId ?? 'explore',
           formData.sliceId,
-          getColumnLabel(matrixDimensions[1]),
+          matrixDimensions ? getColumnLabel(matrixDimensions[1]) : xAxis.label,
         ])
       : undefined;
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;

@@ -70,8 +70,10 @@ test('short aliases are unique and independent from full-name selection keys', (
   const first = buildSkuSelection('kk_sku', [a, b, c]);
   expect(new Set(Object.values(first.labels)).size).toBe(3);
   expect(
-    Object.values(first.labels).every(label => label.length < a.length),
+    Object.values(first.labels).every(label => !label.startsWith('[')),
   ).toBe(true);
+  expect(Object.values(first.labels).join(' ')).toContain('黑色');
+  expect(Object.values(first.labels).join(' ')).toContain('白色');
   expect(buildSkuSelection('kk_sku', [c, b, a])).toEqual(first);
   expect(first.names.every(name => name.startsWith('sku:'))).toBe(true);
   expect(first.names.map(key => first.values[key])).toEqual(
@@ -91,7 +93,7 @@ test('selection remains attached to full names when result set and alias collisi
     buildSkuSelection('other_sku', [b], state).selected,
   ).not.toHaveProperty(key);
 });
-test('keeps query data and colors as complete SKUs while limiting axis labels', () => {
+test('places every SKU name above the bar without changing full query keys', () => {
   const chart = props();
   const original = JSON.stringify(chart.queriesData);
   const result = transformProps(chart);
@@ -103,8 +105,13 @@ test('keeps query data and colors as complete SKUs while limiting axis labels', 
     expect.objectContaining({
       triggerEvent: true,
       axisLabel: expect.objectContaining({
-        width: 190,
-        overflow: 'truncate',
+        width: 656,
+        inside: true,
+        align: 'left',
+        verticalAlign: 'bottom',
+        interval: 0,
+        hideOverlap: false,
+        overflow: 'break',
         formatter: expect.any(Function),
       }),
       data: expect.arrayContaining([a, b, c]),
@@ -114,6 +121,70 @@ test('keeps query data and colors as complete SKUs while limiting axis labels', 
     expect.objectContaining({ show: false }),
   );
   expect(JSON.stringify(chart.queriesData)).toBe(original);
+  expect(result.echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'matrix-rows',
+        yAxisIndex: 0,
+        zoomLock: false,
+      }),
+      expect.objectContaining({ type: 'inside', moveOnMouseWheel: true }),
+    ]),
+  );
+  expect(result.echartOptions.series).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        barMaxWidth: 14,
+        labelLayout: expect.any(Function),
+      }),
+    ]),
+  );
+});
+
+test('colliding names expose real differing tokens and stay unique across query order', () => {
+  const common = 'TL-极简圆12-1-11-圆柱-燕麦麻-水转印木纹-触摸-3D-';
+  const variants = ['1C3-1S', '2C3-1S', '1C3-2S'].map(
+    code => `${common}${code}-高美-小01B1-01Y-M66-D15-2307`,
+  );
+  const selected = buildSkuSelection('kk_sku', variants);
+  expect(new Set(Object.values(selected.labels)).size).toBe(3);
+  expect(Object.values(selected.labels).join(' ')).toContain('1C3');
+  expect(Object.values(selected.labels).join(' ')).toContain('2C3');
+  expect(
+    Object.values(selected.labels).every(label =>
+      label.startsWith('TL-极简圆12-1-11\n'),
+    ),
+  ).toBe(true);
+  expect(buildSkuSelection('kk_sku', [...variants].reverse())).toEqual(
+    selected,
+  );
+});
+
+test('many SKU rows use an unlocked readable viewport while non-SKU charts keep their layout', () => {
+  const chart = props();
+  chart.queriesData[0].data = Array.from({ length: 50 }, (_, i) => ({
+    kk_sku: `SKU-${i}`,
+    销售额: i - 10,
+  }));
+  const result = transformProps(chart);
+  expect(result.echartOptions.dataZoom).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'matrix-rows',
+        show: true,
+        zoomLock: false,
+        end: 100,
+        start: expect.any(Number),
+      }),
+    ]),
+  );
+  expect(
+    transformProps(props({}, 'shop_name')).echartOptions.yAxis,
+  ).not.toEqual(
+    expect.objectContaining({
+      axisLabel: expect.objectContaining({ inside: true }),
+    }),
+  );
 });
 test('selection applies immediately and survives new query objects, empty selection and reload', () => {
   const original = transformProps(props()).skuSelection!;

@@ -74,12 +74,18 @@ export function buildSkuSelection(
   const aliases = new Map<string, string[]>();
   unique.forEach(value => {
     const chars = Array.from(value);
+    const parts = value.split('-');
+    let headLength = Math.min(3, parts.length);
+    while (/^\d+$/.test(parts[headLength] ?? '')) headLength += 1;
     const short =
       chars.reduce(
         (length, char) => length + (char.codePointAt(0)! > 255 ? 2 : 1),
         0,
-      ) > 28
-        ? `${Array.from(value.split('-').slice(0, 3).join('-')).slice(0, 10).join('')}…\n…${chars.slice(-12).join('')}`
+      ) > 28 && parts.length > headLength + 3
+        ? `${parts.slice(0, headLength).join('-')}\n${parts
+            .slice(headLength, Math.max(headLength, parts.length - 3))
+            .slice(0, 3)
+            .join(' · ')} · ${parts.slice(-3).join('-')}`
         : value;
     aliases.set(short, [...(aliases.get(short) ?? []), value]);
   });
@@ -91,17 +97,18 @@ export function buildSkuSelection(
     key.startsWith(scopePrefix),
   );
   aliases.forEach((members, alias) => {
+    const parts = members.map(value => value.split('-'));
+    const differentPositions = Array.from(
+      { length: Math.max(...parts.map(tokens => tokens.length)) },
+      (_, index) => index,
+    ).filter(index => new Set(parts.map(tokens => tokens[index])).size > 1);
     members.forEach(value => {
       const key = `sku:${JSON.stringify([field, value])}`;
       let label = alias;
       if (members.length > 1) {
-        // A deterministic code survives query ordering; collisions get
-        // a distinct prefix instead of presenting two identical aliases.
-        let hash = 2166136261;
-        for (const char of value) {
-          hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
-        }
-        label = `[${hash.toString(36)}] ${alias}`;
+        // Real differing tokens distinguish variants without changing their full-name keys.
+        const tokens = value.split('-');
+        label = `${alias}\n${differentPositions.map(index => tokens[index] ?? '∅').join(' · ')}`;
       }
       labels[key] = label;
       fullValues[key] = value;
@@ -112,13 +119,10 @@ export function buildSkuSelection(
   Object.values(labels).forEach(label =>
     counts.set(label, (counts.get(label) ?? 0) + 1),
   );
-  const collisions = new Map<string, number>();
   Object.keys(labels).forEach(key => {
     const label = labels[key];
     if (counts.get(label)! > 1) {
-      const index = (collisions.get(label) ?? 0) + 1;
-      collisions.set(label, index);
-      labels[key] = `#${index} ${label}`;
+      labels[key] = fullValues[key];
     }
   });
   return { names: Object.keys(labels), labels, values: fullValues, selected };

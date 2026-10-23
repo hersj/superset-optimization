@@ -348,6 +348,13 @@ export default function transformProps(
       .filter(key => skuSelection.selected[key])
       .map(key => skuSelection.values[key]),
   );
+  const skuLabels: Record<string, string> = Object.fromEntries(
+    skuSelection?.names.map(key => [
+      skuSelection.values[key],
+      skuSelection.labels[key],
+    ]) ?? [],
+  );
+  const skuRanking = Boolean(skuSelection && isHorizontal);
   const rebasedData = skuSelection
     ? skuData.filter(row => visibleSkus.has(String(row[xAxisLabel] ?? '')))
     : skuData;
@@ -1052,29 +1059,43 @@ export default function transformProps(
 
   if (skuSelection) {
     const categoryAxis = isHorizontal ? yAxis : xAxis;
-    const labels = Object.fromEntries(
-      skuSelection.names.map(key => [
-        skuSelection.values[key],
-        skuSelection.labels[key],
-      ]),
-    );
     categoryAxis.axisLabel = {
       ...categoryAxis.axisLabel,
-      formatter: (value: string) => labels[value] ?? value,
-      width: Math.max(72, Math.min(190, width * 0.3)),
-      overflow: 'truncate',
+      formatter: (value: string) => skuLabels[value] ?? value,
+      width: skuRanking
+        ? Math.max(100, width - 64)
+        : Math.max(72, Math.min(190, width * 0.3)),
+      overflow: skuRanking ? 'break' : 'truncate',
       rotate: 0,
       color: theme.colorTextSecondary,
+      ...(skuRanking
+        ? {
+            inside: true,
+            align: 'left',
+            verticalAlign: 'bottom',
+            padding: [0, 0, 14, 0],
+            margin: 0,
+            lineHeight: 16,
+            fontSize: 13,
+            interval: 0,
+            hideOverlap: false,
+          }
+        : {}),
     };
     categoryAxis.triggerEvent = true;
     categoryAxis.data = [
       ...new Set(rebasedData.map(row => String(row[xAxisLabel] ?? ''))),
     ];
-    categoryAxis.name = 'SKU';
+    categoryAxis.name = skuRanking ? '' : 'SKU';
     categoryAxis.tooltip = {
-      show: true,
+      show: !skuRanking,
       formatter: ({ value }: { value: string }) => escape(String(value)),
     };
+    if (skuRanking) {
+      categoryAxis.axisLine = { show: false };
+      categoryAxis.axisTick = { show: false };
+      Object.assign(padding, { left: 16, right: 84, top: 38, bottom: 42 });
+    }
   }
 
   const legendProps = getLegendProps(
@@ -1237,11 +1258,18 @@ export default function transformProps(
           }
           rows.push(totalRow);
         }
-        return tooltipHtml(rows, tooltipFormatter(xValue), focusedRow);
+        return tooltipHtml(
+          rows,
+          skuRanking
+            ? `<span style="display:inline-block;max-width:360px;white-space:normal;overflow-wrap:anywhere">${escape(skuLabels[String(xValue)] ?? String(xValue)).replace(/\n/g, '<br/>')}</span>`
+            : tooltipFormatter(xValue),
+          focusedRow,
+        );
       },
     },
     legend: {
       ...legendProps,
+      ...(skuRanking && legendData.length <= 1 ? { show: false } : {}),
       ...(customPeriod ? { itemWidth: 14, itemHeight: 9, itemGap: 16 } : {}),
       ...(controlledTimeFormatter || customPeriod || skuSelection
         ? {
@@ -1364,6 +1392,78 @@ export default function transformProps(
   let mergedEchartOptions = customEchartOptions
     ? mergeCustomEChartOptions(alignedEchartOptions, customEchartOptions)
     : alignedEchartOptions;
+
+  if (skuRanking) {
+    const rowCount = visibleSkus.size;
+    const labelWidth = Math.max(100, width - 64);
+    const labelLines = Math.max(
+      1,
+      ...Object.values(skuLabels).map(label =>
+        label
+          .split('\n')
+          .reduce(
+            (lines, line) =>
+              lines +
+              Math.max(
+                1,
+                Math.ceil(
+                  Array.from(line).reduce(
+                    (pixels, char) =>
+                      pixels + (char.codePointAt(0)! > 255 ? 13 : 7),
+                    0,
+                  ) / labelWidth,
+                ),
+              ),
+            0,
+          ),
+      ),
+    );
+    const rowsInView = Math.max(
+      1,
+      Math.floor((height - 112) / Math.max(64, labelLines * 16 + 28)),
+    );
+    const start = rowCount > rowsInView ? 100 * (1 - rowsInView / rowCount) : 0;
+    mergedEchartOptions = {
+      ...mergedEchartOptions,
+      dataZoom: [
+        {
+          id: 'matrix-rows',
+          type: 'slider',
+          yAxisIndex: 0,
+          start,
+          end: 100,
+          right: 0,
+          width: 12,
+          top: 38,
+          bottom: 42,
+          zoomLock: false,
+          show: rowCount > rowsInView,
+          showDetail: false,
+          filterMode: 'empty',
+        },
+        {
+          type: 'inside',
+          yAxisIndex: 0,
+          start,
+          end: 100,
+          zoomOnMouseWheel: false,
+          moveOnMouseWheel: true,
+          moveOnMouseMove: true,
+          filterMode: 'empty',
+        },
+      ],
+      series: ensureIsArray(mergedEchartOptions.series as SeriesOption[]).map(
+        entry =>
+          entry.type === 'bar'
+            ? {
+                ...entry,
+                barMaxWidth: 14,
+                labelLayout: () => ({ x: width - 24, align: 'right' as const }),
+              }
+            : entry,
+      ),
+    };
+  }
 
   // If visualMap is configured, remove static itemStyle.color from series so
   // visualMap can control per-bar colors (static color overrides visualMap).

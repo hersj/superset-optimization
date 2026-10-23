@@ -20,6 +20,8 @@ import {
   render,
   waitFor,
   cleanup,
+  act,
+  screen,
 } from '../../../../spec/helpers/testing-library';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
@@ -569,3 +571,36 @@ test.each([73, 74, undefined])(
     );
   },
 );
+
+test('SKU ranking shares the existing private viewport restore and name-detail interaction', () => {
+  const onLegendStateChanged = jest.fn();
+  const sku =
+    'TL-极简圆12-1-11-圆柱-燕麦麻-水转印木纹-触摸-3D-1C3-1S-M66-D15-2307';
+  const key = `sku:${JSON.stringify(['kk_sku', sku])}`;
+  render(
+    <EchartsTimeseries
+      {...defaultProps}
+      formData={{
+        ...defaultFormData,
+        orientation: OrientationType.Horizontal,
+        sliceId: 839,
+        dashboardId: 87,
+      }}
+      xAxis={{ label: 'kk_sku', type: AxisType.Category }}
+      skuSelection={{
+        names: [key],
+        labels: { [key]: 'TL-极简圆12-1-11' },
+        values: { [key]: sku },
+        selected: { [key]: true },
+      }}
+      onLegendStateChanged={onLegendStateChanged}
+    />,
+  );
+  expect(mockEchart.mock.calls.at(-1)?.[0].dataZoomStorageKey).toBe(
+    JSON.stringify([87, 839, 'kk_sku']),
+  );
+  const click = mockEchart.mock.calls.at(-1)?.[0].eventHandlers?.click;
+  act(() => click?.({ componentType: 'yAxis', value: sku }));
+  expect(screen.getByLabelText('SKU完整名称')).toHaveTextContent(sku);
+  expect(onLegendStateChanged).not.toHaveBeenCalled();
+});
