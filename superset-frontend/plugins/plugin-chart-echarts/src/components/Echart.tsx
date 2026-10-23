@@ -160,6 +160,7 @@ function Echart(
   const divRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollOptions = useRef(echartOptions);
+  const scrollReady = useRef(false);
   const [contentHeight, setContentHeight] = useState(height);
   const chartHeight = minCategoryHeight
     ? Math.max(height, contentHeight)
@@ -312,6 +313,7 @@ function Echart(
             height,
             minCategoryHeight,
           );
+          scrollReady.current = false;
           scrollOptions.current = options;
           setContentHeight(nextHeight);
           chartRef.current?.resize({ width: chartWidth, height: nextHeight });
@@ -416,12 +418,20 @@ function Echart(
 
   useEffect(() => {
     if (!minCategoryHeight || !scrollRef.current || !didMount) return;
+    // Ignore the temporary viewport-sized chart during mount or density changes.
+    const expectedHeight = getScrollableChartHeight(
+      scrollOptions.current,
+      height,
+      minCategoryHeight,
+    );
+    if (chartHeight !== expectedHeight) return;
     scrollRef.current.scrollTop = restoreSkuScroll(
       scrollOptions.current,
       chartHeight,
       height,
       viewportKey,
     );
+    scrollReady.current = true;
     positionSlider();
   }, [
     viewportKey,
@@ -450,7 +460,7 @@ function Echart(
       }}
       onScroll={() => {
         positionSlider();
-        if (viewportKey && scrollRef.current) {
+        if (viewportKey && scrollRef.current && scrollReady.current) {
           persistSkuScroll(
             scrollOptions.current,
             chartHeight,

@@ -240,3 +240,55 @@ test('resizing the SKU slider grows the content without locking the chosen range
     height: 4364,
   });
 });
+
+test('mount never writes a temporary clamped scroll position over the saved SKU anchor', async () => {
+  const scope = '[87,839,"kk_sku"]';
+  const key = `echarts__matrix_viewport:${JSON.stringify([1, scope])}`;
+  const options = {
+    yAxis: { data: Array.from({ length: 100 }, (_, i) => `SKU${i}`) },
+    grid: { top: 36, bottom: 28 },
+    dataZoom: [{ id: 'matrix-rows', yAxisIndex: 0, start: 0, end: 100 }],
+  };
+  const { persistSkuScroll } = require('../utils/matrixViewport');
+  persistSkuScroll(options, 5264, 1695, key);
+  const originalAnchor = localStorage.getItem(`${key}:anchor`);
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'scrollTop',
+  );
+  const positions = new WeakMap<HTMLElement, number>();
+  const writes: number[] = [];
+  Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
+    configurable: true,
+    get() {
+      return positions.get(this) ?? 0;
+    },
+    set(value: number) {
+      positions.set(this, value);
+      writes.push(value);
+      this.dispatchEvent(new Event('scroll'));
+    },
+  });
+  try {
+    const view = render(
+      <Echart
+        refs={{}}
+        width={800}
+        height={300}
+        minCategoryHeight={52}
+        echartOptions={options}
+        dataZoomStorageKey={scope}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('region').scrollTop).toBe(1695),
+    );
+    expect(writes.every(value => value === 1695)).toBe(true);
+    expect(localStorage.getItem(`${key}:anchor`)).toBe(originalAnchor);
+    view.unmount();
+  } finally {
+    if (descriptor)
+      Object.defineProperty(HTMLElement.prototype, 'scrollTop', descriptor);
+    else delete (HTMLElement.prototype as { scrollTop?: number }).scrollTop;
+  }
+});
