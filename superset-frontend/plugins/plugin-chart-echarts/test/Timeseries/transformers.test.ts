@@ -40,6 +40,29 @@ const mockColorScale = jest.fn(
 describe('transformSeries', () => {
   const series = { name: 'test-series' };
 
+  test.each([true, false])(
+    'keeps implicit metric labels after SKU selection (horizontal: %s)',
+    isHorizontal => {
+      const result = transformSeries(series, mockColorScale, 'test-key', {
+        seriesType: EchartsTimeseriesSeriesType.Bar,
+        legendState: { 'sku:unselected-product': false },
+        showValue: true,
+        onlyTotal: true,
+        isHorizontal,
+        formatter: value => `$${value}`,
+      });
+      const formatter = (result as any).label.formatter;
+      expect(
+        formatter({
+          value: isHorizontal ? [24.4, 'SKU A'] : ['SKU A', 24.4],
+          seriesName: series.name,
+          dataIndex: 0,
+          seriesIndex: 0,
+        }),
+      ).toBe('$24.4');
+    },
+  );
+
   test('should use the colorScaleKey if timeShiftColor is enabled', () => {
     const opts = {
       timeShiftColor: true,

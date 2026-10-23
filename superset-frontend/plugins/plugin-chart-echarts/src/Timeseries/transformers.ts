@@ -425,7 +425,7 @@ export function transformSeries(
         }
         const { value, dataIndex, seriesIndex, seriesName } = params;
         const numericValue = isHorizontal ? value[0] : value[1];
-        const isSelectedLegend = !legendState || legendState[seriesName];
+        const isSelectedLegend = legendState?.[seriesName] !== false;
         const isAreaExpand = stack === StackControlsValue.Expand;
         if (!formatter) {
           return numericValue;
