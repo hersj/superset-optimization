@@ -62,6 +62,11 @@ import {
 import DashboardContainer from 'src/dashboard/containers/Dashboard';
 import CrudThemeProvider from 'src/components/CrudThemeProvider';
 import type { DashboardChartStates } from 'src/dashboard/types/chartState';
+import {
+  readPendingFilterState,
+  writePendingFilterState,
+  clearPendingFilterState,
+} from 'src/dashboard/util/pendingFilterState';
 
 import { nanoid } from 'nanoid';
 import type { ActiveFilters } from '../types';
@@ -93,17 +98,23 @@ type PageProps = {
   idOrSlug: string;
 };
 
-export const loadDashboardDataMask = async (id: number) => {
+export const loadDashboardDataMask = async (id: number, userId?: number) => {
   const permalinkKey = getUrlParam(URL_PARAMS.permalinkKey);
   const nativeFilterKeyValue = getUrlParam(URL_PARAMS.nativeFiltersKey);
   const isOldRison = getUrlParam(URL_PARAMS.nativeFilters);
 
+  const pending =
+    userId && !permalinkKey && !isOldRison
+      ? readPendingFilterState(userId, id, nativeFilterKeyValue)
+      : undefined;
   let dataMask = nativeFilterKeyValue || {};
   let activeTabs: string[] | null | undefined;
   let chartStates: DashboardChartStates | null | undefined;
   let anchor: string | undefined;
 
-  if (permalinkKey) {
+  if (pending !== undefined) {
+    dataMask = pending;
+  } else if (permalinkKey) {
     const permalinkValue = await getPermalinkValue(permalinkKey);
     if (permalinkValue?.state) {
       ({ dataMask, activeTabs, anchor } = permalinkValue.state);
@@ -122,6 +133,7 @@ export const loadDashboardDataMask = async (id: number) => {
 
   return {
     dataMask,
+    ...(pending !== undefined ? { hasPendingFilterState: true } : {}),
     activeTabs: activeTabs ?? null,
     chartStates: chartStates ?? null,
     anchor,
@@ -190,6 +202,7 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     status,
   } = useDashboardDatasets(idOrSlug);
   const isDashboardHydrated = useRef(false);
+  const hydratedFilterScope = useRef<string>();
   const lastSavedDataMaskTextRef = useRef<string | null>(null);
 
   const currentDataMask = useSelector((state: RootState) => state.dataMask);
@@ -264,26 +277,31 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
     async function getDataMaskApplied() {
       // activeTabs is initialized with undefined so that it doesn't override
       // the currently stored value when hydrating
-      const [{ dataMask, activeTabs, chartStates, anchor }, rowLimits] =
-        await Promise.all([
-          loadDashboardDataMask(id),
-          userId
-            ? getChartRowLimits(id).catch(() => {
-                addDangerToast(
-                  t(
-                    'Unable to load row limits. Reload the dashboard to try again.',
-                  ),
-                );
-                return null;
-              })
-            : Promise.resolve(null),
-        ]);
+      const [
+        { dataMask, hasPendingFilterState, activeTabs, chartStates, anchor },
+        rowLimits,
+      ] = await Promise.all([
+        loadDashboardDataMask(id, userId),
+        userId
+          ? getChartRowLimits(id).catch(() => {
+              addDangerToast(
+                t(
+                  'Unable to load row limits. Reload the dashboard to try again.',
+                ),
+              );
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
 
       if (readyToRender && active) {
         if (!isDashboardHydrated.current) {
           isDashboardHydrated.current = true;
         }
-        lastSavedDataMaskTextRef.current = serializeLastFilterState(dataMask);
+        hydratedFilterScope.current = JSON.stringify([userId, id]);
+        lastSavedDataMaskTextRef.current = hasPendingFilterState
+          ? null
+          : serializeLastFilterState(dataMask);
         dispatch(setChartRowLimits(rowLimits));
         dispatch(
           hydrateDashboard({
@@ -320,7 +338,26 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
   const dataMaskRef = useRef(currentDataMask);
   dataMaskRef.current = currentDataMask;
   useEffect(() => {
-    if (!id || !userId || !isDashboardHydrated.current) return;
+    if (
+      !id ||
+      !userId ||
+      !isDashboardHydrated.current ||
+      hydratedFilterScope.current !== JSON.stringify([userId, id])
+    )
+      return;
+    const pendingText = serializeLastFilterState(dataMaskRef.current);
+    if (
+      shouldSaveLastFilterState(
+        dataMaskRef.current,
+        lastSavedDataMaskTextRef.current,
+      )
+    )
+      writePendingFilterState(
+        userId,
+        id,
+        getUrlParam(URL_PARAMS.nativeFiltersKey),
+        pendingText,
+      );
     const timer = setTimeout(() => {
       const dataMaskText = serializeLastFilterState(dataMaskRef.current);
       if (
@@ -329,13 +366,16 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
           lastSavedDataMaskTextRef.current,
         )
       ) {
-        saveLastFilterValue(id, dataMaskText).then(() => {
-          lastSavedDataMaskTextRef.current = dataMaskText;
+        saveLastFilterValue(id, dataMaskText).then(result => {
+          if (result !== null) {
+            lastSavedDataMaskTextRef.current = dataMaskText;
+            clearPendingFilterState(userId, id, dataMaskText);
+          }
         });
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [id, currentDataMask, userId]);
+  }, [id, currentDataMask, userId, history.location.search]);
 
   // Capture original title before any effects run
   const originalTitle = useMemo(() => document.title, []);

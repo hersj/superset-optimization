@@ -673,8 +673,16 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
                 onSearch.cancel();
                 setKeyword('');
                 isComposing.current = false;
+                setSearch('');
+                dispatchDataMask({
+                  type: 'ownState',
+                  ownState: {
+                    search: '',
+                    searchMatchMode: matchMode,
+                    coltypeMap: initialColtypeMap,
+                  },
+                });
                 updateDataMask(null, matchMode, true, '');
-                onSearch('');
               }}
             />
           ) : (
