@@ -329,3 +329,151 @@ test('a shorter historical overlay paints after the current fill regardless of i
     expect(history.z).toBeGreaterThan(current.z);
   });
 });
+
+function labelsOf(
+  output: ReturnType<typeof timeseries> | ReturnType<typeof mixed>,
+) {
+  return (output.echartOptions.series as BarSeriesOption[])
+    .flatMap((entry, seriesIndex) => {
+      const selected = ensureIsArray(output.echartOptions.legend)[0]?.selected;
+      if (selected?.[String(entry.name)] === false) return [];
+      const formatter = entry.label?.formatter;
+      if (typeof formatter !== 'function') return [];
+      const label = formatter({
+        value: entry.data?.[0],
+        dataIndex: 0,
+        seriesIndex,
+        seriesName: entry.name,
+      } as never);
+      return label === '' ? [] : [Number(label)];
+    })
+    .sort((a, b) => a - b);
+}
+
+function dimensionProps(missingLabel = false) {
+  const offset = periods[0];
+  const row: Record<string, unknown> = { sku: 'SKU' };
+  const label_map: Record<string, string[]> = { sku: ['sku'] };
+  [
+    ['east', 'alpha', 10, 20],
+    ['west', 'alpha', 30, 40],
+    ['east', 'beta', 50, 60],
+    ['west', 'beta', 70, 80],
+  ].forEach(([region, channel, sales, profit]) => {
+    [
+      ['sales', sales],
+      ['profit', profit],
+    ].forEach(([metric, value]) => {
+      const current = `${metric}, ${region}, ${channel}`;
+      const history = `${metric}, ${offset}, ${region}, ${channel}`;
+      row[current] = value;
+      row[history] = Number(value) / 10;
+      label_map[current] = [String(metric), String(region), String(channel)];
+      label_map[history] = [
+        `${metric}, ${offset}`,
+        String(region),
+        String(channel),
+      ];
+    });
+  });
+  if (missingLabel) delete label_map[`sales, ${offset}, east, alpha`];
+  const input = props('ordinary', [offset], false, true);
+  input.legendState = { [`comparison:${offset}`]: true };
+  input.formData.groupby = ['region', 'channel'];
+  input.rawFormData.groupby = ['region', 'channel'];
+  input.formData.stackDimension = 'channel';
+  input.rawFormData.stack_dimension = 'channel';
+  input.queriesData = [{ ...query([row]), label_map }];
+  return input;
+}
+
+test('selected stackDimension retains the second dimension and period identity with two metrics', () => {
+  const output = timeseries(dimensionProps() as never);
+  const entries = output.echartOptions.series as BarSeriesOption[];
+  const stack = (name: string) =>
+    entries.find(entry => entry.name === name)?.stack;
+  expect(stack('sales, east, alpha')).toBe(stack('profit, west, alpha'));
+  expect(stack('sales, east, alpha')).not.toBe(stack('sales, east, beta'));
+  expect(stack(`sales, ${periods[0]}, east, alpha`)).not.toBe(
+    stack('sales, east, alpha'),
+  );
+  expect(new Set(entries.map(entry => entry.stack)).size).toBe(4);
+  expect(labelsOf(output)).toEqual([10, 26, 100, 260]);
+});
+
+test('missing historical label_map entries do not crash dimension stacking or merge periods', () => {
+  const input = dimensionProps(true);
+  expect(() => timeseries(input as never)).not.toThrow();
+  const entries = timeseries(input as never).echartOptions
+    .series as BarSeriesOption[];
+  const history = entries.find(
+    entry => entry.name === `sales, ${periods[0]}, east, alpha`,
+  )!;
+  const current = entries.find(entry => entry.name === 'sales, east, alpha')!;
+  expect(history.stack).not.toBe(current.stack);
+});
+
+test.each(['ordinary', 'mixed'] as const)(
+  '%s partial remembered current selection uses only visible metrics for period totals',
+  kind => {
+    const input = props(kind, [periods[0]], false, true);
+    input.legendState = {
+      [kind === 'ordinary' ? 'current:sales' : 'current:sales (Query A)']:
+        false,
+      [`comparison:${periods[0]}`]: true,
+    };
+    const before = JSON.stringify(input.legendState);
+    const output = (kind === 'ordinary' ? timeseries : mixed)(input as never);
+    expect(labelsOf(output)).toEqual(
+      kind === 'ordinary' ? [20, 60] : [20, 30, 60, 100],
+    );
+    expect(JSON.stringify(input.legendState)).toBe(before);
+    const fresh = props(kind, [periods[0]], false, true);
+    fresh.legendState = JSON.parse(before);
+    expect(
+      labelsOf((kind === 'ordinary' ? timeseries : mixed)(fresh as never)),
+    ).toEqual(labelsOf(output));
+  },
+);
+
+test.each(['ordinary', 'mixed'] as const)(
+  '%s a remembered historical metric switch changes only its visible custom-period total',
+  kind => {
+    const input = props(kind, [absolute], false, true);
+    const initial = (kind === 'ordinary' ? timeseries : mixed)(input as never);
+    const groups = initial.legendGroups;
+    const selected = Object.fromEntries(
+      Object.values(groups.stateKeys).map(key => [key, true]),
+    );
+    const representative = Object.keys(groups.groups).find(
+      key =>
+        groups.kinds[key] === 'comparison' &&
+        groups.labels[key] ===
+          (kind === 'ordinary' ? 'sales' : 'sales (Query A)'),
+    )!;
+    selected[groups.stateKeys[representative]] = false;
+    input.legendState = selected;
+    expect(
+      labelsOf((kind === 'ordinary' ? timeseries : mixed)(input as never)),
+    ).toEqual(kind === 'ordinary' ? [20, 100] : [20, 30, 100, 100]);
+  },
+);
+
+test('Expand uses the same remembered visible period selection as the final legend', () => {
+  const input = props('ordinary', [periods[0]], true);
+  input.legendState = {
+    'current:sales': false,
+    [`comparison:${periods[0]}`]: true,
+  };
+  const output = timeseries(input as never);
+  const entries = output.echartOptions.series as BarSeriesOption[];
+  expect(
+    (entries.find(entry => entry.name === 'profit')!.data![0] as unknown[])[0],
+  ).toBe(1);
+  expect(
+    (
+      entries.find(entry => entry.name === `profit, ${periods[0]}`)!
+        .data![0] as unknown[]
+    )[0],
+  ).toBe(1);
+});
