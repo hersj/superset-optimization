@@ -96,6 +96,7 @@ def test_point_cascade_compiles_union_in_every_column_with_rls():
     metadata = {
         "columns": ["shop", "country"],
         "parent_columns_by_column": {"shop": [], "country": []},
+        "time_columns": {"event_date"},
     }
     command._get_dashboard_filter_metadata = MagicMock(return_value=metadata)
     statement, params = command._build_statement(dataset, None, None, ["(shop = 42)"])
@@ -1044,3 +1045,45 @@ def test_invalid_preview_search_is_rejected(search):
     )
     with pytest.raises(ValueError, match="Search requires"):
         command.validate()
+
+
+@pytest.mark.parametrize(
+    "current,offset,expected",
+    [
+        (
+            "2026-10-01 : 2026-11-01",
+            "1 month ago",
+            (datetime(2026, 9, 1), datetime(2026, 10, 1)),
+        ),
+        (
+            "2024-02-29 : 2024-03-01",
+            "1 year ago",
+            (datetime(2023, 2, 28), datetime(2023, 3, 1)),
+        ),
+    ],
+)
+def test_comparison_options_use_actual_date_parser(app, current, offset, expected):
+    command = GetCascadeFilterOptionsCommand(
+        87,
+        184,
+        ["sku"],
+        time_range=current,
+        time_column="event_date",
+        time_offsets=[offset],
+    )
+    command._get_dashboard_filter_metadata = MagicMock(
+        return_value={"time_columns": {"event_date"}, "applicable_time_filter_count": 1}
+    )
+    with app.app_context():
+        since, until = command._resolve_time_range()
+        ranges = command._option_time_ranges(since, until)
+    assert ranges == [(since, until), expected]
+
+
+@pytest.mark.parametrize(
+    "offsets", ["1 month ago", [None], [""], ["invalid"], ["1 day ago"] * 17]
+)
+def test_comparison_options_reject_invalid_offsets_before_query(app, offsets):
+    command = GetCascadeFilterOptionsCommand(87, 184, ["sku"], time_offsets=offsets)
+    with app.app_context(), pytest.raises(ValueError, match="comparison|Comparison"):
+        command._option_time_ranges(datetime(2026, 10, 1), datetime(2026, 11, 1))

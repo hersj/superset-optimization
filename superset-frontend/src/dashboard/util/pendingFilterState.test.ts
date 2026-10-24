@@ -20,6 +20,7 @@ import {
   writePendingFilterState,
   readPendingFilterState,
   clearPendingFilterState,
+  createFilterStateSaveQueue,
 } from './pendingFilterState';
 
 beforeEach(() => localStorage.clear());
@@ -57,4 +58,34 @@ test('storage restrictions do not interrupt filtering', () => {
     });
   expect(() => writePendingFilterState(1, 87, null, '{}')).not.toThrow();
   failed.mockRestore();
+});
+
+test('slow saves cannot overwrite a newer choice and intermediate choices are coalesced', async () => {
+  let finishFirst: () => void = () => {};
+  const first = new Promise<void>(resolve => {
+    finishFirst = resolve;
+  });
+  const saved: string[] = [];
+  const save = jest.fn(async (value: string) => {
+    if (value === 'A') await first;
+    saved.push(value);
+  });
+  const enqueue = createFilterStateSaveQueue(save);
+  const done = enqueue('A');
+  await Promise.resolve();
+  enqueue('B');
+  enqueue('C');
+  expect(save).toHaveBeenCalledTimes(1);
+  finishFirst();
+  await done;
+  expect(saved).toEqual(['A', 'C']);
+});
+
+test('a failed save does not block a later save', async () => {
+  const save = jest.fn().mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue(undefined);
+  const enqueue = createFilterStateSaveQueue(save);
+  await expect(enqueue('A')).rejects.toThrow('offline');
+  await enqueue('B');
+  expect(save.mock.calls.map(([value]) => value)).toEqual(['A', 'B']);
 });

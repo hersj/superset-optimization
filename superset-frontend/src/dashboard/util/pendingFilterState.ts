@@ -19,6 +19,31 @@
 const storageKey = (userId: number, dashboardId: number) =>
   `dashboard__pending_filters:${JSON.stringify([userId, dashboardId])}`;
 
+// Serialize writes so a slow acknowledgement cannot restore an older selection.
+export function createFilterStateSaveQueue(
+  save: (value: string) => Promise<void>,
+) {
+  let latest: string | undefined;
+  let inFlight: Promise<void> | undefined;
+  return (value: string): Promise<void> => {
+    latest = value;
+    if (!inFlight) {
+      inFlight = Promise.resolve()
+        .then(async () => {
+          while (latest !== undefined) {
+            const next = latest;
+            latest = undefined;
+            await save(next);
+          }
+        })
+        .finally(() => {
+          inFlight = undefined;
+        });
+    }
+    return inFlight;
+  };
+}
+
 // Bridge the server-save debounce; only the same user, dashboard and URL context
 // may restore it. Remove it after the matching server acknowledgement.
 export function writePendingFilterState(

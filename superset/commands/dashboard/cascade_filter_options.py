@@ -35,7 +35,10 @@ from superset.commands.base import BaseCommand
 from superset.common.utils.time_range_utils import get_since_until_from_time_range
 from superset.connectors.sqla.models import SqlaTable
 from superset.models.dashboard import Dashboard
-from superset.utils.selected_time_ranges import parse_selected_time_ranges
+from superset.utils.selected_time_ranges import (
+    parse_selected_time_ranges,
+    PREVIOUS_SELECTED_PERIOD,
+)
 
 GENERIC_STRING_TYPE = 1
 CASCADE_FILTER_OPTIONS_CACHE_TTL_SECONDS = 30
@@ -100,6 +103,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         time_column: str | None = None,
         filter_operators: dict[str, str] | None = None,
         search: dict[str, str] | None = None,
+        comparison_time_ranges: list[str] | None = None,
+        time_offsets: list[str] | None = None,
     ) -> None:
         self._dashboard_id = dashboard_id
         self._dataset_id = dataset_id
@@ -110,6 +115,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         self._time_range = time_range
         self._time_ranges = time_ranges
         self._time_column = time_column
+        self._comparison_time_ranges = comparison_time_ranges
+        self._time_offsets = time_offsets
         self._limit = min(max(limit, 1), 5000)
         self._filter_metadata: dict[str, Any] | None = None
 
@@ -261,6 +268,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                 "time_range": self._time_range,
                 "time_ranges": self._time_ranges,
                 "time_column": self._time_column,
+                "comparison_time_ranges": self._comparison_time_ranges,
+                "time_offsets": self._time_offsets,
                 "limit": self._limit,
             },
             sort_keys=True,
@@ -399,11 +408,21 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
         params: dict[str, Any] = {}
         bindparams = []
         metadata = self._get_filter_metadata()
-        time_column = (
-            self._time_column
-            if self._time_ranges is not None
+        ranges = self._option_time_ranges(since, until)
+        configured_columns = metadata.get("time_columns", set())
+        time_column = self._time_column or (
+            next(iter(configured_columns))
+            if len(configured_columns) == 1
             else getattr(dataset, "main_dttm_col", None)
         )
+        if self._time_column is not None and (
+            self._time_column not in configured_columns
+            if configured_columns
+            else self._time_column != getattr(dataset, "main_dttm_col", None)
+        ):
+            raise ValueError("Time column must match the configured time filter")
+        if ranges is not None and not time_column:
+            raise ValueError("Comparison options require a bound time column")
         calculated_columns = {
             column.column_name: column
             for column in dataset.columns
@@ -464,9 +483,8 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
                     params[param_name] = values[0] if is_pattern else values
                     bindparams.append(bindparam(param_name, expanding=not is_pattern))
 
-            if self._time_ranges is not None:
+            if ranges is not None:
                 # 每个UNION都使用同一绑定列的区间并集；整体括号后再AND父维度和RLS。
-                ranges = parse_selected_time_ranges(self._time_ranges)
                 if not ranges or not time_column:
                     raise ValueError(
                         "Point selection requires a time column and nonempty ranges"
@@ -483,7 +501,7 @@ class GetCascadeFilterOptionsCommand(BaseCommand):
             elif since is not None and time_column:
                 where_clauses.append(f"{time_expression} >= :since")
                 params["since"] = since
-            if self._time_ranges is None and until is not None and time_column:
+            if ranges is None and until is not None and time_column:
                 where_clauses.append(f"{time_expression} < :until")
                 params["until"] = until
 
@@ -513,19 +531,72 @@ ORDER BY __column ASC, __sort ASC
             statement = statement.bindparams(*bindparams)
         return statement, params
 
-    # 功能审计（可重写规格）：级联筛选选项的时间范围边界
-    # - 功能目的与触发方式：级联选项请求按看板实际适用的时间筛选器收敛数据范围，由 run 触发。
-    # - 输入契约：time_range 只能是非空字符串；看板元数据提供适用时间筛选器数量及 scope 歧义状态。
-    #   点选增加 time_ranges（非空ISO日期半开区间数组）和 time_column（元数据中该数据集适用时间筛选器绑定列）；time_range 必须恰为包络。
-    # - 输出契约：返回各列选项；合法时间范围生成 since/until，非法或缺失时返回 ValueError（API 转 400）。
-    # - 处理流程：先校验列和 scope，再解析时间范围，再生成带主时间列谓词的 SQL；无适用筛选器才允许无范围查询。
-    # - 业务规则：多个适用筛选器必须提供同一有效范围；解析后 since、until 均为空视为无效，不能扩大到全历史。
-    # - 状态与副作用：仅使用既有进程内请求缓存和数据库只读查询，不写数据库、不新增缓存或任务。
-    # - 外部依赖：Dashboard JSON、dashboard.slices datasource_id、SqlaTable.main_dttm_col 和既有时间解析器。
-    # - 异常与边界：数组、对象、空字符串、No filter、scope 未完成或冲突均拒绝；仅一侧边界的有效范围可保留开放区间。
-    # - 不变量与约束：无适用筛选器的旧无范围行为不变；有适用筛选器绝不发无范围 cascade SQL。
-    #   点选每段参数化并以整体 OR 写入每个 UNION，外层 AND 父维度和完整 RLS；不查询空档，缓存键包含完整集合和时间列。
-    # - 验证方式：tests/unit_tests/dashboards/test_cascade_filter_options.py 及真实 dashboard 44/51 cascade 请求。
+    def _option_time_ranges(  # noqa: C901
+        self, since: datetime | None, until: datetime | None
+    ) -> list[tuple[datetime, datetime]] | None:
+        """Union A/B candidates on one column; preserve other filters and RLS."""
+        if self._time_column is not None and not isinstance(self._time_column, str):
+            raise ValueError("Time column must be a string")
+        if self._time_offsets is not None and (
+            not isinstance(self._time_offsets, list)
+            or len(self._time_offsets) > 16
+            or any(
+                not isinstance(offset, str) or not offset.strip() or len(offset) > 100
+                for offset in self._time_offsets
+            )
+        ):
+            raise ValueError("Invalid comparison offsets")
+        if self._comparison_time_ranges is None and not self._time_offsets:
+            return (
+                parse_selected_time_ranges(self._time_ranges)
+                if self._time_ranges is not None
+                else None
+            )
+        if since is None or until is None:
+            raise ValueError("Comparison options require finite current dates")
+        ranges = (
+            parse_selected_time_ranges(self._time_ranges)
+            if self._time_ranges is not None
+            else [(since, until)]
+        )
+        current_ranges = list(ranges)
+        if self._comparison_time_ranges is not None:
+            comparison = parse_selected_time_ranges(self._comparison_time_ranges)
+            if not comparison:
+                raise ValueError("Comparison ranges must not be empty")
+            ranges.extend(comparison)
+        if self._time_offsets is not None:
+            for offset in self._time_offsets:
+                if offset == PREVIOUS_SELECTED_PERIOD:
+                    continue
+                for start, end in current_ranges:
+                    try:
+                        left, right = get_since_until_from_time_range(
+                            f"{start.isoformat()} : {end.isoformat()}",
+                            time_shift=offset,
+                        )
+                    except (AttributeError, TypeError, ValueError, OverflowError) as ex:
+                        raise ValueError("Invalid comparison offset") from ex
+                    # The legacy parser treats unknown text as a zero shift.
+                    if (
+                        left is None
+                        or right is None
+                        or left >= right
+                        or (left, right) == (start, end)
+                    ):
+                        raise ValueError(
+                            "Comparison offsets require different finite dates"
+                        )
+                    ranges.append((left, right))
+                    if len(ranges) > 10000:
+                        raise ValueError("Comparison options exceed 10000 ranges")
+        ranges = list(dict.fromkeys(ranges))
+        if len(ranges) > 10000:
+            raise ValueError("Comparison options exceed 10000 ranges")
+        return ranges
+
+    # Applicable time filters must resolve to a valid, scoped range. Point
+    # selections retain gaps; their envelope is not an alternative query range.
     def _resolve_time_range(self) -> tuple[datetime | None, datetime | None]:
         metadata = self._get_filter_metadata()
         if metadata.get("time_filter_scope_ambiguous"):

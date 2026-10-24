@@ -25,6 +25,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createSelector } from '@reduxjs/toolkit';
 import { useToasts } from 'src/components/MessageToasts/withToasts';
 import { Loading } from '@superset-ui/core/components';
+import { logging } from '@superset-ui/core';
 import {
   useDashboard,
   useDashboardCharts,
@@ -65,6 +66,7 @@ import type { DashboardChartStates } from 'src/dashboard/types/chartState';
 import {
   readPendingFilterState,
   clearPendingFilterState,
+  createFilterStateSaveQueue,
 } from 'src/dashboard/util/pendingFilterState';
 
 import { nanoid } from 'nanoid';
@@ -210,6 +212,23 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
   const error = dashboardApiError || chartsApiError;
   const readyToRender = Boolean(dashboard && charts);
   const { dashboard_title, id = 0 } = dashboard || {};
+  const saveQueuedFilterState = useMemo(() => {
+    const scope = JSON.stringify([userId, id]);
+    return createFilterStateSaveQueue(async value => {
+      if (
+        !id ||
+        !userId ||
+        hydratedFilterScope.current !== scope ||
+        value === lastSavedDataMaskTextRef.current
+      )
+        return;
+      const result = await saveLastFilterValue(id, value);
+      if (result !== null && hydratedFilterScope.current === scope) {
+        lastSavedDataMaskTextRef.current = value;
+        clearPendingFilterState(userId, id, value);
+      }
+    });
+  }, [id, userId]);
 
   // Get CSS from dashboardInfo (unified properties location)
   const css =
@@ -352,16 +371,17 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
           lastSavedDataMaskTextRef.current,
         )
       ) {
-        saveLastFilterValue(id, dataMaskText).then(result => {
-          if (result !== null) {
-            lastSavedDataMaskTextRef.current = dataMaskText;
-            clearPendingFilterState(userId, id, dataMaskText);
-          }
-        });
+        saveQueuedFilterState(dataMaskText).catch(logging.error);
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [id, currentDataMask, userId, history.location.search]);
+  }, [
+    id,
+    currentDataMask,
+    userId,
+    history.location.search,
+    saveQueuedFilterState,
+  ]);
 
   // Capture original title before any effects run
   const originalTitle = useMemo(() => document.title, []);
