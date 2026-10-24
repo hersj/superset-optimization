@@ -1862,3 +1862,47 @@ test('live 598 fiscal-quarter settings render one bucket with original values an
     chart.dispose();
   }
 });
+
+test('mixed trend bars automatically cap old fixed widths without changing data, axes or line labels', () => {
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    width: 720,
+    formData: {
+      ...formData,
+      metrics: ['sales'],
+      metricsB: ['margin'],
+      groupby: [],
+      groupbyB: [],
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      seriesTypeB: EchartsTimeseriesSeriesType.Line,
+      showValue: true,
+      showValueB: true,
+      echartOptions: '{"series":[{"barWidth":120,"barMaxWidth":120}]}',
+    },
+    queriesData: [
+      createTestQueryData([
+        { ds: 599616000000, sales: -12 },
+        { ds: 599916000000, sales: null },
+      ]),
+      createTestQueryData([
+        { ds: 599616000000, margin: 0.1 },
+        { ds: 599916000000, margin: 0.2 },
+      ]),
+    ],
+  });
+  const before = JSON.stringify(props.queriesData);
+  const result = transformProps(props);
+  const series = result.echartOptions.series as SeriesOption[];
+  const bar = series.find(entry => entry.type === 'bar') as BarSeriesOption;
+  expect(bar.barWidth).toBeUndefined();
+  expect(bar.barMaxWidth).toBeLessThanOrEqual(28);
+  expect(bar.barMaxWidth).toBeGreaterThan(0);
+  expect(bar.labelLayout).toEqual(expect.objectContaining({ hideOverlap: true }));
+  expect(bar.label).toEqual(expect.objectContaining({ show: true }));
+  expect(series.find(entry => entry.type === 'line')).not.toHaveProperty('barMaxWidth');
+  expect(JSON.stringify(props.queriesData)).toBe(before);
+  expect(result.echartOptions.yAxis).toHaveLength(2);
+});
