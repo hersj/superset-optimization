@@ -24,9 +24,9 @@ import {
   XAXisComponentOption,
 } from 'echarts';
 import { alignPeriodAxis } from '../../src/utils/periodAxis';
+import { styleComparisonSeries } from '../../src/utils/comparisonStyles';
 import {
   ComparisonType,
-  CategoricalColorScale,
   CurrencyFormatter,
   getNumberFormatter,
   NumberFormatter,
@@ -37,7 +37,6 @@ import {
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
   maskCustomPeriodCurrentData,
-  styleCustomPeriodComparisonSeries,
 } from '../../src/utils/customPeriodTooltip';
 import { buildLegendGroupMetadata } from '../../src/utils/series';
 import type { LineSeriesOption } from 'echarts';
@@ -68,11 +67,7 @@ test('historical lines retain their metric color while using dashed strokes', ()
     ],
     true,
   );
-  styleCustomPeriodComparisonSeries(
-    series,
-    new CategoricalColorScale(['#17a8c4']),
-    metadata,
-  );
+  styleComparisonSeries(series, metadata);
   expect(series[0].itemStyle?.color).toBe('rgb(23, 168, 196)');
   expect(series[1].itemStyle?.color).toBe('rgb(23, 168, 196)');
   expect(series[1].itemStyle?.opacity).toBe(0.5);

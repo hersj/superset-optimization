@@ -27,6 +27,7 @@ import type { EChartsCoreOption } from 'echarts/core';
 import Echart from './Echart';
 
 const mockSetOption = jest.fn();
+const mockThemeOverrides: Record<string, unknown> = {};
 const mockState = {
   common: { locale: 'en' },
   user: { userId: 1 },
@@ -71,13 +72,16 @@ jest.mock('@apache-superset/core/theme', () => {
       colorBorderSecondary: '#eee',
       colorTextDisabled: '#aaa',
       fontFamily: 'sans-serif',
-      echartsOptionsOverrides: {},
+      echartsOptionsOverrides: mockThemeOverrides,
       echartsOptionsOverridesByChartType: {},
     }),
   };
 });
 
 afterEach(() => {
+  Object.keys(mockThemeOverrides).forEach(
+    key => delete mockThemeOverrides[key],
+  );
   mockSetOption.mockReset();
   mockChart.resize.mockReset();
   mockChart.on.mockClear();
@@ -291,4 +295,69 @@ test('mount never writes a temporary clamped scroll position over the saved SKU 
       Object.defineProperty(HTMLElement.prototype, 'scrollTop', descriptor);
     else delete (HTMLElement.prototype as { scrollTop?: number }).scrollTop;
   }
+});
+
+test('history semantics survive the final theme merge without extra series or new identities', async () => {
+  mockThemeOverrides.series = [
+    {
+      name: 'wrong',
+      type: 'scatter',
+      data: [[0, 999]],
+      lineStyle: { type: 'dashed' },
+    },
+    {
+      name: 'wrong-history',
+      type: 'bar',
+      data: [[0, 999]],
+      lineStyle: { type: 'solid' },
+    },
+  ];
+  render(
+    <Echart
+      refs={{}}
+      width={800}
+      height={400}
+      comparisonGroups={{
+        groups: { current: ['current'], history: ['history'] },
+        labels: { current: 'sales', history: 'sales' },
+        kinds: { current: 'current', history: 'comparison' },
+        parents: { history: 'current' },
+        stateKeys: {
+          current: 'current:sales',
+          history: 'comparison:period:sales',
+        },
+      }}
+      echartOptions={{
+        series: [
+          {
+            id: 'a',
+            name: 'current',
+            type: 'line',
+            data: [[1, 100]],
+            itemStyle: { color: '#168ca8' },
+          },
+          {
+            id: 'b',
+            name: 'history',
+            type: 'line',
+            data: [[1, 60]],
+            itemStyle: { color: '#168ca8' },
+          },
+        ],
+      }}
+    />,
+  );
+  await waitFor(() => expect(mockSetOption).toHaveBeenCalled());
+  const series = mockSetOption.mock.calls.at(-1)?.[0].series;
+  expect(series.map((entry: { name: string }) => entry.name)).toEqual([
+    'current',
+    'history',
+  ]);
+  expect(series.map((entry: { type: string }) => entry.type)).toEqual([
+    'line',
+    'line',
+  ]);
+  expect(series[0].lineStyle.type).toBe('solid');
+  expect(series[1].lineStyle.type).toBe('dashed');
+  expect(series[1].data).toEqual([[1, 60]]);
 });

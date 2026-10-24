@@ -163,7 +163,7 @@ export function transformBarMatrix(
       source,
       name,
       domainKey,
-      comparison: Boolean(offset && !rate),
+      comparison: Boolean(offset),
       points,
       formatter,
     };
@@ -223,21 +223,35 @@ export function transformBarMatrix(
               type: 'rect',
               shape: horizontal
                 ? {
-                    x: comparison ? end - 1.5 : Math.min(zero, end),
+                    x: Math.min(zero, end),
                     y: y + (slotHeight - thickness) / 2 - (comparison ? 2 : 0),
-                    width: comparison ? 3 : Math.abs(end - zero),
+                    width: Math.abs(end - zero),
                     height: thickness + (comparison ? 4 : 0),
                     r: comparison ? 0 : theme.borderRadiusXS,
                   }
                 : {
                     x: x + (slotWidth - thickness) / 2 - (comparison ? 2 : 0),
-                    y: comparison ? end - 1.5 : Math.min(zero, end),
+                    y: Math.min(zero, end),
                     width: thickness + (comparison ? 4 : 0),
-                    height: comparison ? 3 : Math.abs(end - zero),
+                    height: Math.abs(end - zero),
                     r: comparison ? 0 : theme.borderRadiusXS,
                   },
               style: {
-                fill: value < 0 ? theme.colorError : api.visual('color'),
+                fill: comparison
+                  ? 'transparent'
+                  : value < 0
+                    ? theme.colorError
+                    : api.visual('color'),
+                ...(comparison
+                  ? {
+                      stroke:
+                        value < 0
+                          ? theme.colorErrorActive
+                          : api.visual('color'),
+                      lineWidth: 2,
+                      lineDash: [5, 3],
+                    }
+                  : {}),
               },
               transition: ['shape'],
             },
@@ -286,7 +300,9 @@ export function transformBarMatrix(
           color:
             typeof source.itemStyle?.color === 'function'
               ? undefined
-              : source.itemStyle?.color,
+              : comparison
+                ? (source.itemStyle?.borderColor ?? source.itemStyle?.color)
+                : source.itemStyle?.color,
         },
         tooltip: { valueFormatter: value => formatter(Number(value)) },
       };

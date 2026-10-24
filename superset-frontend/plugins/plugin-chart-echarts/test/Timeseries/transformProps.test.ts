@@ -1035,20 +1035,8 @@ test('should apply dashed line style to time comparison series with single metri
 
   expect(mainSeries).toBeDefined();
   expect(comparisonSeries).toBeDefined();
-  // Main series should not have a dash pattern array
-  expect(Array.isArray(mainSeries?.lineStyle?.type)).toBe(false);
-  // Comparison series should have a visible dash pattern array [dash, gap]
-  expect(Array.isArray(comparisonSeries?.lineStyle?.type)).toBe(true);
-  expect(
-    Array.isArray(comparisonSeries?.lineStyle?.type)
-      ? comparisonSeries.lineStyle.type[0]
-      : undefined,
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    Array.isArray(comparisonSeries?.lineStyle?.type)
-      ? comparisonSeries.lineStyle.type[1]
-      : undefined,
-  ).toBeGreaterThanOrEqual(3);
+  expect(mainSeries?.lineStyle?.type).toBe('solid');
+  expect(comparisonSeries?.lineStyle?.type).toBe('dashed');
 });
 
 test('shows one legend item for current and comparison versions of a series', () => {
@@ -1166,20 +1154,8 @@ test('should apply dashed line style to time comparison series with metric__offs
 
   expect(mainSeries).toBeDefined();
   expect(comparisonSeries).toBeDefined();
-  // Main series should not have a dash pattern array
-  expect(Array.isArray(mainSeries?.lineStyle?.type)).toBe(false);
-  // Comparison series should have a visible dash pattern array [dash, gap]
-  expect(Array.isArray(comparisonSeries?.lineStyle?.type)).toBe(true);
-  expect(
-    Array.isArray(comparisonSeries?.lineStyle?.type)
-      ? comparisonSeries.lineStyle.type[0]
-      : undefined,
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    Array.isArray(comparisonSeries?.lineStyle?.type)
-      ? comparisonSeries.lineStyle.type[1]
-      : undefined,
-  ).toBeGreaterThanOrEqual(3);
+  expect(mainSeries?.lineStyle?.type).toBe('solid');
+  expect(comparisonSeries?.lineStyle?.type).toBe('dashed');
 });
 
 test('should apply connectNulls to time comparison series', () => {
@@ -1749,7 +1725,7 @@ test('a standalone native date-range series is a distinct comparison legend', ()
     name: string;
     itemStyle: { color: string };
   }[];
-  expect(new Set(series.map(entry => entry.itemStyle.color)).size).toBe(2);
+  expect(new Set(series.map(entry => entry.itemStyle.color)).size).toBe(1);
   expect(
     transformProps({ ...props, legendState: { [offset]: false } }).echartOptions
       .legend,

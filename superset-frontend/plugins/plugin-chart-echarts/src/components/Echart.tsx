@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { applyComparisonStyles } from '../utils/comparisonStyles';
 import {
   useRef,
   useEffect,
@@ -153,6 +154,7 @@ function Echart(
     vizType,
     dataZoomStorageKey,
     minCategoryHeight,
+    comparisonGroups,
   }: EchartsProps,
   ref: Ref<EchartsHandler>,
 ) {
@@ -347,7 +349,12 @@ function Echart(
        * - 验证方式：Echart.test.tsx 断言刷新 setOption 同时 replaceMerge series/legend；标准和混合时序 transform 测试覆盖状态映射。
        */
       const restoredOptions = restoreMatrixViewport(
-        themedEchartOptions,
+        applyComparisonStyles(
+          themedEchartOptions,
+          comparisonGroups,
+          echartOptions,
+          theme.colorBgContainer,
+        ),
         viewportKey,
       );
       resizeRows(restoredOptions);
@@ -365,6 +372,7 @@ function Echart(
   }, [
     didMount,
     echartOptions,
+    comparisonGroups,
     eventHandlers,
     zrEventHandlers,
     theme,

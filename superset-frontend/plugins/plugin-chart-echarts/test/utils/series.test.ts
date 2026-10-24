@@ -1424,3 +1424,9 @@ test('keeps the matching current group visible when focus targets a comparison',
     'orders, 1 day ago, LED5': true,
   });
 });
+
+test('standalone offset stack is distinct from its current period', () => {
+  expect(getTimeCompareStackId('obs', ['1 month ago'], '1 month ago')).toBe(
+    '1 month ago',
+  );
+});

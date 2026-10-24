@@ -73,6 +73,7 @@ export default function EchartsTimeseries({
     parents: {},
     stateKeys: {},
   },
+  comparisonGroups,
   onContextMenu,
   onLegendStateChanged,
   onFocusedSeries,
@@ -531,7 +532,15 @@ export default function EchartsTimeseries({
               const mark = ensureIsArray(echartOptions.series).find(
                 entry => entry.name === name,
               );
-              const color = mark?.itemStyle?.color;
+              const periodGroups = comparisonGroups ?? legendGroups;
+              const historical = Object.entries(periodGroups.groups).some(
+                ([group, members]) =>
+                  periodGroups.kinds[group] === 'comparison' &&
+                  members.includes(name),
+              );
+              const color = historical
+                ? (mark?.itemStyle?.borderColor ?? mark?.itemStyle?.color)
+                : mark?.itemStyle?.color;
               return (
                 <span key={name} style={{ marginRight: 12 }}>
                   <span
@@ -539,9 +548,17 @@ export default function EchartsTimeseries({
                       display: 'inline-block',
                       verticalAlign: 'middle',
                       marginRight: 4,
-                      width: mark?.type === 'scatter' ? 3 : 12,
-                      height: mark?.type === 'scatter' ? 14 : 8,
-                      background: typeof color === 'string' ? color : undefined,
+                      width: 12,
+                      height: 8,
+                      boxSizing: 'border-box',
+                      background:
+                        historical || typeof color !== 'string'
+                          ? undefined
+                          : color,
+                      border:
+                        historical && typeof color === 'string'
+                          ? `1px dashed ${color}`
+                          : undefined,
                     }}
                   />
                   {legendGroups.labels[name] ?? name}
@@ -629,6 +646,7 @@ export default function EchartsTimeseries({
         vizType={formData.vizType}
         dataZoomStorageKey={dataZoomStorageKey}
         minCategoryHeight={minCategoryHeight}
+        comparisonGroups={comparisonGroups ?? legendGroups}
       />
     </>
   );

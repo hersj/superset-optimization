@@ -17,6 +17,7 @@
  * under the License.
  */
 import { layoutCategoryBars } from './barLayout';
+import { applyComparisonStyles } from './comparisonStyles';
 import { init, setPlatformAPI, type BarSeriesOption } from 'echarts';
 
 test('automatic ranking fits readable single-line rows without manual geometry', () => {
@@ -138,26 +139,65 @@ test('native scrollbar gutter leaves full numeric labels inside the rendered SVG
 test('real ranking keeps historical bars as dashed outlines without adding a row lane', () => {
   setPlatformAPI({ measureText: text => ({ width: String(text).length * 7 }) });
   const series: BarSeriesOption[] = [
-    { name: 'sales', id: 'current', type: 'bar', data: [[100, 'SKU']], itemStyle: { color: '#168ca8' } },
-    { name: '1 month ago', id: 'history', type: 'bar', data: [[60, 'SKU']], itemStyle: { color: '#168ca8' } },
+    {
+      name: 'sales',
+      id: 'current',
+      type: 'bar',
+      data: [[100, 'SKU']],
+      itemStyle: { color: '#168ca8' },
+    },
+    {
+      name: '1 month ago',
+      id: 'history',
+      type: 'bar',
+      data: [[60, 'SKU']],
+      itemStyle: { color: '#168ca8' },
+    },
   ];
   const metadata = {
     groups: { sales: ['sales'], '1 month ago': ['1 month ago'] },
     labels: { sales: 'sales', '1 month ago': 'sales' },
     kinds: { sales: 'current' as const, '1 month ago': 'comparison' as const },
     parents: { '1 month ago': 'sales' },
-    stateKeys: { sales: 'current:sales', '1 month ago': 'comparison:1 month ago' },
+    stateKeys: {
+      sales: 'current:sales',
+      '1 month ago': 'comparison:1 month ago',
+    },
   };
-  const result = layoutCategoryBars({
-    xAxis: { type: 'value' }, yAxis: { type: 'category', data: ['SKU'] },
-    legend: { selected: { sales: true, '1 month ago': true } }, series,
-  }, 900, { SKU: 'SKU' }, metadata, ['1 month ago']);
-  const chart = init(null, undefined, { renderer: 'svg', ssr: true, width: 900, height: 120 });
+  const result = layoutCategoryBars(
+    {
+      xAxis: { type: 'value' },
+      yAxis: { type: 'category', data: ['SKU'] },
+      legend: { selected: { sales: true, '1 month ago': true } },
+      series,
+    },
+    900,
+    { SKU: 'SKU' },
+    metadata,
+    ['1 month ago'],
+  );
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 900,
+    height: 120,
+  });
   try {
-    chart.setOption({ ...result.echartOptions, animation: false });
+    chart.setOption({
+      ...applyComparisonStyles(result.echartOptions, metadata),
+      animation: false,
+    });
     expect(chart.renderToSVGString()).toContain('stroke-dasharray');
-    expect((result.echartOptions.series as BarSeriesOption[]).map(entry => entry.type)).toEqual(['bar', 'bar']);
-    expect((result.echartOptions.series as BarSeriesOption[]).map(entry => entry.id)).toEqual(['current', 'history']);
+    expect(
+      (result.echartOptions.series as BarSeriesOption[]).map(
+        entry => entry.type,
+      ),
+    ).toEqual(['bar', 'bar']);
+    expect(
+      (result.echartOptions.series as BarSeriesOption[]).map(entry => entry.id),
+    ).toEqual(['current', 'history']);
     expect(result.minCategoryHeight).toBeLessThanOrEqual(36);
-  } finally { chart.dispose(); }
+  } finally {
+    chart.dispose();
+  }
 });

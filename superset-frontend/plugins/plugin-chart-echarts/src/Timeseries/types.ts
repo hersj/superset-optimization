@@ -117,6 +117,7 @@ export type TimeseriesChartTransformedProps =
     CrossFilterTransformedProps & {
       legendData?: OptionName[];
       legendGroups?: LegendGroupMetadata;
+      comparisonGroups?: LegendGroupMetadata;
       skuSelection?: SkuSelection;
       minCategoryHeight?: number;
       isRefreshing?: boolean;

@@ -156,7 +156,7 @@ test.each([
   [false, false],
   [true, true],
 ])(
-  'custom comparison legends identify each metric and never reuse current colors (timeShiftColor=%s, identifiers=%s)',
+  'custom comparison legends retain metric identity with dashed period styling (timeShiftColor=%s, identifiers=%s)',
   (timeShiftColor, showQueryIdentifiers) => {
     const offset = '2026-03-01 : 2026-04-01';
     const props = createEchartsTimeseriesTestChartProps<
@@ -218,18 +218,22 @@ test.each([
     const series = transformed.echartOptions.series as {
       name: string;
       type: string;
-      itemStyle: { color: string };
+      itemStyle: { color: string; borderColor?: string; borderType?: string };
       lineStyle?: { type?: string };
     }[];
-    const currentColors = series
-      .filter(entry => !entry.name.includes(offset))
-      .map(entry => entry.itemStyle.color);
     const history = series.filter(entry => entry.name.includes(offset));
     expect(history).toHaveLength(3);
-    expect(new Set(history.map(entry => entry.itemStyle.color)).size).toBe(3);
-    history.forEach(entry =>
-      expect(currentColors).not.toContain(entry.itemStyle.color),
-    );
+    history.forEach(entry => {
+      const parent = series.find(
+        current =>
+          current.name === transformed.legendGroups?.parents[entry.name],
+      );
+      if (entry.type === 'bar') {
+        expect(entry.itemStyle.color).toBe('transparent');
+        expect(entry.itemStyle.borderType).toBe('dashed');
+        expect(entry.itemStyle.borderColor).toBeDefined();
+      } else expect(entry.itemStyle.color).toBe(parent?.itemStyle.color);
+    });
     expect(history.find(entry => entry.type === 'line')?.lineStyle?.type).toBe(
       'dashed',
     );
@@ -1909,4 +1913,37 @@ test('mixed trend bars automatically cap old fixed widths without changing data,
   );
   expect(JSON.stringify(props.queriesData)).toBe(before);
   expect(result.echartOptions.yAxis).toHaveLength(2);
+});
+
+test('both mixed queries keep independent native comparison stacks even with query identifiers', () => {
+  const offset = '1 month ago';
+  const props = createEchartsTimeseriesTestChartProps<
+    EchartsMixedTimeseriesFormData,
+    EchartsMixedTimeseriesProps
+  >({
+    ...MIXED_TIMESERIES_CHART_PROPS_DEFAULTS,
+    formData: {
+      ...formData,
+      groupby: [],
+      groupbyB: [],
+      metrics: ['sales'],
+      metricsB: ['profit'],
+      seriesType: EchartsTimeseriesSeriesType.Bar,
+      seriesTypeB: EchartsTimeseriesSeriesType.Bar,
+      stack: true,
+      stackB: true,
+      time_compare: [offset],
+      time_compare_b: [offset],
+      showQueryIdentifiers: true,
+    },
+    queriesData: [
+      createTestQueryData([{ ds: 1790784000000, sales: 100, [offset]: 60 }]),
+      createTestQueryData([{ ds: 1790784000000, profit: 20, [offset]: 10 }]),
+    ],
+  });
+  const series = transformProps(props).echartOptions
+    .series as BarSeriesOption[];
+  expect(series).toHaveLength(4);
+  expect(new Set(series.map(entry => entry.stack)).size).toBe(4);
+  expect(series.map(entry => entry.type)).toEqual(['bar', 'bar', 'bar', 'bar']);
 });

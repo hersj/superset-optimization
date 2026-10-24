@@ -271,6 +271,7 @@ export default function EchartsMixedTimeseries({
         zrEventHandlers={zrEventHandlers}
         selectedValues={selectedValues}
         vizType={formData.vizType}
+        comparisonGroups={legendGroups}
       />
     </>
   );

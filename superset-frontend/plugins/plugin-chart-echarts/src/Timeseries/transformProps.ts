@@ -112,13 +112,13 @@ import {
   TIMESERIES_CONSTANTS,
 } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
+import { applyComparisonStyles } from '../utils/comparisonStyles';
 import {
   CUSTOM_TIME_TEXT_COLOR,
   CUSTOM_PERIOD_TOOLTIP_STYLE,
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
-  styleCustomPeriodComparisonSeries,
   maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
@@ -462,8 +462,6 @@ export default function transformProps(
     );
   };
 
-  const offsetLineWidths: { [key: string]: number } = {};
-
   // For horizontal bar charts, calculate min/max from data to avoid cutting off labels
   const shouldCalculateDataBounds =
     isHorizontal &&
@@ -485,22 +483,9 @@ export default function transformProps(
       seriesName,
     );
 
-    const lineStyle: LineStyleOption = {};
-    if (derivedSeries) {
-      // Get the time offset for this series to assign different dash patterns
-      const offset = getTimeOffset(entry, array) || seriesName;
-      if (!offsetLineWidths[offset]) {
-        offsetLineWidths[offset] = Object.keys(offsetLineWidths).length + 1;
-      }
-      // Use visible dash patterns that vary by offset index
-      // Pattern: [dash length, gap length] - scaled to be clearly visible
-      const patternIndex = offsetLineWidths[offset];
-      lineStyle.type = [
-        (patternIndex % 5) + 4, // dash: 4-8px (visible)
-        (patternIndex % 3) + 3, // gap: 3-5px (visible)
-      ];
-      lineStyle.opacity = OpacityEnum.DerivedSeries;
-    }
+    const lineStyle: LineStyleOption = derivedSeries
+      ? { opacity: OpacityEnum.DerivedSeries }
+      : {};
 
     // Calculate min/max from data for horizontal bar charts
     if (shouldCalculateDataBounds && entry.data && Array.isArray(entry.data)) {
@@ -885,8 +870,19 @@ export default function transformProps(
   const legendGroups = shouldGroupLogicalLegends
     ? buildLegendGroupMetadata(legendInputs, Boolean(customPeriod))
     : emptyLegendMetadata;
-  if (customPeriod)
-    styleCustomPeriodComparisonSeries(series, colorScale, legendGroups);
+  const comparisonGroups = buildLegendGroupMetadata(
+    legendInputs.map(input =>
+      array.includes(input.name)
+        ? {
+            ...input,
+            currentLabel:
+              metricLabels.length === 1 ? metricLabels[0] : input.currentLabel,
+            timeOffset: input.name,
+          }
+        : input,
+    ),
+    true,
+  );
   const groupedLegendState = shouldGroupLogicalLegends
     ? resolveLegendState(
         legendState,
@@ -1446,7 +1442,12 @@ export default function transformProps(
   }
 
   return {
-    echartOptions: mergedEchartOptions,
+    echartOptions: applyComparisonStyles(
+      mergedEchartOptions,
+      comparisonGroups,
+      alignedEchartOptions,
+      theme.colorBgContainer,
+    ),
     emitCrossFilters,
     formData,
     groupby: groupBy,
@@ -1458,6 +1459,7 @@ export default function transformProps(
     width,
     legendData,
     legendGroups,
+    comparisonGroups,
     skuSelection,
     minCategoryHeight,
     onContextMenu,

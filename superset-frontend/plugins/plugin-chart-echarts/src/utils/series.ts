@@ -961,6 +961,7 @@ export function getTimeCompareStackId(
       if (typeof name === 'string') {
         // offset is represented as <offset>, group by list
         return (
+          name === value ||
           name.includes(`${value},`) ||
           // offset is represented as <metric>__<offset>
           name.includes(`__${value}`)

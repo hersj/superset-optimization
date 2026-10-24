@@ -292,9 +292,13 @@ export function transformSeries(
   } else if (stack && isObservation) {
     // the suffix of the observation series is '' (falsy), which disables
     // stacking. Therefore, we need to set something that is truthy.
-    stackId = getTimeCompareStackId('obs', timeCompare, name);
+    stackId = getTimeCompareStackId('obs', timeCompare, seriesKey ?? name);
   } else if (stack && isTrend) {
-    stackId = getTimeCompareStackId(forecastSeries.type, timeCompare, name);
+    stackId = getTimeCompareStackId(
+      forecastSeries.type,
+      timeCompare,
+      seriesKey ?? name,
+    );
   }
   if (stackId && stackIdSuffix) {
     stackId += stackIdSuffix;

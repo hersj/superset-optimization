@@ -82,14 +82,14 @@ export function layoutCategoryBars(
     return Math.max(1, ...Array.from(slots.values(), slots => slots.size));
   };
   // Disjoint color-by-category series share a lane; comparisons overlay only one current lane.
-  const ticks = new Set(
+  const overlays = new Set(
     countLanes(current) === 1 && current.every(entry => !entry.stack)
       ? bars
           .filter(entry => isComparison(String(entry.name)))
           .map(entry => entry.name)
       : [],
   );
-  const laneCount = countLanes(bars.filter(entry => !ticks.has(entry.name)));
+  const laneCount = countLanes(bars.filter(entry => !overlays.has(entry.name)));
   const thickness = laneCount === 1 ? 22 : laneCount <= 3 ? 16 : 12;
   const textWidth = (text: string) =>
     Array.from(text).reduce(
@@ -163,18 +163,11 @@ export function layoutCategoryBars(
       },
       series: series.map(entry => {
         if (entry.type !== 'bar') return entry;
-        if (ticks.has(entry.name))
-          return {
-            ...entry,
-            type: 'scatter',
-            symbol: 'rect',
-            symbolSize: [3, thickness + 4],
-            itemStyle: { ...entry.itemStyle, opacity: 0.7 },
-            label: { ...entry.label, show: false },
-            z: 5,
-          };
         return {
           ...entry,
+          ...(overlays.has(entry.name)
+            ? { label: { ...entry.label, show: false } }
+            : {}),
           barWidth: thickness,
           barMaxWidth: thickness,
           barGap: single ? '-100%' : '20%',

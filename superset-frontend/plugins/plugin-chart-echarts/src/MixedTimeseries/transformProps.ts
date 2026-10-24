@@ -101,13 +101,13 @@ import {
 } from '../Timeseries/transformers';
 import { TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
+import { applyComparisonStyles } from '../utils/comparisonStyles';
 import {
   CUSTOM_TIME_TEXT_COLOR,
   CUSTOM_PERIOD_TOOLTIP_STYLE,
   formatCustomPeriodTooltip,
   getCustomTimeControlledFormatter,
   formatCustomPeriodLegendLabel,
-  styleCustomPeriodComparisonSeries,
   maskCustomPeriodCurrentData,
 } from '../utils/customPeriodTooltip';
 import {
@@ -550,6 +550,7 @@ export default function transformProps(
         seriesKey: entry.name,
         sliceId,
         queryIndex: 0,
+        timeCompare: array,
         formatter:
           seriesType === EchartsTimeseriesSeriesType.Bar
             ? getOverMaxHiddenFormatter({
@@ -647,6 +648,7 @@ export default function transformProps(
         seriesKey: entry.name,
         sliceId,
         queryIndex: 1,
+        timeCompare: arrayB,
         formatter:
           seriesTypeB === EchartsTimeseriesSeriesType.Bar
             ? getOverMaxHiddenFormatter({
@@ -728,8 +730,7 @@ export default function transformProps(
     Boolean(customPeriod),
   );
   const legendGroups = hasTimeCompare ? stateLegendGroups : emptyLegendMetadata;
-  if (customPeriod)
-    styleCustomPeriodComparisonSeries(series, colorScale, legendGroups);
+
   const legendStateWithTimeCompare = hasTimeCompare
     ? resolveLegendState(
         legendState,
@@ -1151,7 +1152,12 @@ export default function transformProps(
     formData,
     width,
     height,
-    echartOptions: applyAutomaticBarSizing(mergedEchartOptions, width),
+    echartOptions: applyComparisonStyles(
+      applyAutomaticBarSizing(mergedEchartOptions, width),
+      legendGroups,
+      alignedEchartOptions,
+      theme.colorBgContainer,
+    ),
     setDataMask,
     emitCrossFilters,
     labelMap,

@@ -19,13 +19,10 @@
 
 import {
   ComparisonType,
-  CategoricalColorScale,
   CustomPeriodComparison,
   CurrencyFormatter,
   DataRecord,
   getCustomComparisonBucketDate,
-  getAnalogousColors,
-  getCategoricalSchemeRegistry,
   getNumberFormatter,
   getPeriodDayCount,
   getTimeFormatter,
@@ -39,10 +36,7 @@ import {
 } from '@superset-ui/core';
 import { getOriginalSeries, getTimeOffset } from '@superset-ui/chart-controls';
 import { format } from 'echarts/core';
-import type { SeriesOption, LineSeriesOption } from 'echarts';
-import tinycolor from 'tinycolor2';
 import { sanitizeHtml } from './series';
-import type { LegendGroupMetadata } from './series';
 
 interface TooltipPoint {
   seriesId?: unknown;
@@ -156,53 +150,6 @@ export function formatCustomPeriodLegendLabel(
   const compactEnd =
     start.slice(0, 4) === last.slice(0, 4) ? last.slice(5) : last;
   return `对比 ${start} ～ ${compactEnd}`;
-}
-
-/** Reserve current colors before assigning the historical palette across both axes. */
-export function styleCustomPeriodComparisonSeries(
-  series: SeriesOption[],
-  colorScale: CategoricalColorScale,
-  metadata: LegendGroupMetadata,
-): void {
-  const comparisonNames = new Set(
-    Object.entries(metadata.groups)
-      .filter(([name]) => metadata.kinds[name] === 'comparison')
-      .flatMap(([, members]) => members),
-  );
-  const currentColors = new Set(
-    series
-      .filter(entry => !comparisonNames.has(String(entry.name)))
-      .map(entry =>
-        tinycolor(
-          String((entry as LineSeriesOption).itemStyle?.color),
-        ).toHexString(),
-      ),
-  );
-  const colors = [
-    ...colorScale.range(),
-    ...(getCategoricalSchemeRegistry().get()?.colors ?? []),
-  ];
-  const palette = [
-    ...new Set(colors.map(color => tinycolor(color).toHexString())),
-  ].filter(color => !currentColors.has(color));
-  if (palette.length < comparisonNames.size) {
-    palette.push(
-      ...getAnalogousColors(colors, comparisonNames.size + 1).filter(
-        color => !currentColors.has(color) && !palette.includes(color),
-      ),
-    );
-  }
-  let index = 0;
-  series.forEach(entry => {
-    if (!comparisonNames.has(String(entry.name))) return;
-    const color = palette[index % palette.length];
-    index += 1;
-    const historical = entry as LineSeriesOption;
-    historical.itemStyle = { ...historical.itemStyle, color };
-    if (entry.type === 'line') {
-      historical.lineStyle = { ...historical.lineStyle, color, type: 'dashed' };
-    }
-  });
 }
 
 /** Pairs visible A/B series at one aligned bucket without changing chart data. */

@@ -35,6 +35,7 @@ import {
 import type { EChartsCoreOption, EChartsType } from 'echarts/core';
 import type { TooltipMarker } from 'echarts/types/src/util/format';
 import { StackControlsValue } from './constants';
+import type { LegendGroupMetadata } from './utils/series';
 
 export type EchartsStylesProps = {
   height: number;
@@ -58,6 +59,7 @@ export interface EchartsProps {
   vizType?: string;
   dataZoomStorageKey?: string;
   minCategoryHeight?: number;
+  comparisonGroups?: LegendGroupMetadata;
 }
 
 export interface EchartsHandler {
