@@ -318,8 +318,12 @@ export function transformBarMatrix(
     xAxis: { ...base.xAxis, type: AxisType.Category },
     echartOptions: {
       ...base.echartOptions,
+      legend: ensureIsArray(base.echartOptions.legend).map(legend => ({
+        ...legend,
+        show: false,
+      })),
       grid: {
-        top: formData.showLegend ? 65 : 35,
+        top: 35,
         left: 25,
         right: 16,
         bottom: 16,

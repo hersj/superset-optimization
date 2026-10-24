@@ -396,6 +396,10 @@ test('dense matrices use one native scroll surface with all categories retained'
   expect(result.minCategoryHeight).toBeGreaterThanOrEqual(32);
   expect(result.minCategoryHeight).toBeLessThanOrEqual(40);
   expect(result.echartOptions.dataZoom).toEqual([]);
+  expect(result.echartOptions.legend).toEqual(
+    expect.arrayContaining([expect.objectContaining({ show: false })]),
+  );
+  expect(result.echartOptions.grid).toMatchObject({ top: 35 });
   expect(
     matrixSeries(result).flatMap(series => series.data ?? []),
   ).toHaveLength(20);
