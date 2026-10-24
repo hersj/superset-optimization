@@ -310,6 +310,138 @@ class Contract(unittest.TestCase):
         )
         self.assertTrue(pd.isna(indexed.loc[pd.Timestamp("2026-10-03"), "metric"]))
 
+    def test_categorical_limit_preserves_current_sql_order_and_complete_history_query(
+        self,
+    ):
+        obj = query(axis="sku")
+        obj.row_limit, obj.row_offset = 10, 5
+        names = ["sku-z", "sku-a", *[f"sku-{i}" for i in range(8)]]
+        main = pd.DataFrame({"sku": names, "metric": range(100, 110)})
+        comparison = pd.DataFrame(
+            {
+                "sku": [*reversed(names), *[f"old-{i}" for i in range(133)]],
+                "metric": range(143),
+            }
+        )
+        original = copy.deepcopy(obj.to_dict())
+        main_before, comparison_before = main.copy(), comparison.copy()
+        calls = []
+
+        def execute(actual):
+            calls.append(copy.deepcopy(actual))
+            return SimpleNamespace(
+                df=main.copy() if len(calls) == 1 else comparison.copy(),
+                query="SELECT ... WHERE existing_rls",
+                status="success",
+            )
+
+        self.source.query = execute
+        result = self.source.get_query_result(obj).df
+        self.assertEqual(result["sku"].tolist(), names)
+        self.assertEqual(result["metric"].tolist(), list(range(100, 110)))
+        self.assertEqual(
+            result[f"metric__{obj.time_offsets[0]}"].tolist(), list(reversed(range(10)))
+        )
+        self.assertEqual(calls[0]["row_limit"], 10)
+        self.assertEqual(calls[0]["row_offset"], 5)
+        self.assertEqual(calls[1]["row_limit"], 50000)
+        self.assertEqual(calls[1]["row_offset"], 0)
+        self.assertEqual(obj.to_dict(), original)
+        pd.testing.assert_frame_equal(main, main_before)
+        pd.testing.assert_frame_equal(comparison, comparison_before)
+
+    def test_categorical_history_only_rows_fill_remaining_limit_in_sql_order(self):
+        main = pd.DataFrame({"sku": ["z", None, "a"], "metric": [None, 20, 10]})
+        comparison = pd.DataFrame(
+            {"sku": ["old-z", "a", None, "old-a", "old-m"], "metric": [9, 1, 2, 3, 4]}
+        )
+        for limit, expected in [
+            (1, ["z"]),
+            (5, ["z", None, "a", "old-z", "old-a"]),
+            (100, ["z", None, "a", "old-z", "old-a", "old-m"]),
+            (0, ["z", None, "a", "old-z", "old-a", "old-m"]),
+        ]:
+            with self.subTest(limit=limit):
+                obj = query(axis="sku")
+                obj.row_limit = limit
+                result = self.run_offset(main, comparison, obj)
+                self.assertEqual(result["sku"].tolist(), expected)
+                self.assertTrue(pd.isna(result["metric"].iloc[0]))
+                if limit != 1:
+                    self.assertEqual(
+                        result[f"metric__{obj.time_offsets[0]}"].iloc[1], 2
+                    )
+
+    def test_empty_current_categorical_limit_uses_history_sql_order(self):
+        obj = query(axis="sku")
+        obj.row_limit = 2
+        main = pd.DataFrame({"sku": pd.Series(dtype="object"), "metric": []})
+        result = self.run_offset(
+            main, pd.DataFrame({"sku": ["z", "a", "m"], "metric": [30, 10, 20]}), obj
+        )
+        self.assertEqual(result["sku"].tolist(), ["z", "a"])
+        self.assertTrue(result["metric"].isna().all())
+        self.assertEqual(result[f"metric__{obj.time_offsets[0]}"].tolist(), [30, 10])
+
+    def test_categorical_limit_matches_all_business_keys_and_null_keys(self):
+        obj = query(axis="sku")
+        obj.columns.append("shop")
+        obj.row_limit = 3
+        result = self.run_offset(
+            pd.DataFrame({"sku": ["z", "z"], "shop": [None, "a"], "metric": [None, 2]}),
+            pd.DataFrame(
+                {
+                    "sku": ["z", "old", "z", "excluded"],
+                    "shop": ["a", None, None, "b"],
+                    "metric": [20, 30, 10, 40],
+                }
+            ),
+            obj,
+        )
+        self.assertEqual(result["sku"].tolist(), ["z", "z", "old"])
+        self.assertEqual(
+            result[f"metric__{obj.time_offsets[0]}"].tolist(), [10, 20, 30]
+        )
+        self.assertTrue(pd.isna(result["metric"].iloc[0]))
+        self.assertTrue(pd.isna(result["shop"].iloc[0]))
+
+    def test_multiple_categorical_offsets_share_one_final_limit(self):
+        offsets = ["2026-08-05 : 2026-08-08", "2026-07-05 : 2026-07-08"]
+        obj = query(axis="sku", offsets=offsets)
+        obj.row_limit = 3
+        main = pd.DataFrame({"sku": ["z"], "metric": [100]})
+        result = self.source.join_offset_dfs(
+            main,
+            {
+                offsets[0]: pd.DataFrame({"sku": ["b"], f"metric__{offsets[0]}": [20]}),
+                offsets[1]: pd.DataFrame(
+                    {
+                        "sku": ["c", "a", "z", "b"],
+                        f"metric__{offsets[1]}": [30, 40, 50, 60],
+                    }
+                ),
+            },
+            "P1D",
+            ["sku"],
+            query_object=obj,
+        )
+        self.assertEqual(result["sku"].tolist(), ["z", "b", "c"])
+        self.assertEqual(result[f"metric__{offsets[1]}"].tolist(), [50, 60, 30])
+        self.assertEqual(main["sku"].tolist(), ["z"])
+
+    def test_temporal_history_extension_is_not_capped_by_categorical_limit(self):
+        obj = query()
+        obj.row_limit = 1
+        result = self.run_offset(
+            frame(["2026-10-01"], [100]),
+            frame(["2026-08-05", "2026-08-06", "2026-08-07"], [10, 20, 30]),
+            obj,
+        )
+        self.assertEqual(len(result), 3)
+        self.assertEqual(
+            result[f"metric__{obj.time_offsets[0]}"].tolist(), [10, 20, 30]
+        )
+
     def test_longer_history_extends_current_axis_without_expanding_current_query(self):
         offset = "2025-09-01 : 2025-10-01"
         obj = query(start="2026-09-01", end="2026-09-08", offsets=[offset])
