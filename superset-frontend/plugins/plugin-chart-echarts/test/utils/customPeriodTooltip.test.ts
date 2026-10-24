@@ -45,7 +45,7 @@ import type { LineSeriesOption } from 'echarts';
 const offset = '2026-08-05 : 2026-08-08';
 const timestamp = Date.parse('2026-09-01T00:00:00+08:00');
 
-test('historical colors avoid equivalent RGB current colors even with a one-color scheme', () => {
+test('historical lines retain their metric color while using dashed strokes', () => {
   const series: LineSeriesOption[] = [
     {
       name: 'sales',
@@ -74,7 +74,7 @@ test('historical colors avoid equivalent RGB current colors even with a one-colo
     metadata,
   );
   expect(series[0].itemStyle?.color).toBe('rgb(23, 168, 196)');
-  expect(series[1].itemStyle?.color).not.toBe('#17a8c4');
+  expect(series[1].itemStyle?.color).toBe('rgb(23, 168, 196)');
   expect(series[1].itemStyle?.opacity).toBe(0.5);
   expect(series[1].lineStyle?.type).toBe('dashed');
   expect(series.map(entry => entry.data)).toEqual(data);

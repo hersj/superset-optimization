@@ -457,7 +457,7 @@ test('hiding metrics immediately reduces native matrix row height', () => {
   expect(selected.minCategoryHeight).toBeLessThanOrEqual(40);
 });
 
-test('raw-value comparison shares its metric slot as a thin tick', () => {
+test('raw-value comparison shares its metric slot as a dashed full-length bar', () => {
   const input = props(
     {
       orientation: OrientationType.Horizontal,
@@ -479,7 +479,7 @@ test('raw-value comparison shares its metric slot as a thin tick', () => {
   )!;
   const bar = rectangle(current, 100);
   const tick = rectangle(comparison, 80);
-  expect(tick.width).toBe(3);
+  expect(tick.width).toBeCloseTo(bar.width * 0.8);
   expect(tick.height).toBeGreaterThan(bar.height);
   expect(tick.y + tick.height / 2).toBeCloseTo(bar.y + bar.height / 2);
   expect(result.minCategoryHeight).toBeLessThanOrEqual(40);
