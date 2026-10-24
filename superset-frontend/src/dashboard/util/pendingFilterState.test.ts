@@ -82,7 +82,9 @@ test('slow saves cannot overwrite a newer choice and intermediate choices are co
 });
 
 test('a failed save does not block a later save', async () => {
-  const save = jest.fn().mockRejectedValueOnce(new Error('offline'))
+  const save = jest
+    .fn()
+    .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValue(undefined);
   const enqueue = createFilterStateSaveQueue(save);
   await expect(enqueue('A')).rejects.toThrow('offline');
