@@ -1,0 +1,1892 @@
+{
+  "source": "Read-only Superset metadata inventory 2026-10-24, runtime 8d217d0711. Configuration only; queries use synthetic rows, not production business data.",
+  "charts": [
+    {
+      "id": 329,
+      "name": "周度配送额/毛利率/毛利润看板",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": true,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送销售额",
+        "毛利润"
+      ],
+      "metrics_b": [
+        "毛利率"
+      ]
+    },
+    {
+      "id": 330,
+      "name": "均客单价/LT数",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "y_axis_format_secondary": "SMART_NUMBER",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送商品数"
+      ],
+      "metrics_b": [
+        "均客单价",
+        "LT数"
+      ]
+    },
+    {
+      "id": 332,
+      "name": "变体看板-利润率/广告费率/折扣率-客单价",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "周标签",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": "SMART_NUMBER",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送商品数",
+        "配送销售额"
+      ],
+      "metrics_b": [
+        "毛利率"
+      ]
+    },
+    {
+      "id": 438,
+      "name": "市场价格分布(USD·按站点)",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "stack": null,
+        "groupby": [],
+        "x_axis": "site",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ",.0f"
+      },
+      "metrics": [
+        "P25",
+        "P50 中位价",
+        "P75"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 546,
+      "name": "流量趋势 (Sessions/PV)",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "stack": false,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": true,
+        "y_axis_format": "SMART_NUMBER"
+      },
+      "metrics": [
+        "Sessions",
+        "Page Views"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 548,
+      "name": "销售额趋势",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "stack": false,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": true,
+        "y_axis_format": "$,.0f"
+      },
+      "metrics": [
+        "销售额 (USD)"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 572,
+      "name": "每日同步记录量",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "groupby": [],
+        "x_axis": "run_date",
+        "show_legend": true,
+        "zoomable": true,
+        "y_axis_format": "SMART_NUMBER"
+      },
+      "metrics": [
+        "同步记录数"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 574,
+      "name": "各模块任务情况",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "stack": true,
+        "groupby": [
+          "module"
+        ],
+        "x_axis": "run_date",
+        "show_legend": true,
+        "zoomable": true,
+        "y_axis_format": "SMART_NUMBER"
+      },
+      "metrics": [
+        "任务数"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 578,
+      "name": "同步日志-状态趋势",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "stack": true,
+        "groupby": [
+          "status"
+        ],
+        "x_axis": "start_time",
+        "show_legend": true,
+        "zoomable": true,
+        "y_axis_format": "SMART_NUMBER"
+      },
+      "metrics": [
+        "日志数"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 598,
+      "name": "配送额/毛利率/毛利润图表",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "earliest_ship_date",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "time_compare": [
+          "3 months ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WAN",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送销售额",
+        "毛利润"
+      ],
+      "metrics_b": [
+        "毛利率"
+      ]
+    },
+    {
+      "id": 599,
+      "name": "均客单价/LT数",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "earliest_ship_date",
+        "show_legend": true,
+        "zoomable": true,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": "SMART_NUMBER",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送商品数"
+      ],
+      "metrics_b": [
+        "均客单价",
+        "LT数"
+      ]
+    },
+    {
+      "id": 605,
+      "name": "月度市场销售额占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": true,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WAN",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "内部销售额",
+        "市场销售额"
+      ],
+      "metrics_b": [
+        "销售额占比"
+      ]
+    },
+    {
+      "id": 629,
+      "name": "变体配送销量 & 占比趋势",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "earliest_ship_date",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "y_axis_format_secondary": ".1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "主体配送销量",
+        "变体配送销量"
+      ],
+      "metrics_b": [
+        "主体配送销量占比",
+        "变体配送销量占比"
+      ]
+    },
+    {
+      "id": 630,
+      "name": "变体毛利润 & 占比趋势",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "earliest_ship_date",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WAN",
+        "y_axis_format_secondary": ".1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "主体毛利润",
+        "变体毛利润"
+      ],
+      "metrics_b": [
+        "主体毛利润占比",
+        "变体毛利润占比"
+      ]
+    },
+    {
+      "id": 631,
+      "name": "D一/D二/D三 毛利润 & 占比趋势",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "earliest_ship_date",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WAN",
+        "y_axis_format_secondary": ".1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "D一毛利润",
+        "D二毛利润",
+        "D三毛利润"
+      ],
+      "metrics_b": [
+        "D一毛利润占比",
+        "D二毛利润占比",
+        "D三毛利润占比"
+      ]
+    },
+    {
+      "id": 708,
+      "name": "模块1｜销量：内部精确值 vs 市场下限",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "stack": null,
+        "groupby": [],
+        "x_axis": "site",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ",.0f"
+      },
+      "metrics": [
+        "市场销量下限",
+        "内部精确销量（30日）"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 709,
+      "name": "模块1｜销售额：内部精确值 vs 市场下限（站点本币）",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "stack": null,
+        "groupby": [],
+        "x_axis": "site",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ",.2f"
+      },
+      "metrics": [
+        "市场销售额下限",
+        "内部精确销售额（30日）"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 723,
+      "name": "各 PL 近一个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "pl",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 724,
+      "name": "销售额占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": true,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "内部销售额",
+        "市场销售额"
+      ],
+      "metrics_b": [
+        "销售额占比"
+      ]
+    },
+    {
+      "id": 725,
+      "name": "销量占比1",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "内部销量",
+        "市场销量"
+      ],
+      "metrics_b": [
+        "销量占比"
+      ]
+    },
+    {
+      "id": 726,
+      "name": "品牌市场份额占比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [
+          "competitor"
+        ],
+        "x_axis": "snapshot_month",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_dimension": "competitor"
+      },
+      "metrics": [
+        "竞对占比（%）",
+        "销售额",
+        "ASIN数量"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 727,
+      "name": "LT占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [
+          {
+            "expressionType": "SQL",
+            "label": "BSR分组",
+            "sqlExpression": "case \nwhen bsr_sub <=100 then 'TOP100'\nwhen bsr_sub <= 200 then '101-200'\nwhen bsr_sub <= 300 then '201-300'\nelse '300+'\nend "
+          }
+        ],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "~g",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "LT数"
+      ],
+      "metrics_b": [
+        "销售额占比"
+      ]
+    },
+    {
+      "id": 729,
+      "name": "竞品销售额占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "该品牌销售额"
+      ],
+      "metrics_b": [
+        "销售份额市场占比"
+      ]
+    },
+    {
+      "id": 730,
+      "name": "销量占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "销量"
+      ],
+      "metrics_b": [
+        "销量市场占比"
+      ]
+    },
+    {
+      "id": 741,
+      "name": "总LT占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": true,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "市场LT",
+        "内部LT数"
+      ],
+      "metrics_b": [
+        "市场占比"
+      ]
+    },
+    {
+      "id": 743,
+      "name": "各 PL 近三个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "pl",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 744,
+      "name": "各 PL 近十二个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "pl",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 746,
+      "name": "各 PF 近三个月退货率对比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "middle",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "pf",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "y_axis_format_secondary": ",.1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "自有退货率"
+      ],
+      "metrics_b": [
+        "类目参考退货率"
+      ]
+    },
+    {
+      "id": 747,
+      "name": "各 PF 近一个月退货率对比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "middle",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "pf",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "y_axis_format_secondary": ",.1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "自有退货率"
+      ],
+      "metrics_b": [
+        "类目参考退货率"
+      ]
+    },
+    {
+      "id": 748,
+      "name": "各 PF 近十二个月退货率对比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "middle",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "pf",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "y_axis_format_secondary": ",.1%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "自有退货率"
+      ],
+      "metrics_b": [
+        "类目参考退货率"
+      ]
+    },
+    {
+      "id": 751,
+      "name": "各 SPU 近一个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "spu",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 752,
+      "name": "各 SPU 近三个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "spu",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 753,
+      "name": "各 SPU 近十二个月退货率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "vertical",
+        "groupby": [],
+        "x_axis": "spu",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "自有退货率",
+        "类目参考退货率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 757,
+      "name": "店铺利润表现",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "shop_name",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": true,
+        "y_axis_format": "CN_WAN",
+        "color_by_primary_axis": true
+      },
+      "metrics": [
+        "配送销售额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 760,
+      "name": "竞品LT占比",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "snapshot_month",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "该品牌LT数"
+      ],
+      "metrics_b": [
+        "LT市场占比"
+      ]
+    },
+    {
+      "id": 761,
+      "name": "店铺销售额表现 ",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "shop_name",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": true,
+        "y_axis_format": "CN_WAN",
+        "color_by_primary_axis": true
+      },
+      "metrics": [
+        "毛利润"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 772,
+      "name": "销量 TOP 10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": {
+          "columnType": "BASE_AXIS",
+          "expressionType": "SQL",
+          "label": "SKU简称",
+          "sqlExpression": "CASE WHEN kk_sku ~ '^[A-Z0-9]{1,4}-' THEN concat(split_part(kk_sku,'-',1),'-',split_part(kk_sku,'-',2),'-',split_part(kk_sku,'-',3),' · ',right(kk_sku,4)) ELSE kk_sku END"
+        },
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d"
+      },
+      "metrics": [
+        "配送数量"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 773,
+      "name": "利润 TOP 10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": {
+          "columnType": "BASE_AXIS",
+          "expressionType": "SQL",
+          "label": "SKU简称",
+          "sqlExpression": "CASE WHEN kk_sku ~ '^[A-Z0-9]{1,4}-' THEN concat(split_part(kk_sku,'-',1),'-',split_part(kk_sku,'-',2),'-',split_part(kk_sku,'-',3),' · ',right(kk_sku,4)) ELSE kk_sku END"
+        },
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "毛利润"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 774,
+      "name": "增长 TOP 10｜销量增量",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": {
+          "columnType": "BASE_AXIS",
+          "expressionType": "SQL",
+          "label": "SKU简称",
+          "sqlExpression": "CASE WHEN kk_sku ~ '^[A-Z0-9]{1,4}-' THEN concat(split_part(kk_sku,'-',1),'-',split_part(kk_sku,'-',2),'-',split_part(kk_sku,'-',3),' · ',right(kk_sku,4)) ELSE kk_sku END"
+        },
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "销量增量"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 775,
+      "name": "亏损 TOP 10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": true,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": {
+          "expressionType": "SQL",
+          "sqlExpression": "CASE WHEN kk_sku ~ '^[A-Z0-9]{1,4}-' THEN concat(split_part(kk_sku,'-',1),'-',split_part(kk_sku,'-',2),'-',split_part(kk_sku,'-',3),' · ',right(kk_sku,4)) ELSE kk_sku END",
+          "label": "SKU简称",
+          "columnType": "BASE_AXIS"
+        },
+        "x_axis_label": "",
+        "show_value": true,
+        "show_legend": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": "SMART_NUMBER"
+      },
+      "metrics": [
+        "亏损金额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 776,
+      "name": "同SKU各店铺毛利率",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": false,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": "shop_name",
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": false,
+        "time_compare": [],
+        "truncateYAxis": true,
+        "y_axis_format": ".1%"
+      },
+      "metrics": [
+        "毛利率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 780,
+      "name": "同SKU各店铺配送数量",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": false,
+        "groupby": [
+          "kk_sku"
+        ],
+        "x_axis": "shop_name",
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": false,
+        "time_compare": [],
+        "truncateYAxis": true,
+        "y_axis_format": ",.0f"
+      },
+      "metrics": [
+        "配送数量"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 786,
+      "name": "SKU费用率对比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": false,
+        "groupby": [],
+        "x_axis": "kk_sku",
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "time_compare": [],
+        "truncateYAxis": true,
+        "y_axis_format": ".1%"
+      },
+      "metrics": [
+        "采购成本率",
+        "头程成本率",
+        "广告费率",
+        "佣金率",
+        "配送费率",
+        "退款金额率",
+        "仓储费率"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 787,
+      "name": "SKU费用金额对比｜USD",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": false,
+        "groupby": [],
+        "x_axis": "kk_sku",
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "time_compare": [],
+        "truncateYAxis": true,
+        "y_axis_format": ",.2f"
+      },
+      "metrics": [
+        "采购成本",
+        "头程成本",
+        "广告费",
+        "佣金",
+        "配送费",
+        "退款金额",
+        "仓储费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 796,
+      "name": "V3｜商品销售额/毛利率/毛利润图表",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": true,
+        "time_compare": [
+          "3 months ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WAN",
+        "y_axis_format_secondary": ".2%",
+        "groupby_b": []
+      },
+      "metrics": [
+        "商品销售额",
+        "毛利润"
+      ],
+      "metrics_b": [
+        "毛利率"
+      ]
+    },
+    {
+      "id": 797,
+      "name": "V3｜均客单价/LT数",
+      "type": "mixed_timeseries",
+      "config": {
+        "seriesType": "bar",
+        "seriesTypeB": "smooth",
+        "stack": false,
+        "stackB": false,
+        "groupby": [],
+        "x_axis": "biz_day",
+        "show_legend": true,
+        "zoomable": true,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": "CN_WANYI",
+        "y_axis_format_secondary": "SMART_NUMBER",
+        "groupby_b": []
+      },
+      "metrics": [
+        "配送商品数"
+      ],
+      "metrics_b": [
+        "均客单价",
+        "LT数"
+      ]
+    },
+    {
+      "id": 804,
+      "name": "V3｜店铺商品销售额表现",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "shop_name",
+        "show_value": true,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": true,
+        "y_axis_format": "CN_WAN",
+        "color_by_primary_axis": true
+      },
+      "metrics": [
+        "商品销售额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 805,
+      "name": "V3｜店铺毛利润表现",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "shop_name",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": true,
+        "y_axis_format": "CN_WAN",
+        "color_by_primary_axis": true
+      },
+      "metrics": [
+        "毛利润"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 819,
+      "name": "毛利 TOP50｜明细",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "kk_sku",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "contributionMode": null
+      },
+      "metrics": [
+        "毛利润"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 822,
+      "name": "V3费用｜商品销售额｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"配送销售额（子表原始值）\"], \"selected\": {\"配送销售额（子表原始值）\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "配送销售额（子表原始值）"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 830,
+      "name": "运营人员销售额｜USD",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "运营人员",
+          "sqlExpression": "COALESCE(NULLIF(BTRIM(operator_engineer_name),''),'未分配运营')"
+        },
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"left\": 92, \"right\": 92, \"top\": 28, \"bottom\": 54, \"containLabel\": false}, \"yAxis\": {\"axisLabel\": {\"width\": 80, \"overflow\": \"truncate\", \"fontSize\": 11}}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": true, \"position\": \"right\", \"distance\": 6}}]}"
+      },
+      "metrics": [
+        "销售额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 831,
+      "name": "运营人员毛利润｜USD",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "运营人员",
+          "sqlExpression": "COALESCE(NULLIF(BTRIM(operator_engineer_name),''),'未分配运营')"
+        },
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"left\": 92, \"right\": 92, \"top\": 28, \"bottom\": 54, \"containLabel\": false}, \"yAxis\": {\"axisLabel\": {\"width\": 80, \"overflow\": \"truncate\", \"fontSize\": 11}}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": true, \"position\": \"right\", \"distance\": 6}}]}"
+      },
+      "metrics": [
+        "毛利"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 839,
+      "name": "销售TOP榜",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "groupby": [],
+        "x_axis": "kk_sku",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false
+      },
+      "metrics": [
+        "销售额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 843,
+      "name": "主体/变体｜净毛利润占比",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "columnType": "BASE_AXIS",
+          "expressionType": "SQL",
+          "hasCustomLabel": true,
+          "label": "主体/变体",
+          "sqlExpression": "CASE WHEN variant_role IN ('主体','变体') THEN variant_role ELSE '未分类' END"
+        },
+        "x_axis_label": "",
+        "show_value": true,
+        "show_legend": false,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ".2%",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"left\": 94, \"right\": 82, \"top\": 28, \"bottom\": 48, \"containLabel\": false}, \"xAxis\": {\"axisLine\": {\"show\": true}, \"splitNumber\": 3, \"axisLabel\": {\"hideOverlap\": true}}, \"yAxis\": {\"axisLabel\": {\"fontSize\": 13, \"margin\": 40}}, \"series\": [{\"label\": {\"position\": \"right\", \"distance\": 8, \"align\": \"left\"}}]}"
+      },
+      "metrics": [
+        "净毛利润占比"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 844,
+      "name": "V3费用｜促销折扣｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"促销折扣\"], \"selected\": {\"促销折扣\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "促销折扣"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 845,
+      "name": "V3费用｜其他收入｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": "Stack",
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "echart_options": ""
+      },
+      "metrics": [
+        "买家运费",
+        "礼品包装费",
+        "监管费",
+        "COD收费",
+        "COD（参考）"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 846,
+      "name": "V3费用｜退款额｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": "Stack",
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"销售额退款\", \"买家运费退款\", \"促销折扣退款\", \"其他退款\", \"礼品包装税退款\", \"V2历史订单退款总额\"], \"selected\": {\"V2历史订单退款总额\": false, \"买家运费退款\": true, \"促销折扣退款\": true, \"其他退款\": true, \"礼品包装税退款\": true, \"销售额退款\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "销售额退款",
+        "买家运费退款",
+        "促销折扣退款",
+        "其他退款",
+        "礼品包装税退款",
+        "V2历史订单退款总额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 847,
+      "name": "V3费用｜销售税费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": "Stack",
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"账户级代扣税\", \"反向订单税代扣税\", \"反向订单税\", \"商城代扣税\", \"低价值商品税\", \"促销折扣税\", \"买家运费税\", \"商品价格税\", \"礼品包装税\", \"监管费代扣税费\", \"商品价格税退款\", \"买家运费税退款\", \"促销折扣税退款\", \"商城代扣税退款\", \"退税明细差额\", \"低价值商品税退款\", \"TCS-CGST退款\", \"TCS-IGST退款\", \"TCS-SGST退款\"], \"selected\": {\"TCS-CGST退款\": false, \"TCS-IGST退款\": false, \"TCS-SGST退款\": false, \"买家运费税\": false, \"买家运费税退款\": false, \"低价值商品税\": true, \"低价值商品税退款\": false, \"促销折扣税\": false, \"促销折扣税退款\": false, \"反向订单税\": true, \"反向订单税代扣税\": true, \"商品价格税\": false, \"商品价格税退款\": false, \"商城代扣税\": true, \"商城代扣税退款\": false, \"监管费代扣税费\": false, \"礼品包装税\": false, \"账户级代扣税\": true, \"退税明细差额\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "账户级代扣税",
+        "反向订单税代扣税",
+        "反向订单税",
+        "商城代扣税",
+        "低价值商品税",
+        "促销折扣税",
+        "买家运费税",
+        "商品价格税",
+        "礼品包装税",
+        "监管费代扣税费",
+        "商品价格税退款",
+        "买家运费税退款",
+        "促销折扣税退款",
+        "商城代扣税退款",
+        "退税明细差额",
+        "低价值商品税退款",
+        "TCS-CGST退款",
+        "TCS-IGST退款",
+        "TCS-SGST退款"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 848,
+      "name": "V3费用｜FBA配送费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"FBA配送费退款\", \"FBA配送费-多渠道订单\", \"FBA配送费-非多渠道订单\", \"FBM便捷配送费\", \"礼品包装费扣除\", \"买家运费扣除\", \"费用调整\", \"MCF计重费\", \"FBA计重费\"], \"selected\": {\"FBA计重费\": false, \"FBA配送费-多渠道订单\": true, \"FBA配送费-非多渠道订单\": true, \"FBA配送费退款\": true, \"FBM便捷配送费\": true, \"MCF计重费\": false, \"买家运费扣除\": false, \"礼品包装费扣除\": true, \"费用调整\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "FBA配送费退款",
+        "FBA配送费-多渠道订单",
+        "FBA配送费-非多渠道订单",
+        "FBM便捷配送费",
+        "礼品包装费扣除",
+        "买家运费扣除",
+        "费用调整",
+        "MCF计重费",
+        "FBA计重费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 849,
+      "name": "V3费用｜平台佣金｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 day ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"佣金退款\", \"销售佣金\", \"佣金调整\"], \"selected\": {\"佣金调整\": true, \"佣金退款\": true, \"销售佣金\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "佣金退款",
+        "销售佣金",
+        "佣金调整"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 850,
+      "name": "V3费用｜推广费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"VINE推广费\", \"促销活动推广费\", \"优惠券推广费\", \"接口评价/测评费（参考）\", \"人工推广费\", \"推广明细差额\"], \"selected\": {\"VINE推广费\": true, \"人工推广费\": true, \"优惠券推广费\": true, \"促销活动推广费\": true, \"接口评价/测评费（参考）\": true, \"推广明细差额\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "VINE推广费",
+        "促销活动推广费",
+        "优惠券推广费",
+        "接口评价/测评费（参考）",
+        "人工推广费",
+        "推广明细差额"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 851,
+      "name": "V3费用｜广告费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"广告费退款（参考）\", \"SP广告费\", \"SD广告费\", \"SB广告费\", \"SBV广告费\"], \"selected\": {\"SBV广告费\": true, \"SB广告费\": true, \"SD广告费\": true, \"SP广告费\": true, \"广告费退款（参考）\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "广告费退款（参考）",
+        "SP广告费",
+        "SD广告费",
+        "SB广告费",
+        "SBV广告费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 852,
+      "name": "V3费用｜FBA仓储费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"长期仓储费\", \"月仓储费\", \"AWD月仓储费\", \"AWD手续费\", \"AWD配送费\", \"仓储超量费\"], \"selected\": {\"AWD手续费\": true, \"AWD月仓储费\": true, \"AWD配送费\": true, \"仓储超量费\": false, \"月仓储费\": true, \"长期仓储费\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "长期仓储费",
+        "月仓储费",
+        "AWD月仓储费",
+        "AWD手续费",
+        "AWD配送费",
+        "仓储超量费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 853,
+      "name": "V3费用｜移除销毁费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"移除费\", \"销毁费\"], \"selected\": {\"移除费\": true, \"销毁费\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "移除费",
+        "销毁费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 854,
+      "name": "V3费用｜其他库存管理费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"退货标签费\", \"人工处理费\", \"贴标费\", \"气泡膜包装费\", \"包装袋费\", \"sku超量费\", \"不透明包装费\", \"入库缺陷费\", \"邮资计费\", \"退货入仓费\", \"入库配置费\"], \"selected\": {\"sku超量费\": false, \"不透明包装费\": false, \"人工处理费\": true, \"入库缺陷费\": false, \"入库配置费\": false, \"包装袋费\": true, \"气泡膜包装费\": true, \"贴标费\": true, \"退货入仓费\": false, \"退货标签费\": true, \"邮资计费\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "退货标签费",
+        "人工处理费",
+        "贴标费",
+        "气泡膜包装费",
+        "包装袋费",
+        "sku超量费",
+        "不透明包装费",
+        "入库缺陷费",
+        "邮资计费",
+        "退货入仓费",
+        "入库配置费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 855,
+      "name": "V3费用｜亚马逊赔偿清算｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"赔偿追回\", \"赔付\", \"FBA库存赔偿\", \"亚马逊运费赔偿\", \"清算\", \"清算支出\", \"清算调整支出\", \"非订阅费调整\"], \"selected\": {\"FBA库存赔偿\": true, \"亚马逊运费赔偿\": true, \"清算\": true, \"清算支出\": false, \"清算调整支出\": false, \"赔付\": true, \"赔偿追回\": true, \"非订阅费调整\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "赔偿追回",
+        "赔付",
+        "FBA库存赔偿",
+        "亚马逊运费赔偿",
+        "清算",
+        "清算支出",
+        "清算调整支出",
+        "非订阅费调整"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 856,
+      "name": "V3费用｜退货处理费｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": null,
+        "groupby": [],
+        "x_axis": {
+          "expressionType": "SQL",
+          "label": "SKU",
+          "sqlExpression": "COALESCE(NULLIF(kk_sku,''),'未归属SKU')"
+        },
+        "x_axis_label": "",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"退货处理费\", \"退款管理费\", \"评级与转售费\"], \"selected\": {\"评级与转售费\": true, \"退款管理费\": true, \"退货处理费\": true}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "退货处理费",
+        "退款管理费",
+        "评级与转售费"
+      ],
+      "metrics_b": []
+    },
+    {
+      "id": 857,
+      "name": "V3费用｜平台其他｜SKU TOP10",
+      "type": "echarts_timeseries_bar",
+      "config": {
+        "orientation": "horizontal",
+        "stack": "Stack",
+        "groupby": [],
+        "x_axis": "asin",
+        "show_value": false,
+        "show_legend": true,
+        "zoomable": false,
+        "time_compare": [
+          "1 month ago"
+        ],
+        "truncateYAxis": false,
+        "y_axis_format": ",d",
+        "color_by_primary_axis": false,
+        "echart_options": "{\"grid\": {\"bottom\": 70, \"left\": 235, \"right\": 45, \"top\": 24}, \"legend\": {\"bottom\": 0, \"data\": [\"数字服务费\", \"数字服务费退款\", \"订阅费\", \"专属服务费\", \"商标使用许可佣金\", \"独家销售计划\", \"固定费\", \"AGL\", \"其他-运费手续费（参考）\", \"其他-加速收款费（参考）\", \"其他-翻新产品服务费（参考）\", \"合作承运费\", \"其他-出口费（参考）\", \"其他-订单处理费（参考）\", \"混标入库增值税（参考）\", \"其他-税务计算服务费（参考）\", \"杂费调整（参考）\", \"信用卡拒付调整（参考）\", \"冲销调整（参考）\", \"亚马逊增值税服务费（参考）\", \"库容预留费（参考）\", \"SAFE-T索赔（参考）\", \"A-to-Z索赔收入（参考）\", \"信用卡拒付收入\", \"信用卡拒付支出\", \"A-to-Z索赔支出（参考）\", \"其他-CSBA费（参考）\", \"netCo（参考）\", \"其他-买家灵活融资计划费（参考）\", \"其他-品牌加速器计划佣金（参考）\", \"其他-礼品包装费手续费（参考）\", \"图片服务费（参考）\", \"其他支出-其他费\", \"其他-积分花费（参考）\", \"其余收入-其他费\", \"透明计划标签费（参考）\", \"人工透明计划费\", \"媒体类成交费\", \"订阅费更正\", \"平台其他明细差额\", \"V2历史混合调整费\", \"V2历史透明计划费\", \"V2历史订单其他费\"], \"selected\": {\"A-to-Z索赔支出（参考）\": false, \"A-to-Z索赔收入（参考）\": false, \"AGL\": false, \"SAFE-T索赔（参考）\": false, \"V2历史混合调整费\": false, \"V2历史订单其他费\": false, \"V2历史透明计划费\": false, \"netCo（参考）\": false, \"专属服务费\": true, \"亚马逊增值税服务费（参考）\": false, \"人工透明计划费\": false, \"信用卡拒付支出\": false, \"信用卡拒付收入\": false, \"信用卡拒付调整（参考）\": false, \"其他-CSBA费（参考）\": false, \"其他-买家灵活融资计划费（参考）\": false, \"其他-出口费（参考）\": false, \"其他-加速收款费（参考）\": false, \"其他-品牌加速器计划佣金（参考）\": false, \"其他-礼品包装费手续费（参考）\": false, \"其他-积分花费（参考）\": false, \"其他-税务计算服务费（参考）\": false, \"其他-翻新产品服务费（参考）\": false, \"其他-订单处理费（参考）\": false, \"其他-运费手续费（参考）\": false, \"其他支出-其他费\": false, \"其余收入-其他费\": false, \"冲销调整（参考）\": false, \"合作承运费\": false, \"商标使用许可佣金\": true, \"固定费\": false, \"图片服务费（参考）\": false, \"媒体类成交费\": false, \"平台其他明细差额\": false, \"库容预留费（参考）\": false, \"数字服务费\": true, \"数字服务费退款\": true, \"杂费调整（参考）\": false, \"混标入库增值税（参考）\": false, \"独家销售计划\": false, \"订阅费\": true, \"订阅费更正\": false, \"透明计划标签费（参考）\": false}, \"type\": \"scroll\"}, \"series\": [{\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}, {\"type\": \"bar\", \"label\": {\"show\": false}, \"labelLayout\": {\"hideOverlap\": true}, \"connectNulls\": false}], \"yAxis\": {\"axisLabel\": {\"overflow\": \"truncate\", \"width\": 205}}}"
+      },
+      "metrics": [
+        "数字服务费",
+        "数字服务费退款",
+        "订阅费",
+        "专属服务费",
+        "商标使用许可佣金",
+        "独家销售计划",
+        "固定费",
+        "AGL",
+        "其他-运费手续费（参考）",
+        "其他-加速收款费（参考）",
+        "其他-翻新产品服务费（参考）",
+        "合作承运费",
+        "其他-出口费（参考）",
+        "其他-订单处理费（参考）",
+        "混标入库增值税（参考）",
+        "其他-税务计算服务费（参考）",
+        "杂费调整（参考）",
+        "信用卡拒付调整（参考）",
+        "冲销调整（参考）",
+        "亚马逊增值税服务费（参考）",
+        "库容预留费（参考）",
+        "SAFE-T索赔（参考）",
+        "A-to-Z索赔收入（参考）",
+        "信用卡拒付收入",
+        "信用卡拒付支出",
+        "A-to-Z索赔支出（参考）",
+        "其他-CSBA费（参考）",
+        "netCo（参考）",
+        "其他-买家灵活融资计划费（参考）",
+        "其他-品牌加速器计划佣金（参考）",
+        "其他-礼品包装费手续费（参考）",
+        "图片服务费（参考）",
+        "其他支出-其他费",
+        "其他-积分花费（参考）",
+        "其余收入-其他费",
+        "透明计划标签费（参考）",
+        "人工透明计划费",
+        "媒体类成交费",
+        "订阅费更正",
+        "平台其他明细差额",
+        "V2历史混合调整费",
+        "V2历史透明计划费",
+        "V2历史订单其他费"
+      ],
+      "metrics_b": []
+    }
+  ]
+}
