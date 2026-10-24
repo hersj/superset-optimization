@@ -41,8 +41,9 @@ import {
 } from '../../../src/Timeseries/types';
 import { createEchartsTimeseriesTestChartProps } from '../../helpers';
 import {
-  persistMatrixViewport,
-  restoreMatrixViewport,
+  getScrollableChartHeight,
+  persistSkuScroll,
+  restoreSkuScroll,
 } from '../../../src/utils/matrixViewport';
 
 function props(
@@ -382,153 +383,93 @@ function denseMatrix(metrics = ['sales']) {
   return props({ metrics }, [data], labelMap);
 }
 
-test('dense matrices scroll within the viewport and retain all returned categories and values', () => {
+test('dense matrices use one native scroll surface with all categories retained', () => {
   const result = barTransformProps(denseMatrix());
   expect(result.height).toBe(600);
   expect(result.echartOptions.yAxis).toMatchObject({
     data: expect.any(Array),
     inverse: true,
   });
-  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
-    20,
-  );
-  expect(result.echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        type: 'slider',
-        yAxisIndex: 0,
-        startValue: 0,
-        endValue: 4,
-        zoomLock: false,
-      }),
-      expect.objectContaining({
-        type: 'inside',
-        yAxisIndex: 0,
-        zoomLock: false,
-        zoomOnMouseWheel: false,
-        moveOnMouseWheel: true,
-      }),
-    ]),
-  );
-  expect(
-    matrixSeries(result).flatMap(series => series.data ?? []),
-  ).toHaveLength(20);
-  const context = jest
-    .spyOn(HTMLCanvasElement.prototype, 'getContext')
-    .mockReturnValue(null);
-  const chart = init(null, undefined, {
-    renderer: 'svg',
-    ssr: true,
-    width: 800,
-    height: 600,
-  });
-  try {
-    chart.setOption({
-      ...result.echartOptions,
-      animation: false,
-    } as EChartsOption);
-    const before = chart.renderToSVGString();
-    chart.dispatchAction({
-      type: 'dataZoom',
-      dataZoomIndex: 0,
-      startValue: 16,
-      endValue: 19,
-    });
-    const after = chart.renderToSVGString();
-    expect(before).not.toEqual(after);
-    expect(before).toContain('Brand 19');
-    expect(after).toContain('Brand 0');
-  } finally {
-    chart.dispose();
-    context.mockRestore();
-  }
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(20);
+  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(32);
+  expect(result.minCategoryHeight).toBeLessThanOrEqual(40);
+  expect(result.echartOptions.dataZoom).toEqual([]);
+  expect(matrixSeries(result).flatMap(series => series.data ?? [])).toHaveLength(20);
+  expect(getScrollableChartHeight(result.echartOptions, 600, result.minCategoryHeight!)).toBeGreaterThan(600);
 });
 
-test('small matrices keep their full view and explicit X-axis zoom remains available', () => {
-  expect(barTransformProps(props()).echartOptions.dataZoom).toEqual([]);
+test('matrix zoom settings no longer add range handles or wheel zoom', () => {
   const input = denseMatrix();
   input.formData.zoomable = true;
-  expect(barTransformProps(input).echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ type: 'slider', xAxisIndex: 0 }),
-      expect.objectContaining({
-        type: 'slider',
-        yAxisIndex: 0,
-        zoomLock: false,
-      }),
-    ]),
-  );
+  expect(barTransformProps(input).echartOptions.dataZoom).toEqual([]);
 });
 
-test('short chart viewports show at least one readable row', () => {
+test('short viewports retain readable row geometry without filtering rows', () => {
   const input = denseMatrix();
   input.height = 100;
-  expect(barTransformProps(input).echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ startValue: 0, endValue: 0 }),
-    ]),
-  );
+  const result = barTransformProps(input);
+  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(32);
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(20);
+  expect(result.echartOptions.dataZoom).toEqual([]);
 });
 
-test('a standard dashboard tile shows three brands together even with multiple metrics', () => {
+test('visible metric slots determine matrix row height without stretching bars', () => {
   const input = denseMatrix(['sales', 'units', 'share']);
   input.height = 395;
+  input.formData.orientation = OrientationType.Horizontal;
   const result = barTransformProps(input);
-  expect(result.echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        yAxisIndex: 0,
-        startValue: 0,
-        endValue: 2,
-        zoomLock: false,
-      }),
-    ]),
-  );
-  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
-    20,
-  );
-  expect(
-    matrixSeries(result).flatMap(series => series.data ?? []),
-  ).toHaveLength(60);
+  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(72);
+  expect(result.minCategoryHeight).toBeLessThanOrEqual(96);
+  expect(matrixSeries(result).flatMap(series => series.data ?? [])).toHaveLength(60);
+  expect(rectangle(matrixSeries(result)[0], 1).height).toBeLessThanOrEqual(22);
 });
 
-test('real ECharts retains a custom viewport on both refresh merge and full recreation', () => {
-  const options = {
-    ...barTransformProps(denseMatrix()).echartOptions,
-    animation: false,
-  };
-  const context = jest
-    .spyOn(HTMLCanvasElement.prototype, 'getContext')
-    .mockReturnValue(null);
-  const chart = init(null, undefined, {
-    renderer: 'svg',
-    ssr: true,
-    width: 800,
-    height: 600,
-  });
+test('hiding metrics immediately reduces native matrix row height', () => {
+  const input = denseMatrix(['sales', 'units', 'share']);
+  input.formData.orientation = OrientationType.Horizontal;
+  const full = barTransformProps(input);
+  input.legendState = Object.fromEntries(
+    Array.from({ length: 20 }, (_, index) => [
+      [`units, Brand ${index}`, false],
+      [`share, Brand ${index}`, false],
+    ]).flat(),
+  );
+  const selected = barTransformProps(input);
+  expect(selected.minCategoryHeight).toBeLessThan(full.minCategoryHeight!);
+  expect(selected.minCategoryHeight).toBeLessThanOrEqual(40);
+});
+
+test('raw-value comparison shares its metric slot as a thin tick', () => {
+  const input = props(
+    { orientation: OrientationType.Horizontal, time_compare: ['1 month ago'], timeCompare: ['1 month ago'] },
+    [{ month: 'Sep', 'sales, A': 100, 'sales, 1 month ago, A': 80 }],
+    { 'sales, A': ['sales', 'A'], 'sales, 1 month ago, A': ['sales', '1 month ago', 'A'] },
+  );
+  const result = barTransformProps(input);
+  const current = matrixSeries(result).find(series => series.name === 'sales, A')!;
+  const comparison = matrixSeries(result).find(series => series.name === 'sales, 1 month ago, A')!;
+  const bar = rectangle(current, 100);
+  const tick = rectangle(comparison, 80);
+  expect(tick.width).toBe(3);
+  expect(tick.height).toBeGreaterThan(bar.height);
+  expect(tick.y + tick.height / 2).toBeCloseTo(bar.y + bar.height / 2);
+  expect(result.minCategoryHeight).toBeLessThanOrEqual(40);
+});
+
+test('native matrix scroll retains its first category after refresh or reordered rows', () => {
+  const result = barTransformProps(denseMatrix());
+  const options = result.echartOptions;
+  const height = getScrollableChartHeight(options, 600, result.minCategoryHeight!);
+  const key = 'matrix-native-scroll-test';
   try {
-    chart.setOption(options as EChartsOption);
-    chart.dispatchAction({
-      type: 'dataZoom',
-      dataZoomIndex: 0,
-      start: 20,
-      end: 60,
-    });
-    persistMatrixViewport(chart.getOption(), 'matrix-test');
-    for (const notMerge of [false, true]) {
-      chart.setOption(
-        restoreMatrixViewport(options, 'matrix-test') as EChartsOption,
-        { notMerge },
-      );
-      expect(chart.getOption().dataZoom[0]).toMatchObject({
-        start: 20,
-        end: 60,
-      });
-      expect(chart.renderToSVGString()).toContain('Brand');
-    }
+    persistSkuScroll(options, height, 300, key);
+    expect(restoreSkuScroll(options, height, 600, key)).toBeCloseTo(300);
+    const anchor = JSON.parse(localStorage.getItem(`${key}:anchor`)!);
+    expect(anchor.value).toMatch(/^Brand /);
+    const reversed = { ...options, yAxis: { ...(options.yAxis as object), data: [...(options.yAxis as { data: string[] }).data].reverse() } };
+    expect(restoreSkuScroll(reversed, height, 100, key)).not.toBe(300);
   } finally {
-    chart.dispose();
-    context.mockRestore();
-    localStorage.removeItem('matrix-test');
+    localStorage.removeItem(`${key}:scroll`);
+    localStorage.removeItem(`${key}:anchor`);
   }
 });
