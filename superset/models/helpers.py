@@ -1856,6 +1856,15 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             keys = join_keys or [key]
             if not join_keys:
                 left[key] = right[key] = 1
+            # Outer joins may sort keys: preserve SQL-ranked A, then B-only rows.
+            order = "__comparison_row_order__"
+            while any(
+                name in frame
+                for frame in (left, right)
+                for name in (order, order + R_SUFFIX)
+            ):
+                order += "_"
+            left[order], right[order] = range(len(left)), range(len(right))
             try:
                 result = left.merge(
                     right,
@@ -1869,7 +1878,12 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 raise QueryObjectValidationError(
                     "Date-range comparison has duplicate series keys"
                 ) from ex
-            return result.drop(columns=[key], errors="ignore")
+            result = result.sort_values([order, order + R_SUFFIX], kind="stable")
+            if query_object and query_object.row_limit and query_object.row_limit > 0:
+                result = result.iloc[: query_object.row_limit]
+            return result.drop(
+                columns=[key, order, order + R_SUFFIX], errors="ignore"
+            ).reset_index(drop=True)
         if query_object is None or not time_grain:
             raise QueryObjectValidationError(
                 "Date-range alignment requires the original period and time grain"

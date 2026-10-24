@@ -365,7 +365,10 @@ class Contract(unittest.TestCase):
                 obj = query(axis="sku")
                 obj.row_limit = limit
                 result = self.run_offset(main, comparison, obj)
-                self.assertEqual(result["sku"].tolist(), expected)
+                self.assertEqual(
+                    [None if pd.isna(value) else value for value in result["sku"]],
+                    expected,
+                )
                 self.assertTrue(pd.isna(result["metric"].iloc[0]))
                 if limit != 1:
                     self.assertEqual(
@@ -404,6 +407,22 @@ class Contract(unittest.TestCase):
         )
         self.assertTrue(pd.isna(result["metric"].iloc[0]))
         self.assertTrue(pd.isna(result["shop"].iloc[0]))
+
+    def test_categorical_order_marker_does_not_overwrite_business_columns(self):
+        obj = query(axis="sku")
+        obj.row_limit = 2
+        column = "__comparison_row_order__"
+        main = pd.DataFrame({"sku": ["z"], column: ["keep-a"], "metric": [100]})
+        comparison = pd.DataFrame(
+            {"sku": ["b", "z"], column: ["keep-b", "keep-a"], "metric": [20, 30]}
+        )
+        result = self.run_offset(main, comparison, obj)
+        self.assertEqual(result["sku"].tolist(), ["z", "b"])
+        self.assertEqual(result[column].tolist(), ["keep-a", "keep-b"])
+        self.assertEqual(
+            set(result.columns),
+            {"sku", column, "metric", f"metric__{obj.time_offsets[0]}"},
+        )
 
     def test_multiple_categorical_offsets_share_one_final_limit(self):
         offsets = ["2026-08-05 : 2026-08-08", "2026-07-05 : 2026-07-08"]
