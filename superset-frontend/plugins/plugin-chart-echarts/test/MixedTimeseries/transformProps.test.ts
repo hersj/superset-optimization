@@ -1900,9 +1900,13 @@ test('mixed trend bars automatically cap old fixed widths without changing data,
   expect(bar.barWidth).toBeUndefined();
   expect(bar.barMaxWidth).toBeLessThanOrEqual(28);
   expect(bar.barMaxWidth).toBeGreaterThan(0);
-  expect(bar.labelLayout).toEqual(expect.objectContaining({ hideOverlap: true }));
+  expect(bar.labelLayout).toEqual(
+    expect.objectContaining({ hideOverlap: true }),
+  );
   expect(bar.label).toEqual(expect.objectContaining({ show: true }));
-  expect(series.find(entry => entry.type === 'line')).not.toHaveProperty('barMaxWidth');
+  expect(series.find(entry => entry.type === 'line')).not.toHaveProperty(
+    'barMaxWidth',
+  );
   expect(JSON.stringify(props.queriesData)).toBe(before);
   expect(result.echartOptions.yAxis).toHaveLength(2);
 });

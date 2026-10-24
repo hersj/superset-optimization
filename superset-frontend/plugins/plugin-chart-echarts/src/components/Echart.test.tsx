@@ -188,7 +188,7 @@ test('restored full range expands 100 SKU rows and retains scroll on refresh and
   await waitFor(() =>
     expect(mockChart.resize).toHaveBeenCalledWith({ width: 784, height: 8480 }),
   );
-  const region = screen.getByRole('region', { name: 'SKU排行滚动区域' });
+  const region = screen.getByRole('region', { name: '图表滚动区域' });
   expect(region.style.height).toBe('300px');
   expect(region.style.overflowY).toBe('auto');
   fireEvent.scroll(screen.getByRole('region'), { target: { scrollTop: 1260 } });

@@ -69,6 +69,7 @@ type Props = {
   echartRef: RefObject<EchartsHandler | null>;
   itemLabel?: string;
   fullLabels?: Record<string, string>;
+  inline?: boolean;
 };
 
 export default function LegendSelector({
@@ -78,6 +79,7 @@ export default function LegendSelector({
   echartRef,
   itemLabel = '指标',
   fullLabels,
+  inline = false,
 }: Props) {
   const [search, setSearch] = useState('');
   const legend = ensureIsArray(options.legend)[0] as
@@ -120,6 +122,119 @@ export default function LegendSelector({
       })),
     });
   };
+  const panel = (
+    <Panel aria-label={`${itemLabel}选择面板`}>
+      {inline && (
+        <strong>
+          {itemLabel}（{Object.values(selected).filter(Boolean).length}/
+          {names.length}）
+        </strong>
+      )}
+      <Input
+        aria-label={`搜索${itemLabel}`}
+        placeholder={`搜索${itemLabel}完整名称或尾码`}
+        allowClear
+        value={search}
+        onChange={event => setSearch(event.target.value)}
+      />
+      <div className="legend-actions">
+        <Button
+          buttonSize="small"
+          onClick={() =>
+            onChange({
+              selected: Object.fromEntries(
+                names.map(name => [
+                  name,
+                  itemLabel === 'SKU' && !matches.includes(name)
+                    ? selected[name]
+                    : true,
+                ]),
+              ),
+            })
+          }
+        >
+          {itemLabel === 'SKU' ? '全选结果' : '显示全部'}
+        </Button>
+        {itemLabel === 'SKU' && (
+          <Button
+            buttonSize="small"
+            onClick={() =>
+              onChange({
+                selected: {
+                  ...selected,
+                  ...Object.fromEntries(matches.map(name => [name, false])),
+                },
+              })
+            }
+          >
+            取消结果
+          </Button>
+        )}
+        <Button
+          buttonSize="small"
+          onClick={() =>
+            onChange({
+              selected: Object.fromEntries(
+                names.map(name => [
+                  name,
+                  itemLabel === 'SKU' && !matches.includes(name)
+                    ? selected[name]
+                    : !selected[name],
+                ]),
+              ),
+            })
+          }
+        >
+          {itemLabel === 'SKU' ? '反选结果' : '反选全部'}
+        </Button>
+        <span>
+          {matches.length} / {names.length}
+        </span>
+      </div>
+      <div className="legend-list">
+        {matches.length === 0 && <div role="status">没有匹配的{itemLabel}</div>}
+        {matches.map(name => (
+          <div
+            className="legend-row"
+            key={name}
+            onMouseEnter={() => highlight(name, true)}
+            onMouseLeave={() => highlight(name, false)}
+          >
+            <Checkbox
+              aria-label={fullLabels?.[name]}
+              checked={selected[name]}
+              onChange={event =>
+                onChange({
+                  selected: { ...selected, [name]: event.target.checked },
+                })
+              }
+            >
+              <Tooltip title={fullLabels?.[name]}>
+                <span>{label(name)}</span>
+              </Tooltip>
+            </Checkbox>
+            <Button
+              buttonSize="small"
+              aria-label={`仅看此项：${fullLabels?.[name] ?? label(name)}`}
+              onClick={() =>
+                onChange({
+                  selected: getLegendStateChange(
+                    selected,
+                    groups,
+                    name,
+                    'focus',
+                  ),
+                })
+              }
+            >
+              仅看此项
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+  if (inline) return panel;
   return (
     <Toolbar>
       <Popover
@@ -132,116 +247,7 @@ export default function LegendSelector({
               ?.getEchartInstance()
               ?.dispatchAction({ type: 'downplay' });
         }}
-        content={
-          <Panel aria-label={`${itemLabel}选择面板`}>
-            <Input
-              aria-label={`搜索${itemLabel}`}
-              placeholder={`搜索${itemLabel}完整名称或尾码`}
-              allowClear
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-            />
-            <div className="legend-actions">
-              <Button
-                buttonSize="small"
-                onClick={() =>
-                  onChange({
-                    selected: Object.fromEntries(
-                      names.map(name => [
-                        name,
-                        itemLabel === 'SKU' && !matches.includes(name)
-                          ? selected[name]
-                          : true,
-                      ]),
-                    ),
-                  })
-                }
-              >
-                {itemLabel === 'SKU' ? '全选结果' : '显示全部'}
-              </Button>
-              {itemLabel === 'SKU' && (
-                <Button
-                  buttonSize="small"
-                  onClick={() =>
-                    onChange({
-                      selected: {
-                        ...selected,
-                        ...Object.fromEntries(
-                          matches.map(name => [name, false]),
-                        ),
-                      },
-                    })
-                  }
-                >
-                  取消结果
-                </Button>
-              )}
-              <Button
-                buttonSize="small"
-                onClick={() =>
-                  onChange({
-                    selected: Object.fromEntries(
-                      names.map(name => [
-                        name,
-                        itemLabel === 'SKU' && !matches.includes(name)
-                          ? selected[name]
-                          : !selected[name],
-                      ]),
-                    ),
-                  })
-                }
-              >
-                {itemLabel === 'SKU' ? '反选结果' : '反选全部'}
-              </Button>
-              <span>
-                {matches.length} / {names.length}
-              </span>
-            </div>
-            <div className="legend-list">
-              {matches.length === 0 && (
-                <div role="status">没有匹配的{itemLabel}</div>
-              )}
-              {matches.map(name => (
-                <div
-                  className="legend-row"
-                  key={name}
-                  onMouseEnter={() => highlight(name, true)}
-                  onMouseLeave={() => highlight(name, false)}
-                >
-                  <Checkbox
-                    aria-label={fullLabels?.[name]}
-                    checked={selected[name]}
-                    onChange={event =>
-                      onChange({
-                        selected: { ...selected, [name]: event.target.checked },
-                      })
-                    }
-                  >
-                    <Tooltip title={fullLabels?.[name]}>
-                      <span>{label(name)}</span>
-                    </Tooltip>
-                  </Checkbox>
-                  <Button
-                    buttonSize="small"
-                    aria-label={`仅看此项：${fullLabels?.[name] ?? label(name)}`}
-                    onClick={() =>
-                      onChange({
-                        selected: getLegendStateChange(
-                          selected,
-                          groups,
-                          name,
-                          'focus',
-                        ),
-                      })
-                    }
-                  >
-                    仅看此项
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        }
+        content={panel}
       >
         <Button buttonSize="small">
           {itemLabel}选择（{Object.values(selected).filter(Boolean).length}/

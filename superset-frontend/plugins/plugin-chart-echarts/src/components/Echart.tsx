@@ -399,23 +399,6 @@ function Echart(
     handleSizeChange({ width: chartWidth, height: chartHeight });
   }, [chartWidth, chartHeight, didMount, handleSizeChange]);
 
-  const positionSlider = useCallback(() => {
-    if (!minCategoryHeight || !scrollRef.current) return;
-    chartRef.current?.setOption(
-      {
-        dataZoom: [
-          {
-            id: 'matrix-rows',
-            top: scrollRef.current.scrollTop + 12,
-            bottom: 'auto',
-            height: Math.max(40, height - 40),
-          },
-        ],
-      },
-      { silent: true },
-    );
-  }, [minCategoryHeight, height]);
-
   useEffect(() => {
     if (!minCategoryHeight || !scrollRef.current || !didMount) return;
     // Ignore the temporary viewport-sized chart during mount or density changes.
@@ -432,7 +415,6 @@ function Echart(
       viewportKey,
     );
     scrollReady.current = true;
-    positionSlider();
   }, [
     viewportKey,
     minCategoryHeight,
@@ -440,7 +422,6 @@ function Echart(
     height,
     didMount,
     echartOptions,
-    positionSlider,
   ]);
 
   const chart = <Styles ref={divRef} height={chartHeight} width={chartWidth} />;
@@ -448,7 +429,7 @@ function Echart(
     <div
       ref={scrollRef}
       role="region"
-      aria-label={t('SKU排行滚动区域')}
+      aria-label={t('图表滚动区域')}
       tabIndex={0}
       style={{
         height,
@@ -459,7 +440,6 @@ function Echart(
         overscrollBehavior: 'contain',
       }}
       onScroll={() => {
-        positionSlider();
         if (viewportKey && scrollRef.current && scrollReady.current) {
           persistSkuScroll(
             scrollOptions.current,

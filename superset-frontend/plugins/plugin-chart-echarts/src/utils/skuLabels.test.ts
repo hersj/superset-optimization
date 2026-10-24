@@ -21,12 +21,8 @@ import { init as initEcharts, setPlatformAPI } from 'echarts';
 import { GenericDataType } from '@apache-superset/core/common';
 import type { LegendState } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
-import {
-  buildSkuSelection,
-  expandSkuAliases,
-  layoutSkuRanking,
-  restoreSkuRankingView,
-} from './skuLabels';
+import { buildSkuSelection, expandSkuAliases } from './skuLabels';
+import { layoutCategoryBars } from './barLayout';
 import transformProps from '../Timeseries/transformProps';
 import { buildLegendGroupMetadata } from './series';
 import { DEFAULT_FORM_DATA } from '../Timeseries/constants';
@@ -112,13 +108,13 @@ test('aligns every SKU name beside the bar without changing full query keys', ()
     expect.objectContaining({
       triggerEvent: true,
       axisLabel: expect.objectContaining({
-        width: 224,
+        width: expect.any(Number),
         inside: false,
         align: 'left',
         verticalAlign: 'middle',
         interval: 0,
         hideOverlap: false,
-        overflow: 'break',
+        overflow: 'truncate',
         formatter: expect.any(Function),
       }),
       data: expect.arrayContaining([a, b, c]),
@@ -128,22 +124,12 @@ test('aligns every SKU name beside the bar without changing full query keys', ()
     expect.objectContaining({ show: false }),
   );
   expect(JSON.stringify(chart.queriesData)).toBe(original);
-  expect(result.echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        id: 'matrix-rows',
-        yAxisIndex: 0,
-        zoomLock: false,
-        realtime: false,
-      }),
-    ]),
-  );
-  expect(result.minCategoryHeight).toBeGreaterThanOrEqual(36);
-  expect(result.echartOptions.dataZoom).toHaveLength(1);
+  expect(result.echartOptions.dataZoom).toEqual([]);
+  expect(result.minCategoryHeight).toBe(32);
   expect(result.echartOptions.series).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
-        barMaxWidth: 24,
+        barMaxWidth: 22,
         labelLayout: expect.any(Function),
       }),
     ]),
@@ -186,17 +172,7 @@ test('many SKU rows use an unlocked readable viewport while non-SKU charts keep 
     销售额: i - 10,
   }));
   const result = transformProps(chart);
-  expect(result.echartOptions.dataZoom).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        id: 'matrix-rows',
-        show: false,
-        zoomLock: false,
-        end: 100,
-        start: expect.any(Number),
-      }),
-    ]),
-  );
+  expect(result.echartOptions.dataZoom).toEqual([]);
   expect(
     transformProps(props({}, 'shop_name')).echartOptions.yAxis,
   ).not.toEqual(
@@ -284,81 +260,7 @@ test('legacy short aliases never combine different complete SKU series', () => {
   );
 });
 
-test('compact layout reserves readable thickness for single and multiple metric rows', () => {
-  const labels = { SKU1: 'SKU1', SKU2: 'SKU2' };
-  const options = {
-    yAxis: { data: Object.keys(labels) },
-    series: [{ type: 'bar' }],
-  };
-  expect(layoutSkuRanking(options, 900, labels, 1).minCategoryHeight).toBe(44);
-  expect(layoutSkuRanking(options, 900, labels, 2).minCategoryHeight).toBe(76);
-  expect(
-    layoutSkuRanking(options, 900, labels, 2, {
-      comfortable: true,
-      nameWidth: 40,
-      range: false,
-    }).minCategoryHeight,
-  ).toBe(76);
-  localStorage.setItem(
-    'view',
-    JSON.stringify({ comfortable: true, nameWidth: 45, range: true }),
-  );
-  expect(restoreSkuRankingView('view')).toEqual({
-    comfortable: true,
-    barThickness: 24,
-    nameWidth: 45,
-    autoNameWidth: false,
-    range: true,
-  });
-  expect(restoreSkuRankingView('other')).toEqual({
-    comfortable: false,
-    barThickness: 24,
-    nameWidth: 40,
-    autoNameWidth: true,
-    range: false,
-  });
-  localStorage.setItem('view', '{bad');
-  expect(restoreSkuRankingView('view').comfortable).toBe(false);
-});
-
-test('automatic name columns stay compact on wide screens and preserve explicit manual widths', () => {
-  const labels = { SKU1: 'TL-极简圆12-1-11\nM66-D15-2307' };
-  const options = { yAxis: { data: Object.keys(labels) } };
-  const narrow = layoutSkuRanking(options, 900, labels, 1);
-  const wide = layoutSkuRanking(options, 2000, labels, 1);
-  expect(wide.echartOptions.grid).toEqual(narrow.echartOptions.grid);
-  expect(wide.echartOptions.grid).toMatchObject({ left: 248 });
-  expect(wide.echartOptions.yAxis).toMatchObject({
-    axisLabel: { width: 224, margin: 240, overflow: 'break' },
-  });
-  expect(
-    layoutSkuRanking(options, 360, labels, 1).echartOptions.grid,
-  ).toMatchObject({ left: 228 });
-  localStorage.setItem(
-    'legacy-width',
-    JSON.stringify({ nameWidth: 40, range: true }),
-  );
-  expect(restoreSkuRankingView('legacy-width')).toMatchObject({
-    autoNameWidth: true,
-    range: true,
-  });
-  localStorage.setItem(
-    'manual-width',
-    JSON.stringify({ nameWidth: 40, autoNameWidth: false }),
-  );
-  const manual = restoreSkuRankingView('manual-width');
-  expect(manual.autoNameWidth).toBe(false);
-  expect(
-    layoutSkuRanking(options, 2000, labels, 1, manual).echartOptions.grid,
-  ).toMatchObject({ left: 816 });
-  localStorage.setItem(
-    'small-width',
-    JSON.stringify({ nameWidth: 15, autoNameWidth: false }),
-  );
-  expect(restoreSkuRankingView('small-width').nameWidth).toBe(15);
-});
-
-test('readable ranking uses 24px bars and comparison ticks without changing values or identities', () => {
+test('readable ranking uses automatic bars and comparison ticks without changing values or identities', () => {
   const current = {
     type: 'bar' as const,
     name: 'sales',
@@ -389,51 +291,33 @@ test('readable ranking uses 24px bars and comparison ticks without changing valu
     },
   ]);
   const before = JSON.stringify(options);
-  const layout = layoutSkuRanking(
+  const layout = layoutCategoryBars(
     options,
     900,
     { [a]: 'SKU A', [b]: 'SKU B', [c]: 'SKU C' },
-    2,
-    undefined,
     metadata,
   );
   expect(layout.echartOptions.series).toEqual([
     expect.objectContaining({
       type: 'bar',
-      barWidth: 24,
-      barMaxWidth: 24,
+      barWidth: 22,
+      barMaxWidth: 22,
       data: current.data,
     }),
     expect.objectContaining({
       type: 'scatter',
       symbol: 'rect',
-      symbolSize: [3, 32],
+      symbolSize: [3, 26],
       data: previous.data,
     }),
   ]);
-  expect(layout.minCategoryHeight).toBeGreaterThanOrEqual(44);
+  expect(layout.minCategoryHeight).toBeGreaterThanOrEqual(31.99);
   expect(layout.echartOptions.yAxis).toMatchObject({ data: [a, b, c] });
   expect(JSON.stringify(options)).toBe(before);
 });
 
-test('ranking bar thickness preference survives legacy state, reload and invalid storage', () => {
-  expect(restoreSkuRankingView('missing').barThickness).toBe(24);
-  localStorage.setItem(
-    'thick',
-    JSON.stringify({ barThickness: 28, nameWidth: 25 }),
-  );
-  expect(restoreSkuRankingView('thick')).toMatchObject({
-    barThickness: 28,
-    nameWidth: 25,
-  });
-  localStorage.setItem('thick', JSON.stringify({ barThickness: NaN }));
-  expect(restoreSkuRankingView('thick').barThickness).toBe(24);
-  localStorage.setItem('thick', JSON.stringify({ barThickness: 100 }));
-  expect(restoreSkuRankingView('thick').barThickness).toBe(32);
-});
-
 test.each([1, 12, 100])(
-  'real SVG rendering keeps 24px bars and 32px comparison ticks for %i SKU rows',
+  'real SVG rendering keeps 22px bars and 26px comparison ticks for %i SKU rows',
   count => {
     const names = Array.from({ length: count }, (_, i) => `SKU-${i}`);
     const current = {
@@ -452,7 +336,7 @@ test.each([1, 12, 100])(
       { name: 'current', currentLabel: 'sales' },
       { name: 'previous', currentLabel: 'sales', timeOffset: '1 month ago' },
     ]);
-    const layout = layoutSkuRanking(
+    const layout = layoutCategoryBars(
       {
         xAxis: { type: 'value' },
         yAxis: { type: 'category', data: names },
@@ -460,8 +344,6 @@ test.each([1, 12, 100])(
       },
       900,
       Object.fromEntries(names.map(name => [name, name])),
-      2,
-      undefined,
       groups,
     );
     setPlatformAPI({
@@ -471,7 +353,7 @@ test.each([1, 12, 100])(
       renderer: 'svg',
       ssr: true,
       width: 900,
-      height: count * 44 + 100,
+      height: count * 32 + 32,
     });
     try {
       chart.setOption(layout.echartOptions);
@@ -490,14 +372,14 @@ test.each([1, 12, 100])(
       expect(bars).toHaveLength(count);
       expect(ticks).toHaveLength(count);
       bars.forEach((bar, i) => {
-        expect(bar.height).toBeCloseTo(24);
-        expect(ticks[i].height).toBeCloseTo(32);
+        expect(bar.height).toBeCloseTo(22);
+        expect(ticks[i].height).toBeCloseTo(26);
         expect(ticks[i].width).toBeCloseTo(3);
         expect(bar.y + bar.height / 2).toBeCloseTo(
           ticks[i].y + ticks[i].height / 2,
         );
         if (i > 0)
-          expect(Math.abs(bar.y - bars[i - 1].y)).toBeGreaterThanOrEqual(44);
+          expect(Math.abs(bar.y - bars[i - 1].y)).toBeGreaterThanOrEqual(31.99);
       });
       expect(chart.renderToSVGString()).not.toContain('NaN');
     } finally {
@@ -526,28 +408,26 @@ test('standalone comparison offset in saved SKU chart becomes a tick, not a seco
         name: '1 month ago',
         type: 'scatter',
         symbol: 'rect',
-        symbolSize: [3, 32],
+        symbolSize: [3, 26],
       }),
-      expect.objectContaining({ name: '销售额', type: 'bar', barWidth: 24 }),
+      expect.objectContaining({ name: '销售额', type: 'bar', barWidth: 22 }),
     ]),
   );
-  expect(result.minCategoryHeight).toBe(44);
-  const redraw = layoutSkuRanking(
+  expect(result.minCategoryHeight).toBe(32);
+  const redraw = layoutCategoryBars(
     result.echartOptions,
     720,
     { [a]: 'SKU A', [b]: 'SKU B' },
-    2,
-    undefined,
     result.legendGroups,
     chart.formData.timeCompare,
   );
-  expect(redraw.minCategoryHeight).toBe(44);
+  expect(redraw.minCategoryHeight).toBe(32);
   expect(redraw.echartOptions.series).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         name: '1 month ago',
         type: 'scatter',
-        symbolSize: [3, 32],
+        symbolSize: [3, 26],
       }),
     ]),
   );

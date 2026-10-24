@@ -615,11 +615,19 @@ test('SKU ranking shares the existing private viewport restore and name-detail i
   expect(onLegendStateChanged).not.toHaveBeenCalled();
 });
 
-test('compact ranking preferences apply immediately and survive remount', async () => {
+test('automatic ranking ignores old geometry and offers one selection entry', async () => {
   const scope = JSON.stringify([87, 839, 'kk_sku']);
   const storageKey = `echarts__sku_view:${JSON.stringify([1, scope])}`;
-  localStorage.removeItem(storageKey);
-  const component = (
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify({
+      comfortable: true,
+      nameWidth: 55,
+      barThickness: 32,
+      range: true,
+    }),
+  );
+  render(
     <EchartsTimeseries
       {...defaultProps}
       formData={{
@@ -628,47 +636,27 @@ test('compact ranking preferences apply immediately and survive remount', async 
         sliceId: 839,
         dashboardId: 87,
       }}
+      minCategoryHeight={32}
       xAxis={{ label: 'kk_sku', type: AxisType.Category }}
-      minCategoryHeight={36}
-      skuBarsPerRow={1}
-      echartOptions={{
-        yAxis: { data: ['SKU1'] },
-        legend: { show: false },
-        series: [],
-      }}
       skuSelection={{
         names: ['key'],
         values: { key: 'SKU1' },
         labels: { key: 'SKU1' },
         selected: { key: true },
       }}
-    />
+    />,
   );
-  const view = render(component);
-  expect(screen.getByRole('button', { name: '紧凑' })).toBeInTheDocument();
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(44);
-  fireEvent.click(screen.getByRole('button', { name: '紧凑' }));
   expect(
-    await screen.findByRole('checkbox', { name: '自动收窄名称列' }),
-  ).toBeChecked();
-  fireEvent.click(screen.getByRole('checkbox', { name: '自动收窄名称列' }));
-  expect(JSON.parse(localStorage.getItem(storageKey)!).autoNameWidth).toBe(
-    false,
+    screen.queryByRole('button', { name: '紧凑' }),
+  ).not.toBeInTheDocument();
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(32);
+  expect(mockEchart.mock.calls.at(-1)?.[0].echartOptions).toBe(
+    defaultProps.echartOptions,
   );
-  const thickness = screen.getByRole('slider', { name: '柱体粗细' });
-  fireEvent.keyDown(thickness, { key: 'ArrowRight', keyCode: 39, which: 39 });
-  expect(JSON.parse(localStorage.getItem(storageKey)!).barThickness).toBe(26);
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(46);
-  fireEvent.click(await screen.findByRole('checkbox', { name: '舒适行高' }));
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(56);
-  expect(JSON.parse(localStorage.getItem(storageKey)!).comfortable).toBe(true);
-  view.unmount();
-  render(component);
-  expect(screen.getByRole('button', { name: '舒适' })).toBeInTheDocument();
-  expect(JSON.parse(localStorage.getItem(storageKey)!).autoNameWidth).toBe(
-    false,
+  fireEvent.click(screen.getByRole('button', { name: '选择' }));
+  await waitFor(() =>
+    expect(screen.getByLabelText('SKU选择面板')).toBeVisible(),
   );
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(56);
-  expect(JSON.parse(localStorage.getItem(storageKey)!).barThickness).toBe(26);
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   localStorage.removeItem(storageKey);
 });

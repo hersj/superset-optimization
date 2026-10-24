@@ -20,6 +20,7 @@ import {
   getScrollableChartHeight,
   persistMatrixViewport,
   restoreMatrixViewport,
+  restoreSkuScroll,
 } from './matrixViewport';
 
 const options = {
@@ -140,4 +141,16 @@ test('SKU anchor survives reorder, changed density and missing SKU, scoped to th
   ).toBe(56);
   persistSkuScroll(options, 220, 0, 'user1:chart839');
   expect(restoreSkuScroll(options, 220, 44, 'user1:chart839')).toBe(0);
+});
+
+test('legacy matrix range migrates position without restoring density', () => {
+  localStorage.setItem('legacy-matrix', JSON.stringify({ start: 50, end: 80 }));
+  expect(
+    restoreSkuScroll(
+      { dataZoom: [], yAxis: { data: ['A', 'B', 'C', 'D'] } },
+      400,
+      100,
+      'legacy-matrix',
+    ),
+  ).toBe(150);
 });

@@ -269,7 +269,7 @@ Choose the default option to follow the chart's saved row limit again. Limits ca
 
 ### Reading dense chart data
 
-Two-dimensional bar charts keep category rows readable when many values are returned. A typical dashboard tile initially shows about three categories together. Drag either end of the right-hand slider to show more or fewer categories. Scroll over the plot or drag the middle of the slider to move through rows; the column headings stay visible. The slider range is remembered in this browser for your account, dashboard and chart, including after page reloads and automatic dashboard refreshes. Changing the query row limit still controls how much data is returned.
+Two-dimensional bar charts automatically size category rows from visible metric lanes, keeping each metric on its own scale. Scroll vertically to browse additional rows. Value comparisons use a thin marker in the current metric lane. The account, dashboard and chart retain the first visible category across page reloads and automatic refreshes; old range-density settings no longer compress the rows.
 
 Sankey charts keep separate source and target nodes when shared labels would create a cycle, including missing labels. The original labels, flow values and tooltip percentages are retained. Acyclic multi-stage flows keep their original node connections.
 
@@ -297,21 +297,9 @@ expressions when loading options and applying parent selections, with the same
 time boundaries and row-level security as physical columns. Contribution values
 with a zero or missing denominator remain empty, including Decimal query results.
 
-Horizontal SKU bar charts default to compact aligned rows: unique short names on the
-left, bars in the middle and aligned values on the right. Compact rows use a 36px
-minimum (44px with two bars); longer distinguishing names expand instead of clipping.
-Name columns automatically fit short names within 200–280px (less on narrow charts),
-leaving 16px before the bars. The compact/comfortable menu keeps manual width adjustments
-and can restore automatic width. Legacy untouched 40% widths become automatic; other
-manual widths remain. The menu also reveals an unlocked range
-slider. Extra rows scroll vertically rather than compressing their text. Display
-preferences, selected SKU identities, range and browsing position are private to the
-user, dashboard and chart and survive reloads and automatic refreshes. Browsing
-position follows the same SKU after a ranking change, or its nearest previous position
-when it disappears. Clicking a name opens its complete, copyable identity. Short
-names include actual differing specification tokens; full names remain the selection
-and filtering keys.
+Horizontal category rankings align short names, bars and values in compact rows. A single visible lane uses 22px bars and a 32px minimum row pitch; stacked segments share a lane, and grouped visible metrics receive separate lanes. Unique SKU aliases retain real distinguishing fields; full names remain selection and filtering keys. Clicking a SKU name opens its complete, copyable identity.
 
+The **选择** panel provides immediate SKU and metric selection. Rankings and matrix charts use one native vertical scroll area. Selection and browsing position remain private to the user, dashboard and chart and survive reloads and automatic refreshes. Position follows the same category after a ranking change, or its nearest previous position when it disappears. Previous manual bar-width, name-width and density settings no longer override automatic layout. Vertical and mixed time-series charts allocate category bands automatically, bound bar thickness and avoid overlapping value labels.
 
 Text filters show selected names inside the field and collapse overflow into a count.
 Click a selected option or its remove icon to deselect it; the field's clear action
@@ -327,5 +315,3 @@ explicit permalink and legacy URL filter states keep their priority.
 
 
 Text filters accept search text directly in the selected-name field. The same field opens the checkbox options; it retains focus during option refresh and multi-selection. Exact matching remains manual, while enabled fuzzy matching selects every keyword match after Chinese input composition completes. Selected-name removal, bulk actions, clearing, and remembered filter state remain available.
-
-Horizontal single-metric SKU rankings display current values as 24px bars and time comparisons as value ticks in the same lane. The density settings include remembered bar thickness (16–32px); category spacing grows with thickness instead of compressing large result sets. Full SKU identities, selection keys, and browser position remain unchanged.

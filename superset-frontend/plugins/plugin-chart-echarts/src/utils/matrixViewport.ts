@@ -175,6 +175,11 @@ export function restoreSkuScroll(
       localStorage.getItem(`${key}:scroll`) ?? 'null',
     );
     if (typeof saved === 'number' && Number.isFinite(saved)) target = saved;
+    if (saved == null) {
+      const legacy: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+      if (isViewport(legacy))
+        target = (legacy.start / 100) * Math.max(0, height - viewportHeight);
+    }
     const anchor = JSON.parse(localStorage.getItem(`${key}:anchor`) ?? 'null');
     const { values, top, pitch } = getSkuScrollGeometry(options, height);
     if (

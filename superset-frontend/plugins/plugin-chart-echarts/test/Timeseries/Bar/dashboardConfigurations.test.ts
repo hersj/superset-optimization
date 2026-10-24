@@ -58,7 +58,8 @@ function queryData(
 ): ChartDataResponseResult {
   const { config } = configuration;
   const axis = columnLabel(config.x_axis);
-  const temporal = /(?:biz_day|ship_date|snapshot_month|run_date|start_time)$/.test(axis);
+  const temporal =
+    /(?:biz_day|ship_date|snapshot_month|run_date|start_time)$/.test(axis);
   const metrics = secondary ? configuration.metrics_b : configuration.metrics;
   const groups = ensureIsArray(
     (secondary ? config.groupby_b : config.groupby) as QueryFormColumn[],
@@ -90,10 +91,15 @@ function queryData(
         const name = labels.join(', ');
         labelMap[name] = labels;
         const value = (metricIndex + 1) * 100 + groupIndex + 1;
-        const aliasedSku = /简称/.test(axis) && groups.some(group => /sku/i.test(columnLabel(group)));
-        row[name] = rowIndex === 2 || (aliasedSku && groupIndex !== rowIndex % 2)
-          ? null
-          : rowIndex === 1 ? -value : value;
+        const aliasedSku =
+          /简称/.test(axis) &&
+          groups.some(group => /sku/i.test(columnLabel(group)));
+        row[name] =
+          rowIndex === 2 || (aliasedSku && groupIndex !== rowIndex % 2)
+            ? null
+            : rowIndex === 1
+              ? -value
+              : value;
         offsets.forEach(offset => {
           const comparisonLabels = [metric, offset, ...values];
           const comparisonName =
@@ -139,7 +145,10 @@ function queryData(
   } as ChartDataResponseResult;
 }
 
-function transformConfiguration(configuration: DashboardConfiguration, width: number) {
+function transformConfiguration(
+  configuration: DashboardConfiguration,
+  width: number,
+) {
   const mixed = configuration.type === 'mixed_timeseries';
   const queriesData = [
     queryData(configuration, false),
@@ -164,11 +173,15 @@ function transformConfiguration(configuration: DashboardConfiguration, width: nu
     },
     queriesData,
   });
-  const before = JSON.stringify(chartProps.queriesData.map(query => query.data));
+  const before = JSON.stringify(
+    chartProps.queriesData.map(query => query.data),
+  );
   const transformed = mixed
     ? mixedTransformProps(chartProps as EchartsMixedTimeseriesProps)
     : barTransformProps(chartProps as EchartsTimeseriesChartProps);
-  expect(JSON.stringify(chartProps.queriesData.map(query => query.data))).toBe(before);
+  expect(JSON.stringify(chartProps.queriesData.map(query => query.data))).toBe(
+    before,
+  );
   return transformed;
 }
 
@@ -184,40 +197,63 @@ function expectFiniteGeometry(value: unknown) {
 
 test('the read-only inventory covers 68 in-use charts, including matrix, ASIN, stack and mixed cases', () => {
   expect(configurations).toHaveLength(68);
-  expect(configurations.filter(chart => chart.type === 'mixed_timeseries')).toHaveLength(21);
-  expect(configurations.find(chart => chart.id === 726)?.config.y_axis_dimension).toBe('competitor');
-  expect(configurations.find(chart => chart.id === 857)?.metrics).toHaveLength(43);
-  expect(configurations.find(chart => chart.id === 847)?.metrics).toHaveLength(19);
-  expect(configurations.find(chart => chart.id === 857)?.config.x_axis).toBe('asin');
+  expect(
+    configurations.filter(chart => chart.type === 'mixed_timeseries'),
+  ).toHaveLength(21);
+  expect(
+    configurations.find(chart => chart.id === 726)?.config.y_axis_dimension,
+  ).toBe('competitor');
+  expect(configurations.find(chart => chart.id === 857)?.metrics).toHaveLength(
+    43,
+  );
+  expect(configurations.find(chart => chart.id === 847)?.metrics).toHaveLength(
+    19,
+  );
+  expect(configurations.find(chart => chart.id === 857)?.config.x_axis).toBe(
+    'asin',
+  );
   const sales = configurations.find(chart => chart.id === 839)!;
   expect(queryData(sales, false).data[0]).toHaveProperty('1 month ago');
-  expect(configurations.some(chart => chart.config.x_axis === 'shop_name')).toBe(true);
+  expect(
+    configurations.some(chart => chart.config.x_axis === 'shop_name'),
+  ).toBe(true);
 });
 
 test.each(
   configurations.flatMap(configuration =>
-    [360, 1200].map(width => [configuration.id, configuration.name, width, configuration] as const),
+    [360, 1200].map(
+      width =>
+        [configuration.id, configuration.name, width, configuration] as const,
+    ),
   ),
-)('saved chart %s (%s) transforms at %ipx without invalid geometry or source mutation', (_id, _name, width, configuration) => {
-  const result = transformConfiguration(configuration, width);
-  const options = result.echartOptions;
-  const series = ensureIsArray(options.series as SeriesOption[]);
-  expect(series.length).toBeGreaterThan(0);
-  expectFiniteGeometry(options);
-  expect(JSON.stringify(options)).not.toContain('NaN');
-  expect(result.width).toBe(width);
-  expect(result.height).toBe(480);
-  [...configuration.metrics, ...configuration.metrics_b].forEach(metric => {
-    expect(series.some(entry => String(entry.name).includes(metric))).toBe(true);
-  });
-  if ('minCategoryHeight' in result && result.minCategoryHeight !== undefined) {
-    expect(result.minCategoryHeight).toBeGreaterThan(0);
-    if ([845, 846, 847, 857].includes(configuration.id)) {
-      expect(result.minCategoryHeight).toBeLessThanOrEqual(160);
+)(
+  'saved chart %s (%s) transforms at %ipx without invalid geometry or source mutation',
+  (_id, _name, width, configuration) => {
+    const result = transformConfiguration(configuration, width);
+    const options = result.echartOptions;
+    const series = ensureIsArray(options.series as SeriesOption[]);
+    expect(series.length).toBeGreaterThan(0);
+    expectFiniteGeometry(options);
+    expect(JSON.stringify(options)).not.toContain('NaN');
+    expect(result.width).toBe(width);
+    expect(result.height).toBe(480);
+    [...configuration.metrics, ...configuration.metrics_b].forEach(metric => {
+      expect(series.some(entry => String(entry.name).includes(metric))).toBe(
+        true,
+      );
+    });
+    if (
+      'minCategoryHeight' in result &&
+      result.minCategoryHeight !== undefined
+    ) {
+      expect(result.minCategoryHeight).toBeGreaterThan(0);
+      if ([845, 846, 847, 857].includes(configuration.id)) {
+        expect(result.minCategoryHeight).toBeLessThanOrEqual(160);
+      }
     }
-  }
-  if (configuration.config.y_axis_dimension) {
-    expect(series.every(entry => entry.type === 'custom')).toBe(true);
-    expect(result).toHaveProperty('matrixDimensions');
-  }
-});
+    if (configuration.config.y_axis_dimension) {
+      expect(series.every(entry => entry.type === 'custom')).toBe(true);
+      expect(result).toHaveProperty('matrixDimensions');
+    }
+  },
+);

@@ -16,8 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { useSelector } from 'react-redux';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '@apache-superset/core/translation';
 import {
   DTTM_ALIAS,
@@ -39,16 +38,8 @@ import { formatSeriesName } from '../utils/series';
 import { ExtraControls } from '../components/ExtraControls';
 import { useLegendDoubleClick } from '../components/useLegendDoubleClick';
 import LegendSelector from '../components/LegendSelector';
-import {
-  Button,
-  Typography,
-  Popover,
-  Checkbox,
-  Slider,
-} from '@superset-ui/core/components';
+import { Button, Typography, Popover } from '@superset-ui/core/components';
 import { styled } from '@apache-superset/core/theme';
-
-import { layoutSkuRanking, restoreSkuRankingView } from '../utils/skuLabels';
 
 const TIMER_DURATION = 300;
 
@@ -96,12 +87,12 @@ export default function EchartsTimeseries({
   matrixTimeGrain,
   skuSelection,
   minCategoryHeight,
-  skuBarsPerRow = 1,
 }: TimeseriesChartTransformedProps) {
   const { stack, richTooltip, clickToFocusTooltipSeries } = formData;
   const dataZoomStorageKey =
     (matrixDimensions ||
-      (skuSelection && formData.orientation === 'horizontal')) &&
+      ((minCategoryHeight || skuSelection) &&
+        formData.orientation === 'horizontal')) &&
     formData.sliceId
       ? JSON.stringify([
           formData.dashboardId ?? 'explore',
@@ -109,56 +100,6 @@ export default function EchartsTimeseries({
           matrixDimensions ? getColumnLabel(matrixDimensions[1]) : xAxis.label,
         ])
       : undefined;
-  const userId = useSelector(
-    (state: { user?: { userId?: number } }) => state.user?.userId,
-  );
-  const viewKey =
-    userId && dataZoomStorageKey
-      ? `echarts__sku_view:${JSON.stringify([userId, dataZoomStorageKey])}`
-      : undefined;
-  const [rankingView, setRankingView] = useState(() =>
-    restoreSkuRankingView(viewKey),
-  );
-  useEffect(() => setRankingView(restoreSkuRankingView(viewKey)), [viewKey]);
-  const rankingLayout = useMemo(
-    () =>
-      minCategoryHeight && skuSelection
-        ? layoutSkuRanking(
-            echartOptions,
-            width,
-            Object.fromEntries(
-              skuSelection.names.map(key => [
-                skuSelection.values[key],
-                skuSelection.labels[key],
-              ]),
-            ),
-            skuBarsPerRow,
-            rankingView,
-            legendGroups,
-            formData.timeCompare,
-          )
-        : undefined,
-    [
-      echartOptions,
-      width,
-      skuSelection,
-      minCategoryHeight,
-      skuBarsPerRow,
-      rankingView,
-      legendGroups,
-      formData.timeCompare,
-    ],
-  );
-  const changeRankingView = (next: typeof rankingView) => {
-    setRankingView(next);
-    if (viewKey) {
-      try {
-        localStorage.setItem(viewKey, JSON.stringify(next));
-      } catch {
-        /* Private browsing can disable storage. */
-      }
-    }
-  };
   const shouldFocusTooltipSeries = clickToFocusTooltipSeries !== false;
   const echartRef = useRef<EchartsHandler | null>(null);
   // eslint-disable-next-line no-param-reassign
@@ -549,6 +490,14 @@ export default function EchartsTimeseries({
     },
   };
 
+  const legendSelection =
+    ensureIsArray(echartOptions.legend)[0]?.selected ?? {};
+  const visibleIndicators = Object.keys(legendGroups.groups).filter(
+    name =>
+      legendSelection[legendGroups.stateKeys[name] ?? name] !== false &&
+      legendSelection[name] !== false,
+  );
+
   return (
     <>
       <div
@@ -566,114 +515,98 @@ export default function EchartsTimeseries({
             : {}),
         }}
       >
-        {minCategoryHeight && (
+        {minCategoryHeight && visibleIndicators.length > 0 && (
+          <div
+            aria-label="当前展示指标"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: 12,
+            }}
+          >
+            {visibleIndicators.slice(0, 3).map(name => {
+              const mark = ensureIsArray(echartOptions.series).find(
+                entry => entry.name === name,
+              );
+              const color = mark?.itemStyle?.color;
+              return (
+                <span key={name} style={{ marginRight: 12 }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      verticalAlign: 'middle',
+                      marginRight: 4,
+                      width: mark?.type === 'scatter' ? 3 : 12,
+                      height: mark?.type === 'scatter' ? 14 : 8,
+                      background: typeof color === 'string' ? color : undefined,
+                    }}
+                  />
+                  {legendGroups.labels[name] ?? name}
+                </span>
+              );
+            })}
+            {visibleIndicators.length > 3 &&
+              ` +${visibleIndicators.length - 3}项`}
+          </div>
+        )}
+        {(skuSelection || legendData.length > 0) && (
           <Popover
             trigger="click"
+            placement="bottomRight"
             content={
-              <div style={{ width: 240 }}>
-                <Checkbox
-                  checked={rankingView.comfortable}
-                  onChange={e =>
-                    changeRankingView({
-                      ...rankingView,
-                      comfortable: e.target.checked,
-                    })
+              <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                {skuSelection && (
+                  <LegendSelector
+                    inline
+                    itemLabel="SKU"
+                    fullLabels={skuSelection.values}
+                    options={{
+                      legend: {
+                        data: skuSelection.names,
+                        selected: skuSelection.selected,
+                      },
+                    }}
+                    groups={{
+                      groups: {},
+                      labels: skuSelection.labels,
+                      kinds: {},
+                      parents: {},
+                      stateKeys: {},
+                    }}
+                    onChange={payload =>
+                      onLegendStateChanged?.(payload.selected)
+                    }
+                    echartRef={echartRef}
+                  />
+                )}
+                <LegendSelector
+                  inline
+                  options={
+                    minCategoryHeight
+                      ? {
+                          ...echartOptions,
+                          legend: {
+                            ...ensureIsArray(echartOptions.legend)[0],
+                            show: true,
+                          },
+                        }
+                      : echartOptions
                   }
-                >
-                  舒适行高
-                </Checkbox>
-                <Checkbox
-                  checked={rankingView.autoNameWidth}
-                  onChange={e =>
-                    changeRankingView({
-                      ...rankingView,
-                      autoNameWidth: e.target.checked,
-                    })
-                  }
-                >
-                  自动收窄名称列
-                </Checkbox>
-                <div>
-                  名称宽度：
-                  {rankingView.autoNameWidth
-                    ? '自动'
-                    : `${rankingView.nameWidth}%`}
-                </div>
-                <Slider
-                  min={10}
-                  max={55}
-                  value={rankingView.nameWidth}
-                  onChange={value =>
-                    changeRankingView({
-                      ...rankingView,
-                      nameWidth: value as number,
-                      autoNameWidth: false,
-                    })
-                  }
+                  groups={legendGroups}
+                  onChange={handleLegendBulkChange}
+                  echartRef={echartRef}
                 />
-                <div>柱体粗细：{rankingView.barThickness ?? 24}px</div>
-                <Slider
-                  min={16}
-                  max={32}
-                  step={2}
-                  ariaLabelForHandle="柱体粗细"
-                  value={rankingView.barThickness ?? 24}
-                  onChange={value =>
-                    changeRankingView({
-                      ...rankingView,
-                      barThickness: value as number,
-                    })
-                  }
-                />
-                <Checkbox
-                  checked={rankingView.range}
-                  onChange={e =>
-                    changeRankingView({
-                      ...rankingView,
-                      range: e.target.checked,
-                    })
-                  }
-                >
-                  显示范围滑块
-                </Checkbox>
               </div>
             }
           >
-            <Button
-              buttonSize="small"
-              aria-label={rankingView.comfortable ? '舒适' : '紧凑'}
-            >
-              {rankingView.comfortable ? '舒适' : '紧凑'}
+            <Button buttonSize="small" aria-label="选择">
+              选择
             </Button>
           </Popover>
         )}
-        {skuSelection && (
-          <LegendSelector
-            itemLabel="SKU"
-            fullLabels={skuSelection.values}
-            options={{
-              legend: {
-                data: skuSelection.names,
-                selected: skuSelection.selected,
-              },
-            }}
-            groups={{
-              groups: {},
-              labels: skuSelection.labels,
-              kinds: {},
-              parents: {},
-              stateKeys: {},
-            }}
-            onChange={payload => onLegendStateChanged?.(payload.selected)}
-            echartRef={echartRef}
-          />
-        )}
-        <LegendSelector
-          options={echartOptions}
-          groups={legendGroups}
-          onChange={handleLegendBulkChange}
-          echartRef={echartRef}
-        />
         <ExtraControls formData={formData} setControlValue={setControlValue} />
         {skuDetail && (
           <SkuDetail aria-label={t('SKU完整名称')}>
@@ -689,15 +622,13 @@ export default function EchartsTimeseries({
         refs={refs}
         height={height - extraControlHeight}
         width={width}
-        echartOptions={rankingLayout?.echartOptions ?? echartOptions}
+        echartOptions={echartOptions}
         eventHandlers={eventHandlers}
         zrEventHandlers={zrEventHandlers}
         selectedValues={selectedValues}
         vizType={formData.vizType}
         dataZoomStorageKey={dataZoomStorageKey}
-        minCategoryHeight={
-          rankingLayout?.minCategoryHeight ?? minCategoryHeight
-        }
+        minCategoryHeight={minCategoryHeight}
       />
     </>
   );

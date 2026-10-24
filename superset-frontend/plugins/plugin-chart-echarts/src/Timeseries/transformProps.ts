@@ -130,11 +130,10 @@ import {
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import { getMetricDisplayName } from '../utils/metricDisplayName';
 import { mergeCustomEChartOptions } from '../utils/mergeCustomEChartOptions';
-import {
-  buildSkuSelection,
-  expandSkuAliases,
-  layoutSkuRanking,
-} from '../utils/skuLabels';
+import { layoutCategoryBars } from '../utils/barLayout';
+import { applyAutomaticBarSizing } from '../utils/barSizing';
+import type { YAXisComponentOption } from 'echarts';
+import { buildSkuSelection, expandSkuAliases } from '../utils/skuLabels';
 
 /*
  * 功能审计（可重写规格）：折线图点击聚焦富提示框系列
@@ -359,10 +358,6 @@ export default function transformProps(
     ]) ?? [],
   );
   const skuRanking = Boolean(skuSelection && isHorizontal);
-  const skuBarsPerRow = Math.max(
-    1,
-    ensureIsArray(metrics).length * (array.length + 1),
-  );
   const rebasedData = skuSelection
     ? skuData.filter(row => visibleSkus.has(String(row[xAxisLabel] ?? '')))
     : skuData;
@@ -1081,7 +1076,7 @@ export default function transformProps(
             inside: true,
             align: 'left',
             verticalAlign: 'bottom',
-            padding: [0, 0, 10 + skuBarsPerRow * 8, 0],
+            padding: 0,
             margin: 0,
             lineHeight: 16,
             fontSize: 13,
@@ -1403,50 +1398,33 @@ export default function transformProps(
     : alignedEchartOptions;
 
   let minCategoryHeight: number | undefined;
-  if (skuRanking) {
-    mergedEchartOptions = {
-      ...mergedEchartOptions,
-      dataZoom: [
-        {
-          id: 'matrix-rows',
-          type: 'slider',
-          yAxisIndex: 0,
-          start: 0,
-          end: 100,
-          right: 0,
-          width: 12,
-          top: 38,
-          bottom: 42,
-          zoomLock: false,
-          // Resize the scroll content after release so dragging keeps its handle.
-          realtime: false,
-          show: false,
-          showDetail: false,
-          filterMode: 'empty',
-        },
-      ],
-      series: ensureIsArray(mergedEchartOptions.series as SeriesOption[]).map(
-        entry =>
-          entry.type === 'bar'
-            ? {
-                ...entry,
-                barMaxWidth: 14,
-                labelLayout: () => ({ x: width - 48, align: 'right' as const }),
-              }
-            : entry,
-      ),
-    };
-    const layout = layoutSkuRanking(
+  if (
+    seriesType === EchartsTimeseriesSeriesType.Bar &&
+    isHorizontal &&
+    xAxisType === AxisType.Category
+  ) {
+    const [categoryAxis] = ensureIsArray(
+      mergedEchartOptions.yAxis as YAXisComponentOption[],
+    );
+    const labels = skuSelection
+      ? skuLabels
+      : Object.fromEntries(
+          (categoryAxis?.data ?? []).map(value => [
+            String(value),
+            String(value),
+          ]),
+        );
+    const layout = layoutCategoryBars(
       mergedEchartOptions,
       width,
-      skuLabels,
-      skuBarsPerRow,
-      undefined,
+      labels,
       legendGroups,
       array,
     );
     mergedEchartOptions = layout.echartOptions;
     minCategoryHeight = layout.minCategoryHeight;
+  } else if (!isHorizontal) {
+    mergedEchartOptions = applyAutomaticBarSizing(mergedEchartOptions, width);
   }
 
   // If visualMap is configured, remove static itemStyle.color from series so
@@ -1482,7 +1460,6 @@ export default function transformProps(
     legendGroups,
     skuSelection,
     minCategoryHeight,
-    skuBarsPerRow,
     onContextMenu,
     onLegendStateChanged,
     onFocusedSeries,

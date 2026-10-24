@@ -24,7 +24,10 @@ const bars = (count: number, stack?: string): BarSeriesOption[] =>
     type: 'bar',
     name: `metric-${index}`,
     stack,
-    data: [[10, -index], [20, null]],
+    data: [
+      [10, -index],
+      [20, null],
+    ],
     label: { show: true, formatter: '{c}' },
   }));
 
@@ -34,7 +37,9 @@ test('automatic sizing counts shared stacks once and respects hidden series', ()
   const hidden = applyAutomaticBarSizing(
     {
       series: bars(10),
-      legend: { selected: Object.fromEntries(bars(9).map(entry => [entry.name, false])) },
+      legend: {
+        selected: Object.fromEntries(bars(9).map(entry => [entry.name, false])),
+      },
     },
     180,
   );
@@ -46,7 +51,10 @@ test('automatic sizing counts shared stacks once and respects hidden series', ()
 test('automatic sizing preserves time spacing, values, axes and formatter references', () => {
   const series = bars(2);
   const xAxis = { type: 'time' as const };
-  const yAxis = [{ type: 'value' as const }, { type: 'value' as const, axisLabel: { formatter: '{value}%' } }];
+  const yAxis = [
+    { type: 'value' as const },
+    { type: 'value' as const, axisLabel: { formatter: '{value}%' } },
+  ];
   const tooltip = { show: true };
   const options = { series, xAxis, yAxis, tooltip };
   const original = JSON.stringify(options);
@@ -68,7 +76,12 @@ test('fixed width is retired while label positioning and non-bar series remain i
   const line = { type: 'line' as const, name: 'margin', data: [[10, 0.2]] };
   const labelLayout = jest.fn(() => ({ x: 17, align: 'right' as const }));
   const result = applyAutomaticBarSizing(
-    { series: [{ ...bars(1)[0], barWidth: 120, barMinWidth: 90, labelLayout }, line] },
+    {
+      series: [
+        { ...bars(1)[0], barWidth: 120, barMinWidth: 90, labelLayout },
+        line,
+      ],
+    },
     300,
   );
   const [bar, unchangedLine] = result.series as SeriesOption[];
@@ -77,16 +90,25 @@ test('fixed width is retired while label positioning and non-bar series remain i
   expect(unchangedLine).toBe(line);
   expect(typeof bar.labelLayout).toBe('function');
   if (typeof bar.labelLayout === 'function') {
-    expect(bar.labelLayout({} as Parameters<typeof bar.labelLayout>[0])).toMatchObject({ x: 17, align: 'right', hideOverlap: true });
+    expect(
+      bar.labelLayout({} as Parameters<typeof bar.labelLayout>[0]),
+    ).toMatchObject({ x: 17, align: 'right', hideOverlap: true });
   }
   expect(labelLayout).toHaveBeenCalledTimes(1);
 });
 
-test.each([0, 1, 200, Number.NaN])('automatic sizing is finite for a %s-pixel container', width => {
-  const result = applyAutomaticBarSizing({ series: bars(43) }, width);
-  expect((result.series as BarSeriesOption[])[0].barMaxWidth).toBeGreaterThan(0);
-  expect((result.series as BarSeriesOption[])[0].barMaxWidth).toBeLessThanOrEqual(28);
-});
+test.each([0, 1, 200, Number.NaN])(
+  'automatic sizing is finite for a %s-pixel container',
+  width => {
+    const result = applyAutomaticBarSizing({ series: bars(43) }, width);
+    expect((result.series as BarSeriesOption[])[0].barMaxWidth).toBeGreaterThan(
+      0,
+    );
+    expect(
+      (result.series as BarSeriesOption[])[0].barMaxWidth,
+    ).toBeLessThanOrEqual(28);
+  },
+);
 
 test('non-bar charts do not acquire bar layout settings', () => {
   const options = { series: [{ type: 'line' as const, data: [1, 2] }] };
