@@ -34,6 +34,7 @@ import FilterBar, {
   AUTO_APPLY_DEBOUNCE_MS,
   createDebouncedDataMaskApplier,
   getAutoApplyDataMaskUpdates,
+  getPendingFilterState,
   getDataMaskForRedux,
   shouldAutoApplyDataMask,
   shouldPublishAppliedDataMask,
@@ -41,6 +42,11 @@ import FilterBar, {
 } from '.';
 import { FILTERS_CONFIG_MODAL_TEST_ID } from '../FiltersConfigModal/FiltersConfigModal';
 import * as dataMaskActions from 'src/dataMask/actions';
+import dataMaskReducer from 'src/dataMask/reducer';
+import {
+  readPendingFilterState,
+  writePendingFilterState,
+} from 'src/dashboard/util/pendingFilterState';
 
 jest.useFakeTimers();
 
@@ -87,7 +93,7 @@ beforeEach(() => {
 });
 
 describe('shouldPublishDataMask', () => {
-  it('does not publish the just-hydrated applied data mask again', () => {
+  test('does not publish the just-hydrated applied data mask again', () => {
     const restoredDataMask = JSON.stringify({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -97,7 +103,7 @@ describe('shouldPublishDataMask', () => {
     );
   });
 
-  it('publishes when the applied data mask changes after hydration', () => {
+  test('publishes when the applied data mask changes after hydration', () => {
     const restoredDataMask = JSON.stringify({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -108,7 +114,7 @@ describe('shouldPublishDataMask', () => {
     expect(shouldPublishDataMask(changedDataMask, restoredDataMask)).toBe(true);
   });
 
-  it('does not publish while filter bar initialization is still adopting hydrated state', () => {
+  test('does not publish while filter bar initialization is still adopting hydrated state', () => {
     const restoredDataMask = JSON.stringify({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -123,7 +129,7 @@ describe('shouldPublishDataMask', () => {
     ).toBe(false);
   });
 
-  it('does not publish the first initialized data mask baseline', () => {
+  test('does not publish the first initialized data mask baseline', () => {
     const restoredDataMask = JSON.stringify({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -138,7 +144,7 @@ describe('shouldPublishDataMask', () => {
     ).toBe(false);
   });
 
-  it('publishes changed data masks after initialization baseline is established', () => {
+  test('publishes changed data masks after initialization baseline is established', () => {
     const restoredDataMask = JSON.stringify({
       'NATIVE_FILTER-1': { filterState: { value: ['shop-a'] } },
     });
@@ -157,8 +163,71 @@ describe('shouldPublishDataMask', () => {
   });
 });
 
+describe('pending selection before automatic apply', () => {
+  test('restores a cleared keyword before auto apply or server save can run', () => {
+    localStorage.clear();
+    const id = 'NATIVE_FILTER-1';
+    const applied = {
+      [id]: {
+        id,
+        filterState: { value: ['old'], searchValue: 'old' },
+        extraFormData: {},
+      },
+    };
+    const cleared = {
+      filterState: { value: null, searchValue: '' },
+      extraFormData: {},
+    };
+    const apply = jest.fn();
+    const applier = createDebouncedDataMaskApplier(apply);
+    const pending = getPendingFilterState(
+      { ...applied, [id]: { ...cleared, id } },
+      applied,
+      new Set([id]),
+    );
+    writePendingFilterState(1, 87, 'same-url', JSON.stringify(pending));
+    applier.schedule(id, cleared);
+    expect(apply).not.toHaveBeenCalled();
+    expect(readPendingFilterState(1, 87, 'same-url')).toMatchObject({
+      [id]: { ...cleared, id },
+    });
+    expect(JSON.stringify(pending)).toBe(
+      JSON.stringify(
+        dataMaskReducer(
+          applied,
+          dataMaskActions.updateDataMasks({ [id]: cleared }),
+        ),
+      ),
+    );
+    applier.cancel();
+  });
+
+  test('keeps rapid choices in two filters and ignores out of scope drafts', () => {
+    const a = { id: 'a', filterState: { value: ['old'] }, extraFormData: {} };
+    const b = { id: 'b', filterState: { value: ['old'] }, extraFormData: {} };
+    const applied = { a, b };
+    const first = getPendingFilterState(
+      { a: { ...a, filterState: { value: ['new-a'] } }, b },
+      applied,
+      new Set(['a', 'b']),
+    );
+    const second = getPendingFilterState(
+      {
+        ...first,
+        b: { ...b, filterState: { value: ['new-b'] } },
+        outside: { id: 'outside', filterState: { value: ['ignored'] } },
+      },
+      applied,
+      new Set(['a', 'b']),
+    );
+    expect(second.a.filterState?.value).toEqual(['new-a']);
+    expect(second.b.filterState?.value).toEqual(['new-b']);
+    expect(second).not.toHaveProperty('outside');
+  });
+});
+
 describe('automatic filter apply batching', () => {
-  it('dispatches only the final selected data mask after the debounce window', () => {
+  test('dispatches only the final selected data mask after the debounce window', () => {
     const apply = jest.fn();
     const applier = createDebouncedDataMaskApplier(
       apply,
@@ -197,7 +266,7 @@ describe('automatic filter apply batching', () => {
     ]);
   });
 
-  it('does not auto apply restored or equivalent data masks', () => {
+  test('does not auto apply restored or equivalent data masks', () => {
     const selectedMask = {
       id: 'NATIVE_FILTER-1',
       filterState: { value: ['shop-a'], validateStatus: 'error' },
@@ -217,7 +286,7 @@ describe('automatic filter apply batching', () => {
     expect(shouldAutoApplyDataMask(selectedMask, appliedMask)).toBe(false);
   });
 
-  it('builds one bulk update payload from pending auto apply entries', () => {
+  test('builds one bulk update payload from pending auto apply entries', () => {
     const updates = getAutoApplyDataMaskUpdates(
       [
         [
