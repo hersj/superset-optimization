@@ -217,10 +217,15 @@ const getComparableDataMask = (dataMask: Partial<DataMask> | undefined) => {
   return dataMaskForComparison;
 };
 
+// Invalid custom-period drafts must not replace the last valid applied query.
 export const shouldAutoApplyDataMask = (
   selectedDataMask: Partial<DataMask>,
   appliedDataMask: Partial<DataMask> | undefined,
 ) =>
+  !(
+    selectedDataMask.filterState?.customComparisonMode === 'custom' &&
+    selectedDataMask.filterState?.validateStatus === 'error'
+  ) &&
   !isEqual(
     getComparableDataMask(selectedDataMask),
     getComparableDataMask(appliedDataMask),
@@ -236,7 +241,7 @@ export const getAutoApplyDataMaskUpdates = (
 
     if (
       inScopeFilterIds.has(filterId) &&
-      shouldAutoApplyDataMask(dataMaskForRedux, dataMaskApplied[filterId])
+      shouldAutoApplyDataMask(dataMask, dataMaskApplied[filterId])
     ) {
       updates[filterId] = dataMaskForRedux;
     }
@@ -431,7 +436,7 @@ const FilterBar: FC<FiltersBarProps> = ({
         const pending = getPendingFilterState(
           {
             ...dataMaskSelectedRef.current,
-            [filter.id]: { ...dataMaskForRedux, id: filter.id },
+            [filter.id]: { ...dataMask, id: filter.id },
           },
           dataMaskAppliedRef.current,
           inScopeFilterIds,
@@ -447,10 +452,7 @@ const FilterBar: FC<FiltersBarProps> = ({
 
       if (
         inScopeFilterIds.has(filter.id) &&
-        shouldAutoApplyDataMask(
-          dataMaskForRedux,
-          dataMaskAppliedRef.current[filter.id],
-        )
+        shouldAutoApplyDataMask(dataMask, dataMaskAppliedRef.current[filter.id])
       ) {
         autoApplyApplierRef.current?.schedule(filter.id, dataMaskForRedux);
       } else {
@@ -490,7 +492,9 @@ const FilterBar: FC<FiltersBarProps> = ({
           ...baseDataMask,
           filterState: {
             ...baseDataMask.filterState,
-            validateStatus: hasRequiredValue ? 'error' : undefined,
+            validateStatus: hasRequiredValue
+              ? 'error'
+              : baseDataMask.filterState?.validateStatus,
           },
         };
       });

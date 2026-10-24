@@ -68,6 +68,7 @@ import { useFilterDependencies } from './state';
 import { useFilterOutlined } from '../useFilterOutlined';
 import {
   getCascadeFilterOptions,
+  getCascadeComparisonContext,
   isCascadeFilter,
 } from './cascadeFilterOptions';
 import {
@@ -230,6 +231,10 @@ const FilterValue: FC<FilterValueProps> = ({
   const nativeFilters = useSelector<RootState, Record<string, any>>(
     state => state.nativeFilters.filters,
   );
+  const comparisonEnabled = useSelector<RootState, boolean>(
+    state =>
+      state.dashboardState.dashboardChartControls?.timeCompareEnabled ?? true,
+  );
   // 级联请求只使用当前看板 Redux 中已加载的 slice datasource_id；映射未就绪时由共享依赖 resolver 拒绝不明确的 scope。
   const sliceEntities = useSelector(
     (state: RootState) => state.sliceEntities.slices,
@@ -304,6 +309,7 @@ const FilterValue: FC<FilterValueProps> = ({
   const [previewSearch, setPreviewSearch] = useState<string>();
   const [hasLoadedOptions, setHasLoadedOptions] = useState(!hasDataSource);
   const requestIdRef = useRef(0);
+  const comparisonContextRef = useRef('{}');
   const dashboardIdRef = useRef(dashboardId);
   const dispatch = useDispatch();
 
@@ -356,6 +362,8 @@ const FilterValue: FC<FilterValueProps> = ({
     const filterOwnState = filter.dataMask?.ownState || {};
 
     if (isImplicitTimeDependencyBlocked) {
+      // Blocking a dependency also invalidates requests already in flight.
+      requestIdRef.current += 1;
       setFormData(newFormData);
       setOwnState(filterOwnState);
       setState([]);
@@ -368,6 +376,32 @@ const FilterValue: FC<FilterValueProps> = ({
       handleFilterLoadFinish();
       return;
     }
+
+    let comparisonContext: ReturnType<typeof getCascadeComparisonContext>;
+    try {
+      comparisonContext = getCascadeComparisonContext(
+        nativeFilters,
+        dataMaskSelected,
+        implicitTimeDependency,
+        comparisonEnabled,
+      );
+    } catch (comparisonError) {
+      requestIdRef.current += 1;
+      setError(
+        getNativeFilterDependencyError(
+          comparisonError instanceof Error
+            ? comparisonError.message
+            : String(comparisonError),
+        ),
+      );
+      handleFilterLoadFinish();
+      return;
+    }
+    const comparisonKey = JSON.stringify(comparisonContext);
+    const hasComparisonContext = Boolean(
+      comparisonContext.comparison_time_ranges?.length ||
+      comparisonContext.time_offsets?.length,
+    );
 
     if ((filter.cascadeParentIds ?? []).length) {
       // Prevent unnecessary backend requests by validating parent filter selections first
@@ -404,13 +438,15 @@ const FilterValue: FC<FilterValueProps> = ({
       othValue: Partial<QueryFormData>,
       key: string,
     ) => (key === 'url_params' ? true : undefined);
-    const formDataChanged = !isEqualWith(formData, newFormData, customizer);
+    const formDataChanged =
+      !isEqualWith(formData, newFormData, customizer) ||
+      comparisonContextRef.current !== comparisonKey;
     const ownStateChanged = !isEqual(ownState, filterOwnState);
     const isContainsSearch =
       newFormData.allowFuzzyMatch !== false &&
       filter.dataMask?.filterState?.matchMode === 'contains';
     const isBatchableFilter =
-      (!filterOwnState.search || isContainsSearch) &&
+      (!filterOwnState.search || isContainsSearch || hasComparisonContext) &&
       isCascadeFilter(
         dashboardId,
         datasetId,
@@ -457,6 +493,7 @@ const FilterValue: FC<FilterValueProps> = ({
       }
       setIsRefreshing(true);
       setHasLoadedOptions(true);
+      comparisonContextRef.current = comparisonKey;
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       const requestDashboardId = dashboardId;
@@ -546,10 +583,12 @@ const FilterValue: FC<FilterValueProps> = ({
           chartDatasetIds,
           {
             childFilterId: id,
+            comparisonEnabled,
             initializedFilters,
             chartIds,
             chartLayoutItems,
-            ...(isContainsSearch && filterOwnState.search
+            ...((isContainsSearch || hasComparisonContext) &&
+            filterOwnState.search
               ? {
                   search: {
                     column: groupby as string,
@@ -565,6 +604,10 @@ const FilterValue: FC<FilterValueProps> = ({
             }
             const columnResult = result[groupby as string];
             if (!columnResult) {
+              if (hasComparisonContext)
+                throw new Error(
+                  'Comparison filter options response is incomplete',
+                );
               return loadChartData();
             }
             setState([columnResult]);
@@ -576,9 +619,16 @@ const FilterValue: FC<FilterValueProps> = ({
             if (!isCurrentRequest()) {
               return undefined;
             }
-            if (error instanceof NativeFilterDependencyError) {
-              setState([]);
-              setError(getNativeFilterDependencyError(error.message));
+            if (
+              error instanceof NativeFilterDependencyError ||
+              hasComparisonContext
+            ) {
+              if (error instanceof NativeFilterDependencyError) setState([]);
+              setError(
+                getNativeFilterDependencyError(
+                  error instanceof Error ? error.message : String(error),
+                ),
+              );
               finishCurrentRequest();
               return undefined;
             }
@@ -595,6 +645,7 @@ const FilterValue: FC<FilterValueProps> = ({
     effectiveDependencies,
     implicitTimeDependency,
     isImplicitTimeDependencyBlocked,
+    comparisonEnabled,
     datasetId,
     groupby,
     handleFilterLoadFinish,

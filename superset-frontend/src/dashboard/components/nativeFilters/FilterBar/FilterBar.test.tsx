@@ -1122,3 +1122,40 @@ test.each([
     updateSpy.mockRestore();
   },
 );
+
+test('an invalid custom period keeps the last valid query and pending refresh memory', () => {
+  const applied = {
+    time: {
+      id: 'time',
+      filterState: {
+        value: '2026-10-01 : 2026-11-01',
+        customComparisonMode: 'custom',
+      },
+      extraFormData: { time_compare: ['2025-10-01 : 2025-11-01'] },
+    },
+  } as any;
+  const invalid = {
+    filterState: {
+      value: '2026-10-01 : 2026-11-01',
+      customComparisonMode: 'custom',
+      comparisonStartDate: '2025-10-05',
+      comparisonEndDate: '2025-10-01',
+      validateStatus: 'error',
+    },
+    extraFormData: {
+      time_compare: ['1 month ago'],
+      custom_form_data: { custom_period_comparison: null },
+    },
+  } as any;
+  expect(shouldAutoApplyDataMask(invalid, applied.time)).toBe(false);
+  expect(
+    getAutoApplyDataMaskUpdates(
+      [['time', invalid]],
+      applied,
+      new Set(['time']),
+    ),
+  ).toEqual({});
+  expect(
+    getPendingFilterState({ time: invalid }, applied, new Set(['time'])),
+  ).toEqual(applied);
+});

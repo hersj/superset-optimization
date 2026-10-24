@@ -23,7 +23,7 @@ import {
 } from './FilterValue';
 import { createElement } from 'react';
 import { Provider } from 'react-redux';
-import { render, waitFor } from 'spec/helpers/testing-library';
+import { act, render, waitFor } from 'spec/helpers/testing-library';
 import configureStore from 'redux-mock-store';
 import thunk from 'redux-thunk';
 import { SupersetClient } from '@superset-ui/core';
@@ -115,7 +115,10 @@ const renderFilterValue = (
 };
 
 beforeEach(() => {
-  filterOptionsRequestMock.mockClear();
+  filterOptionsRequestMock.mockReset();
+  filterOptionsRequestMock.mockImplementation(
+    jest.requireActual('./cascadeFilterOptions').getCascadeFilterOptions,
+  );
   chartDataRequestMock.mockReset();
   chartDataRequestMock.mockResolvedValue({
     response: { status: 200 },
@@ -442,4 +445,167 @@ test('a contains preview keeps the batch cascade path and its five-name search',
     childFilter.dataMask = original;
     childFilter.controlValues = controls;
   }
+});
+
+test.each(['resolve', 'reject'])(
+  'an old %s after the time parent becomes invalid cannot query or restore old options',
+  async outcome => {
+    let settle!: (value?: any) => void;
+    const pending = new Promise((resolve, reject) => {
+      settle = outcome === 'resolve' ? resolve : reject;
+    });
+    filterOptionsRequestMock.mockImplementationOnce(() => pending);
+    const filters = { time: createNativeFilter('time'), shop: childFilter };
+    const selected = {
+      time: {
+        id: 'time',
+        extraFormData: { time_range: '2026-10-01 : 2026-11-01' },
+      },
+    };
+    const initialized = new Set(['time']);
+    const { rerender } = renderFilterValue(filters, selected, initialized);
+    await waitFor(() =>
+      expect(filterOptionsRequestMock).toHaveBeenCalledTimes(1),
+    );
+    rerender(
+      createElement(
+        Provider,
+        { store: mockStore(createState(filters)) },
+        createElement(FilterValue, {
+          filter: childFilter as any,
+          dataMaskSelected: {
+            time: {
+              id: 'time',
+              extraFormData: {},
+              filterState: { value: null },
+            },
+          } as any,
+          initializedFilters: initialized,
+          onFilterSelectionChange: jest.fn(),
+          inView: true,
+          isFilterActive: true,
+          orientation: FilterBarOrientation.Vertical,
+        }),
+      ),
+    );
+    await act(async () => {
+      settle(outcome === 'resolve' ? {} : new Error('late failed options'));
+    });
+    expect(chartDataRequestMock).not.toHaveBeenCalled();
+  },
+);
+
+test('changing only B or turning comparison off reloads candidate options with the same A', async () => {
+  (SupersetClient.post as jest.Mock).mockResolvedValue({
+    json: {
+      result: {
+        shop_name: { data: [], colnames: ['shop_name'], coltypes: [1] },
+      },
+    },
+  });
+  const filters = { time: createNativeFilter('time'), shop: childFilter };
+  const current = '2026-10-01 : 2026-11-01';
+  const mask = (comparison: string) => ({
+    time: {
+      id: 'time',
+      extraFormData: {
+        time_range: current,
+        filters: [
+          { col: 'earliest_ship_date', op: 'TEMPORAL_RANGE', val: current },
+        ],
+        custom_form_data: {
+          custom_period_comparison: {
+            currentTimeRange: current,
+            comparisonTimeRange: comparison,
+            timeColumn: 'earliest_ship_date',
+          },
+        },
+      },
+    },
+  });
+  const { rerender } = renderFilterValue(
+    filters,
+    mask('2025-10-01 : 2025-11-01'),
+    new Set(['time']),
+  );
+  await waitFor(() =>
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(1),
+  );
+  const rerenderWith = (comparison: string, enabled: boolean) => {
+    const state = createState(filters) as any;
+    state.dashboardState.dashboardChartControls = {
+      timeCompareEnabled: enabled,
+      showValueEnabled: true,
+    };
+    rerender(
+      createElement(
+        Provider,
+        { store: mockStore(state) },
+        createElement(FilterValue, {
+          filter: childFilter as any,
+          dataMaskSelected: mask(comparison) as any,
+          initializedFilters: new Set(['time']),
+          onFilterSelectionChange: jest.fn(),
+          inView: true,
+          isFilterActive: true,
+          orientation: FilterBarOrientation.Vertical,
+        }),
+      ),
+    );
+  };
+  rerenderWith('2024-10-01 : 2024-11-01', true);
+  await waitFor(() =>
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(2),
+  );
+  rerenderWith('2024-10-01 : 2024-11-01', false);
+  await waitFor(() =>
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(3),
+  );
+  expect(filterOptionsRequestMock.mock.calls[2][5].comparisonEnabled).toBe(
+    false,
+  );
+  const payloads = (SupersetClient.post as jest.Mock).mock.calls.map(
+    call => call[0].jsonPayload,
+  );
+  expect(payloads.map(payload => payload.comparison_time_ranges)).toEqual([
+    ['2025-10-01 : 2025-11-01'],
+    ['2024-10-01 : 2024-11-01'],
+    undefined,
+  ]);
+  expect(payloads.every(payload => payload.time_range === current)).toBe(true);
+  expect(chartDataRequestMock).not.toHaveBeenCalled();
+});
+
+test('failed comparison candidate queries never fall back to current-period-only options', async () => {
+  let reject!: (error: Error) => void;
+  filterOptionsRequestMock.mockImplementationOnce(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const current = '2026-10-01 : 2026-11-01';
+  renderFilterValue(
+    { time: createNativeFilter('time'), shop: childFilter },
+    {
+      time: {
+        id: 'time',
+        extraFormData: {
+          time_range: current,
+          filters: [
+            { col: 'earliest_ship_date', op: 'TEMPORAL_RANGE', val: current },
+          ],
+          time_compare: ['1 month ago'],
+        },
+      },
+    } as any,
+    new Set(['time']),
+  );
+  await waitFor(() =>
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(1),
+  );
+  await act(async () =>
+    reject(new Error('temporary comparison options failure')),
+  );
+  expect(chartDataRequestMock).not.toHaveBeenCalled();
 });

@@ -91,6 +91,7 @@ test('custom comparison derives an end until the user edits it', () => {
   const { setDataMask } = mount();
   chooseCustom();
   expect(lastMask(setDataMask).filterState.validateStatus).toBe('error');
+  expect(lastMask(setDataMask).extraFormData.time_compare).toEqual([]);
   expect(screen.queryByLabelText('对比结束日期')).not.toBeInTheDocument();
   expect(
     screen.getByRole('button', { name: '修改对比结束日期' }),

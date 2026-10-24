@@ -1050,8 +1050,9 @@ export default function CustomTimeFilterPlugin(props: any) {
               }
             : { time_range: timeRange }),
           time_grain_sqla: grainValue,
-          time_compare:
-            mode === 'points'
+          time_compare: comparisonDraft.error
+            ? []
+            : mode === 'points'
               ? points.length
                 ? ['上一选中区间']
                 : []

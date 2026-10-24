@@ -29,6 +29,8 @@ import {
   SELLERFOX_CASCADE_COLUMNS,
 } from './cascadeFilterOptions';
 
+afterEach(() => jest.restoreAllMocks());
+
 describe('sellerfox cascade filter options', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -659,5 +661,215 @@ test('preview requests only its own column with a five-name cap and retains pare
       }),
     }),
   );
+  post.mockRestore();
+});
+
+test.each(['legacy', 'scoped'])(
+  '%s failed cascade requests are evicted so the same selection can recover',
+  async mode => {
+    clearSellerfoxCascadeFilterOptionsCache();
+    const post = jest
+      .spyOn(SupersetClient, 'post')
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValue({
+        json: { result: { shop_name: { data: [] } } },
+      } as any);
+    const filters = {
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 98, column: { name: 'shop_name' } }],
+      },
+    };
+    const request = () =>
+      mode === 'legacy'
+        ? getSellerfoxCascadeFilterOptions(44, 98, {})
+        : getCascadeFilterOptions(44, 98, filters, {});
+    await expect(request()).rejects.toThrow('temporary failure');
+    await expect(request()).resolves.toEqual({ shop_name: { data: [] } });
+    expect(post).toHaveBeenCalledTimes(2);
+    post.mockRestore();
+  },
+);
+
+test('text conditions outside the child chart scope do not overwrite relevant selections', async () => {
+  clearSellerfoxCascadeFilterOptionsCache();
+  const post = jest
+    .spyOn(SupersetClient, 'post')
+    .mockResolvedValue({ json: { result: {} } } as any);
+  const select = (id: string, column: string, chartsInScope: number[]) => ({
+    id,
+    filterType: 'filter_select',
+    targets: [{ datasetId: 98, column: { name: column } }],
+    chartsInScope,
+  });
+  const filters = {
+    child: select('child', 'shop_name', [1]),
+    inside: select('inside', 'country', [1]),
+    outside: select('outside', 'country', [2]),
+  };
+  await getCascadeFilterOptions(
+    44,
+    98,
+    filters,
+    {
+      inside: {
+        id: 'inside',
+        extraFormData: { filters: [{ col: 'country', op: 'IN', val: ['US'] }] },
+      },
+      outside: {
+        id: 'outside',
+        extraFormData: { filters: [{ col: 'country', op: 'IN', val: ['UK'] }] },
+      },
+    } as any,
+    { 1: 98, 2: 98 },
+    { childFilterId: 'child' },
+  );
+  expect(post).toHaveBeenCalledWith(
+    expect.objectContaining({
+      jsonPayload: expect.objectContaining({
+        applied_filters: { country: ['US'] },
+      }),
+    }),
+  );
+  post.mockRestore();
+});
+
+test('different same-column conditions in overlapping scopes fail explicitly instead of last-value-wins', async () => {
+  clearSellerfoxCascadeFilterOptionsCache();
+  const post = jest
+    .spyOn(SupersetClient, 'post')
+    .mockResolvedValue({ json: { result: {} } } as any);
+  const select = (id: string, column: string) => ({
+    id,
+    filterType: 'filter_select',
+    targets: [{ datasetId: 98, column: { name: column } }],
+    chartsInScope: [1],
+  });
+  await expect(
+    getCascadeFilterOptions(
+      44,
+      98,
+      {
+        child: select('child', 'shop_name'),
+        a: select('a', 'country'),
+        b: select('b', 'country'),
+      },
+      {
+        a: {
+          id: 'a',
+          extraFormData: {
+            filters: [{ col: 'country', op: 'IN', val: ['US'] }],
+          },
+        },
+        b: {
+          id: 'b',
+          extraFormData: {
+            filters: [{ col: 'country', op: 'ILIKE', val: '%UK%' }],
+          },
+        },
+      } as any,
+      { 1: 98 },
+      { childFilterId: 'child' },
+    ),
+  ).rejects.toThrow(/conflict/i);
+  expect(post).not.toHaveBeenCalled();
+  post.mockRestore();
+});
+
+test.each(['custom', 'relative', 'off'])(
+  'candidate options carry %s comparison on the bound time column',
+  async mode => {
+    clearSellerfoxCascadeFilterOptionsCache();
+    const post = jest
+      .spyOn(SupersetClient, 'post')
+      .mockResolvedValue({ json: { result: {} } } as any);
+    const current = '2026-10-01 : 2026-11-01';
+    const comparison = '2025-10-01 : 2025-11-01';
+    const filters = {
+      time: {
+        id: 'time',
+        filterType: 'filter_custom_time',
+        targets: [{ datasetId: 98, column: { name: 'biz_day' } }],
+        chartsInScope: [1],
+      },
+      shop: {
+        id: 'shop',
+        filterType: 'filter_select',
+        targets: [{ datasetId: 98, column: { name: 'shop_name' } }],
+        chartsInScope: [1],
+      },
+    };
+    await getCascadeFilterOptions(
+      44,
+      98,
+      filters,
+      {
+        time: {
+          id: 'time',
+          extraFormData: {
+            time_range: current,
+            filters: [{ col: 'biz_day', op: 'TEMPORAL_RANGE', val: current }],
+            time_compare: ['1 month ago'],
+            ...(mode === 'relative'
+              ? {}
+              : {
+                  custom_form_data: {
+                    custom_period_comparison: {
+                      currentTimeRange: current,
+                      comparisonTimeRange: comparison,
+                      timeColumn: 'biz_day',
+                    },
+                  },
+                }),
+          },
+        },
+      } as any,
+      { 1: 98 },
+      {
+        childFilterId: 'shop',
+        initializedFilters: new Set(['time']),
+        comparisonEnabled: mode !== 'off',
+      } as any,
+    );
+    const payload = (post.mock.calls[0][0] as any).jsonPayload;
+    expect(payload.time_range).toBe(current);
+    if (mode === 'off') {
+      expect(payload.comparison_time_ranges).toBeUndefined();
+      expect(payload.time_offsets).toBeUndefined();
+    } else {
+      expect(payload.time_column).toBe('biz_day');
+      expect(
+        mode === 'custom'
+          ? payload.comparison_time_ranges
+          : payload.time_offsets,
+      ).toEqual(mode === 'custom' ? [comparison] : ['1 month ago']);
+    }
+    post.mockRestore();
+  },
+);
+
+test('a settled cascade response is not reused by a later refresh', async () => {
+  clearSellerfoxCascadeFilterOptionsCache();
+  const post = jest
+    .spyOn(SupersetClient, 'post')
+    .mockResolvedValueOnce({
+      json: { result: { shop_name: { data: [{ shop_name: 'old' }] } } },
+    } as any)
+    .mockResolvedValueOnce({
+      json: { result: { shop_name: { data: [{ shop_name: 'new' }] } } },
+    } as any);
+  const filters = {
+    shop: {
+      id: 'shop',
+      filterType: 'filter_select',
+      targets: [{ datasetId: 98, column: { name: 'shop_name' } }],
+    },
+  };
+  await getCascadeFilterOptions(44, 98, filters, {});
+  await expect(getCascadeFilterOptions(44, 98, filters, {})).resolves.toEqual({
+    shop_name: { data: [{ shop_name: 'new' }] },
+  });
+  expect(post).toHaveBeenCalledTimes(2);
   post.mockRestore();
 });

@@ -19,6 +19,8 @@
 import {
   ChartDataResponseResult,
   DataMaskStateWithId,
+  ensureIsArray,
+  getCustomPeriodComparison,
   SupersetClient,
 } from '@superset-ui/core';
 import {
@@ -29,8 +31,10 @@ import type {
   ChartDatasetIdsByChart,
   NativeFilterConfig,
   NativeFiltersById,
+  NativeFilterDependencyResult,
 } from './nativeFilterDependencies';
 import type { LayoutItem } from 'src/dashboard/types';
+import { getChartIdsInFilterScope } from 'src/dashboard/util/getChartIdsInFilterScope';
 
 const SELLERFOX_CASCADE_COLUMNS_BASE = [
   'department_label',
@@ -65,14 +69,18 @@ type SellerfoxCascadeOptionsPayload = {
   time_range?: string;
   time_ranges?: string[];
   time_column?: string;
+  comparison_time_ranges?: string[];
+  time_offsets?: string[];
 };
 
+// Only coalesce in-flight requests; freshness belongs to the backend cache.
 const requestCache = new Map<
   string,
   Promise<SellerfoxCascadeOptionsResponse>
 >();
 
 type CascadeFilterOptions = {
+  comparisonEnabled?: boolean;
   search?: { column: string; value: string };
   childFilter?: NativeFilterConfig;
   childFilterId?: string;
@@ -191,6 +199,91 @@ const toArray = (value: unknown): unknown[] => {
  * - 不变量与约束：同一 child 的每个时间父级独立判断；缓存键包含最终 payload；不改变 Sellerfox legacy 无 nativeFilters 的路径。
  * - 验证方式：nativeFilterDependencies.test.ts、cascadeFilterOptions.test.ts，以及 dashboard 44/51 Network 观察。
  */
+const cascadeDependencyError = (message: string) =>
+  new NativeFilterDependencyError({
+    status: 'conflict',
+    timeFilterIds: [],
+    message,
+  });
+
+const getScopeCharts = (
+  filter: NativeFilterConfig | undefined,
+  options: CascadeFilterOptions,
+) => {
+  if (!filter || filter.scope === 'global') return undefined;
+  if (filter.chartsInScope?.length) return new Set(filter.chartsInScope);
+  if (filter.scope) {
+    if (
+      !Array.isArray(filter.scope.rootPath) ||
+      !Array.isArray(filter.scope.excluded) ||
+      !options.chartIds ||
+      !options.chartLayoutItems
+    ) {
+      throw cascadeDependencyError('Filter scope is not ready');
+    }
+    return new Set(
+      getChartIdsInFilterScope(
+        filter.scope,
+        options.chartIds,
+        options.chartLayoutItems,
+      ),
+    );
+  }
+  if (filter.chartsInScope)
+    throw cascadeDependencyError('Filter scope is not ready');
+  return undefined;
+};
+
+export const getCascadeComparisonContext = (
+  nativeFilters: NativeFiltersById = {},
+  selected: DataMaskStateWithId = {},
+  dependency: NativeFilterDependencyResult,
+  enabled = true,
+): Pick<
+  SellerfoxCascadeOptionsPayload,
+  'comparison_time_ranges' | 'time_offsets' | 'time_column'
+> => {
+  if (!enabled || dependency.status !== 'ready') return {};
+  const plans = dependency.timeFilterIds.map(id => {
+    const mask = selected[id]?.extraFormData
+      ? selected[id]
+      : nativeFilters[id]?.defaultDataMask;
+    if (
+      mask?.filterState?.customComparisonMode === 'custom' &&
+      mask.filterState.validateStatus === 'error'
+    ) {
+      throw cascadeDependencyError('Custom comparison period is invalid');
+    }
+    const period = getCustomPeriodComparison({
+      extra_form_data: mask?.extraFormData,
+    });
+    const offsets = ensureIsArray(mask?.extraFormData?.time_compare).filter(
+      offset => offset !== '上一选中区间',
+    );
+    if (!period && !offsets.length) return {};
+    const timeColumn =
+      period?.timeColumn ||
+      dependency.timeColumn ||
+      mask?.extraFormData?.filters?.find(
+        filter => filter.op === 'TEMPORAL_RANGE',
+      )?.col ||
+      nativeFilters[id]?.targets?.[0]?.column?.name;
+    if (typeof timeColumn !== 'string' || !timeColumn) {
+      throw cascadeDependencyError('Comparison time column is not ready');
+    }
+    return {
+      time_column: timeColumn,
+      ...(period
+        ? { comparison_time_ranges: [period.comparisonTimeRange] }
+        : { time_offsets: offsets }),
+    };
+  });
+  if (new Set(plans.map(plan => JSON.stringify(plan))).size > 1) {
+    throw cascadeDependencyError('Applicable comparison periods conflict');
+  }
+  return plans[0] || {};
+};
+
 const getPayload = (
   dashboardId: number,
   datasetId: number,
@@ -223,7 +316,30 @@ const getPayload = (
     throw new NativeFilterDependencyError(dependencyResult);
   }
 
-  Object.values(dataMaskSelected ?? {}).forEach(dataMask => {
+  const child =
+    options.childFilter ||
+    (options.childFilterId
+      ? nativeFilters?.[options.childFilterId]
+      : undefined);
+  const childCharts = getScopeCharts(child, options);
+  const seenConditions = new Map<string, string>();
+  Object.entries(dataMaskSelected ?? {}).forEach(([id, dataMask]) => {
+    if (
+      !dataMask.extraFormData?.filters?.some(
+        filter =>
+          filter.op !== 'TEMPORAL_RANGE' &&
+          typeof filter.col === 'string' &&
+          columnSet.has(filter.col),
+      )
+    )
+      return;
+    const sourceCharts = getScopeCharts(nativeFilters?.[id], options);
+    if (
+      childCharts &&
+      sourceCharts &&
+      ![...sourceCharts].some(chart => childCharts.has(chart))
+    )
+      return;
     dataMask.extraFormData?.filters?.forEach(filter => {
       if (filter.op === 'TEMPORAL_RANGE') {
         return;
@@ -239,9 +355,21 @@ const getPayload = (
             'Cascade batch does not support this filter operator',
           );
         }
-        if (filter.op !== 'IN') filterOperators[column] = filter.op;
         const values = toArray(filter.val);
         if (values.length) {
+          const signature = JSON.stringify([
+            filter.op,
+            [...values].sort((a, b) =>
+              (JSON.stringify(a) ?? '').localeCompare(JSON.stringify(b) ?? ''),
+            ),
+          ]);
+          const previous = seenConditions.get(column);
+          if (previous && previous !== signature)
+            throw cascadeDependencyError(
+              `Filter conditions conflict for ${column}`,
+            );
+          seenConditions.set(column, signature);
+          if (filter.op !== 'IN') filterOperators[column] = filter.op;
           appliedFilters[column] = values;
         }
       }
@@ -267,6 +395,14 @@ const getPayload = (
     columns: options.search ? [options.search.column] : columns,
     ...(options.search ? { search: options.search, limit: 1000 } : {}),
     applied_filters: appliedFilters,
+    ...(dependencyResult
+      ? getCascadeComparisonContext(
+          nativeFilters,
+          dataMaskSelected,
+          dependencyResult,
+          options.comparisonEnabled,
+        )
+      : {}),
     ...(Object.keys(filterOperators).length
       ? { filter_operators: filterOperators }
       : {}),
@@ -301,7 +437,11 @@ export const getSellerfoxCascadeFilterOptions = async (
   const request = SupersetClient.post({
     endpoint: `/api/v1/dashboard/${dashboardId}/cascade_filter_options`,
     jsonPayload: payload,
-  }).then(({ json }) => json.result as SellerfoxCascadeOptionsResponse);
+  })
+    .then(({ json }) => json.result as SellerfoxCascadeOptionsResponse)
+    .finally(() => {
+      if (requestCache.get(cacheKey) === request) requestCache.delete(cacheKey);
+    });
 
   requestCache.set(cacheKey, request);
   if (requestCache.size > 50) {
@@ -337,7 +477,11 @@ export const getCascadeFilterOptions = async (
   const request = SupersetClient.post({
     endpoint: `/api/v1/dashboard/${dashboardId}/cascade_filter_options`,
     jsonPayload: payload,
-  }).then(({ json }) => json.result as SellerfoxCascadeOptionsResponse);
+  })
+    .then(({ json }) => json.result as SellerfoxCascadeOptionsResponse)
+    .finally(() => {
+      if (requestCache.get(cacheKey) === request) requestCache.delete(cacheKey);
+    });
 
   requestCache.set(cacheKey, request);
   if (requestCache.size > 50) {

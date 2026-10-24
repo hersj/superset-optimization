@@ -1220,64 +1220,68 @@ test('preserves dependent filter value restored from URL when it exists in data'
   });
 });
 
-test('resets dependent filter to first item when value does not exist in data', async () => {
-  const setDataMaskMock = jest.fn();
-  const testProps = {
-    ...selectMultipleProps,
-    formData: {
-      ...selectMultipleProps.formData,
-      defaultToFirstItem: true,
-      multiSelect: false,
-      extraFormData: {
-        filters: [{ col: 'region', op: 'IN', val: ['North America'] }],
+test.each([
+  { label: 'selected historical-only value', value: ['unknown'] },
+  { label: 'explicit clear', value: null },
+  { label: 'empty multi-selection', value: [] },
+])(
+  'keeps $label when refreshed dependent options omit it',
+  async ({ value }) => {
+    const setDataMaskMock = jest.fn();
+    const testProps = {
+      ...selectMultipleProps,
+      formData: {
+        ...selectMultipleProps.formData,
+        defaultToFirstItem: true,
+        multiSelect: false,
+        extraFormData: {
+          filters: [{ col: 'region', op: 'IN', val: ['North America'] }],
+        },
       },
-    },
-    // 'unknown' does NOT exist in data — simulates a stale value after
-    // parent filter changed to a different selection
-    filterState: { value: ['unknown'] },
-  };
+      filterState: { value },
+    };
 
-  render(
-    // @ts-expect-error
-    <SelectFilterPlugin
+    render(
       // @ts-expect-error
-      {...transformProps(testProps)}
-      setDataMask={setDataMaskMock}
-      showOverflow={false}
-    />,
-    {
-      useRedux: true,
-      initialState: {
-        nativeFilters: {
-          filters: {
-            'test-filter': {
-              name: 'Test Filter',
+      <SelectFilterPlugin
+        // @ts-expect-error
+        {...transformProps(testProps)}
+        setDataMask={setDataMaskMock}
+        showOverflow={false}
+      />,
+      {
+        useRedux: true,
+        initialState: {
+          nativeFilters: {
+            filters: {
+              'test-filter': {
+                name: 'Test Filter',
+              },
             },
           },
-        },
-        dataMask: {
-          'test-filter': {
-            extraFormData: {},
-            filterState: {
-              value: ['unknown'],
+          dataMask: {
+            'test-filter': {
+              extraFormData: {},
+              filterState: {
+                value,
+              },
             },
           },
         },
       },
-    },
-  );
-
-  await waitFor(() => {
-    expect(setDataMaskMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        filterState: expect.objectContaining({
-          // Should reset to first item ('boy') since 'unknown' is not in data
-          value: ['boy'],
-        }),
-      }),
     );
-  });
-});
+
+    await waitFor(() => {
+      expect(setDataMaskMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          filterState: expect.objectContaining({
+            value,
+          }),
+        }),
+      );
+    });
+  },
+);
 
 function ControlledMatchFilter({
   saved,
@@ -1767,4 +1771,26 @@ test('field clear removes remembered fuzzy keyword and all values in one operati
     search: '',
   });
   expect(getMatchInput()).toHaveValue('');
+});
+
+test('default first item is still applied only for an uninitialized selection', async () => {
+  const setDataMask = jest.fn();
+  render(
+    <SelectFilterPlugin
+      {...transformProps({
+        ...selectMultipleProps,
+        formData: { ...selectMultipleProps.formData, defaultToFirstItem: true },
+        filterState: {},
+      })}
+      setDataMask={setDataMask}
+      showOverflow={false}
+    />,
+  );
+  await waitFor(() =>
+    expect(setDataMask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filterState: expect.objectContaining({ value: ['boy'] }),
+      }),
+    ),
+  );
 });
