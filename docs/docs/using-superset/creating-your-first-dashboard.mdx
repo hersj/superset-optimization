@@ -324,3 +324,8 @@ Pending filter changes are protected locally until the server save acknowledges 
 so refreshing immediately after clearing cannot restore the previous keyword. This
 short-lived recovery is scoped to the user, dashboard and native filter URL key;
 explicit permalink and legacy URL filter states keep their priority.
+
+
+Text filters accept search text directly in the selected-name field. The same field opens the checkbox options; it retains focus during option refresh and multi-selection. Exact matching remains manual, while enabled fuzzy matching selects every keyword match after Chinese input composition completes. Selected-name removal, bulk actions, clearing, and remembered filter state remain available.
+
+Horizontal single-metric SKU rankings display current values as 24px bars and time comparisons as value ticks in the same lane. The density settings include remembered bar thickness (16–32px); category spacing grows with thickness instead of compressing large result sets. Full SKU identities, selection keys, and browser position remain unchanged.

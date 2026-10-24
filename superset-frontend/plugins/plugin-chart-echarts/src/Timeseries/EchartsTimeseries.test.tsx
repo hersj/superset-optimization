@@ -646,7 +646,7 @@ test('compact ranking preferences apply immediately and survive remount', async 
   );
   const view = render(component);
   expect(screen.getByRole('button', { name: '紧凑' })).toBeInTheDocument();
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(36);
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(44);
   fireEvent.click(screen.getByRole('button', { name: '紧凑' }));
   expect(
     await screen.findByRole('checkbox', { name: '自动收窄名称列' }),
@@ -655,8 +655,12 @@ test('compact ranking preferences apply immediately and survive remount', async 
   expect(JSON.parse(localStorage.getItem(storageKey)!).autoNameWidth).toBe(
     false,
   );
+  const thickness = screen.getByRole('slider', { name: '柱体粗细' });
+  fireEvent.keyDown(thickness, { key: 'ArrowRight', keyCode: 39, which: 39 });
+  expect(JSON.parse(localStorage.getItem(storageKey)!).barThickness).toBe(26);
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(46);
   fireEvent.click(await screen.findByRole('checkbox', { name: '舒适行高' }));
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(52);
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(56);
   expect(JSON.parse(localStorage.getItem(storageKey)!).comfortable).toBe(true);
   view.unmount();
   render(component);
@@ -664,6 +668,7 @@ test('compact ranking preferences apply immediately and survive remount', async 
   expect(JSON.parse(localStorage.getItem(storageKey)!).autoNameWidth).toBe(
     false,
   );
-  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(52);
+  expect(mockEchart.mock.calls.at(-1)?.[0].minCategoryHeight).toBe(56);
+  expect(JSON.parse(localStorage.getItem(storageKey)!).barThickness).toBe(26);
   localStorage.removeItem(storageKey);
 });

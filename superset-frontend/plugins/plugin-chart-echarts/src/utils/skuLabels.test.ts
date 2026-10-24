@@ -17,6 +17,7 @@
  * under the License.
  */
 import { ChartProps } from '@superset-ui/core';
+import { init as initEcharts, setPlatformAPI } from 'echarts';
 import { GenericDataType } from '@apache-superset/core/common';
 import type { LegendState } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
@@ -27,6 +28,7 @@ import {
   restoreSkuRankingView,
 } from './skuLabels';
 import transformProps from '../Timeseries/transformProps';
+import { buildLegendGroupMetadata } from './series';
 import { DEFAULT_FORM_DATA } from '../Timeseries/constants';
 import {
   EchartsTimeseriesChartProps,
@@ -141,7 +143,7 @@ test('aligns every SKU name beside the bar without changing full query keys', ()
   expect(result.echartOptions.series).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
-        barMaxWidth: 10,
+        barMaxWidth: 24,
         labelLayout: expect.any(Function),
       }),
     ]),
@@ -282,33 +284,35 @@ test('legacy short aliases never combine different complete SKU series', () => {
   );
 });
 
-test('compact layout keeps 36px rows and 44px comparison rows with adjustable preferences', () => {
+test('compact layout reserves readable thickness for single and multiple metric rows', () => {
   const labels = { SKU1: 'SKU1', SKU2: 'SKU2' };
   const options = {
     yAxis: { data: Object.keys(labels) },
     series: [{ type: 'bar' }],
   };
-  expect(layoutSkuRanking(options, 900, labels, 1).minCategoryHeight).toBe(36);
-  expect(layoutSkuRanking(options, 900, labels, 2).minCategoryHeight).toBe(44);
+  expect(layoutSkuRanking(options, 900, labels, 1).minCategoryHeight).toBe(44);
+  expect(layoutSkuRanking(options, 900, labels, 2).minCategoryHeight).toBe(76);
   expect(
     layoutSkuRanking(options, 900, labels, 2, {
       comfortable: true,
       nameWidth: 40,
       range: false,
     }).minCategoryHeight,
-  ).toBe(52);
+  ).toBe(76);
   localStorage.setItem(
     'view',
     JSON.stringify({ comfortable: true, nameWidth: 45, range: true }),
   );
   expect(restoreSkuRankingView('view')).toEqual({
     comfortable: true,
+    barThickness: 24,
     nameWidth: 45,
     autoNameWidth: false,
     range: true,
   });
   expect(restoreSkuRankingView('other')).toEqual({
     comfortable: false,
+    barThickness: 24,
     nameWidth: 40,
     autoNameWidth: true,
     range: false,
@@ -353,3 +357,151 @@ test('automatic name columns stay compact on wide screens and preserve explicit 
   );
   expect(restoreSkuRankingView('small-width').nameWidth).toBe(15);
 });
+
+test('readable ranking uses 24px bars and comparison ticks without changing values or identities', () => {
+  const current = {
+    type: 'bar' as const,
+    name: 'sales',
+    data: [
+      [10, a],
+      [-5, b],
+      [null, c],
+    ],
+    label: { show: true },
+  };
+  const previous = {
+    type: 'bar' as const,
+    name: 'sales__1 month ago',
+    data: [
+      [20, a],
+      [0, b],
+      [null, c],
+    ],
+    label: { show: true },
+  };
+  const options = { yAxis: { data: [a, b, c] }, series: [current, previous] };
+  const metadata = buildLegendGroupMetadata([
+    { name: 'sales', currentLabel: 'sales' },
+    {
+      name: 'sales__1 month ago',
+      currentLabel: 'sales',
+      timeOffset: '1 month ago',
+    },
+  ]);
+  const before = JSON.stringify(options);
+  const layout = layoutSkuRanking(
+    options,
+    900,
+    { [a]: 'SKU A', [b]: 'SKU B', [c]: 'SKU C' },
+    2,
+    undefined,
+    metadata,
+  );
+  expect(layout.echartOptions.series).toEqual([
+    expect.objectContaining({
+      type: 'bar',
+      barWidth: 24,
+      barMaxWidth: 24,
+      data: current.data,
+    }),
+    expect.objectContaining({
+      type: 'scatter',
+      symbol: 'rect',
+      symbolSize: [3, 32],
+      data: previous.data,
+    }),
+  ]);
+  expect(layout.minCategoryHeight).toBeGreaterThanOrEqual(44);
+  expect(layout.echartOptions.yAxis).toMatchObject({ data: [a, b, c] });
+  expect(JSON.stringify(options)).toBe(before);
+});
+
+test('ranking bar thickness preference survives legacy state, reload and invalid storage', () => {
+  expect(restoreSkuRankingView('missing').barThickness).toBe(24);
+  localStorage.setItem(
+    'thick',
+    JSON.stringify({ barThickness: 28, nameWidth: 25 }),
+  );
+  expect(restoreSkuRankingView('thick')).toMatchObject({
+    barThickness: 28,
+    nameWidth: 25,
+  });
+  localStorage.setItem('thick', JSON.stringify({ barThickness: NaN }));
+  expect(restoreSkuRankingView('thick').barThickness).toBe(24);
+  localStorage.setItem('thick', JSON.stringify({ barThickness: 100 }));
+  expect(restoreSkuRankingView('thick').barThickness).toBe(32);
+});
+
+test.each([1, 12, 100])(
+  'real SVG rendering keeps 24px bars and 32px comparison ticks for %i SKU rows',
+  count => {
+    const names = Array.from({ length: count }, (_, i) => `SKU-${i}`);
+    const current = {
+      type: 'bar' as const,
+      name: 'current',
+      data: names.map(name => [10, name]),
+      itemStyle: { color: '#219abc' },
+    };
+    const previous = {
+      type: 'bar' as const,
+      name: 'previous',
+      data: names.map(name => [20, name]),
+      itemStyle: { color: '#556677' },
+    };
+    const groups = buildLegendGroupMetadata([
+      { name: 'current', currentLabel: 'sales' },
+      { name: 'previous', currentLabel: 'sales', timeOffset: '1 month ago' },
+    ]);
+    const layout = layoutSkuRanking(
+      {
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: names },
+        series: [current, previous],
+      },
+      900,
+      Object.fromEntries(names.map(name => [name, name])),
+      2,
+      undefined,
+      groups,
+    );
+    setPlatformAPI({
+      measureText: text => ({ width: String(text).length * 7 }),
+    });
+    const chart = initEcharts(null, undefined, {
+      renderer: 'svg',
+      ssr: true,
+      width: 900,
+      height: count * 44 + 100,
+    });
+    try {
+      chart.setOption(layout.echartOptions);
+      const display = chart.getZr().storage.getDisplayList(true);
+      const geometry = (color: string) =>
+        display
+          .filter(mark => 'fill' in mark.style && mark.style.fill === color)
+          .map(mark => {
+            const bounds = mark.getBoundingRect().clone();
+            const matrix = mark.getComputedTransform();
+            if (matrix) bounds.applyTransform(matrix);
+            return bounds;
+          });
+      const bars = geometry('#219abc');
+      const ticks = geometry('#556677');
+      expect(bars).toHaveLength(count);
+      expect(ticks).toHaveLength(count);
+      bars.forEach((bar, i) => {
+        expect(bar.height).toBeCloseTo(24);
+        expect(ticks[i].height).toBeCloseTo(32);
+        expect(ticks[i].width).toBeCloseTo(3);
+        expect(bar.y + bar.height / 2).toBeCloseTo(
+          ticks[i].y + ticks[i].height / 2,
+        );
+        if (i > 0)
+          expect(Math.abs(bar.y - bars[i - 1].y)).toBeGreaterThanOrEqual(44);
+      });
+      expect(chart.renderToSVGString()).not.toContain('NaN');
+    } finally {
+      chart.dispose();
+    }
+  },
+);

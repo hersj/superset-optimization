@@ -27,6 +27,8 @@ import type {
   YAXisComponentOption,
 } from 'echarts/types/dist/shared';
 
+import type { LegendGroupMetadata } from './series';
+
 export type SkuSelection = {
   names: string[];
   labels: Record<string, string>;
@@ -154,12 +156,14 @@ export function buildSkuSelection(
 
 export type SkuRankingView = {
   comfortable: boolean;
+  barThickness?: number;
   nameWidth: number;
   autoNameWidth?: boolean;
   range: boolean;
 };
 export const DEFAULT_SKU_RANKING_VIEW: SkuRankingView = {
   comfortable: false,
+  barThickness: 24,
   nameWidth: 40,
   autoNameWidth: true,
   range: false,
@@ -172,6 +176,11 @@ export function restoreSkuRankingView(key?: string): SkuRankingView {
     );
     return {
       comfortable: saved?.comfortable === true,
+      barThickness:
+        typeof saved?.barThickness === 'number' &&
+        Number.isFinite(saved.barThickness)
+          ? Math.max(16, Math.min(32, saved.barThickness))
+          : 24,
       range: saved?.range === true,
       // Older preferences saved 40 even when only density or range changed.
       autoNameWidth:
@@ -195,6 +204,7 @@ export function layoutSkuRanking(
   labels: Record<string, string>,
   barsPerRow: number,
   view: SkuRankingView = DEFAULT_SKU_RANKING_VIEW,
+  legendGroups?: LegendGroupMetadata,
 ) {
   const textWidth = (line: string) =>
     Array.from(line).reduce(
@@ -231,10 +241,24 @@ export function layoutSkuRanking(
         ),
     ),
   );
+  const barThickness = view.barThickness ?? 24;
+  const currentGroups = Object.entries(legendGroups?.groups ?? {}).filter(
+    ([name]) => legendGroups?.kinds[name] === 'current',
+  );
+  // A single ranked metric shares one lane; comparisons mark their original value.
+  const comparisons = new Set(
+    currentGroups.length === 1
+      ? Object.entries(legendGroups?.groups ?? {})
+          .filter(([name]) => legendGroups?.kinds[name] === 'comparison')
+          .flatMap(([, members]) => members)
+      : [],
+  );
+  const singleMetric = currentGroups.length === 1 || barsPerRow === 1;
+  const lanes = singleMetric ? 1 : barsPerRow;
   const minCategoryHeight = Math.max(
-    view.comfortable ? 52 : 36,
+    view.comfortable ? 56 : 44,
     lines * 14 + 8,
-    28 + barsPerRow * 8,
+    lanes * (barThickness + 8) + 12,
   );
   const [axis] = ensureIsArray(options.yAxis as YAXisComponentOption[]);
   const categories = (axis?.data ?? []).map(String);
@@ -281,15 +305,35 @@ export function layoutSkuRanking(
         top: ensureIsArray(options.legend)[0]?.show === false ? 12 : 36,
         bottom: 28,
       })),
-      series: ensureIsArray(options.series as SeriesOption[]).map(entry =>
-        entry.type === 'bar'
-          ? {
-              ...entry,
-              barMaxWidth: 10,
-              labelLayout: () => ({ x: width - 48, align: 'right' as const }),
-            }
-          : entry,
-      ),
+      series: ensureIsArray(options.series as SeriesOption[]).map(entry => {
+        const comparison = comparisons.has(String(entry.name));
+        if (entry.type !== 'bar' && !(comparison && entry.type === 'scatter'))
+          return entry;
+        return {
+          ...entry,
+          ...(comparison
+            ? {
+                type: 'scatter',
+                symbol: 'rect',
+                symbolSize: [3, barThickness + 8],
+                z: 5,
+              }
+            : {
+                barWidth: barThickness,
+                barMaxWidth: barThickness,
+                ...(singleMetric ? { barGap: '-100%' } : {}),
+              }),
+          labelLayout: (params: { rect: { y: number; height: number } }) => ({
+            x: width - 48,
+            y:
+              params.rect.y +
+              params.rect.height / 2 +
+              (comparisons.size ? (comparison ? 8 : -7) : 0),
+            align: 'right' as const,
+            verticalAlign: 'middle' as const,
+          }),
+        } as SeriesOption;
+      }),
     } as EChartsCoreOption,
   };
 }

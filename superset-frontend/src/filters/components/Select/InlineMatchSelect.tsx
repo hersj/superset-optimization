@@ -23,7 +23,6 @@ import { t } from '@apache-superset/core/translation';
 import {
   Button,
   Checkbox,
-  Input,
   RawAntdSelect as Select,
   type RefSelectProps,
 } from '@superset-ui/core/components';
@@ -67,12 +66,15 @@ const Field = styled.div`
   .ant-select-selection-overflow-item:not(
     .ant-select-selection-overflow-item-rest
   ) {
-    max-width: calc(100% - 60px);
+    max-width: calc(100% - 96px);
   }
   .ant-select-selection-item-content {
     max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .ant-select-selection-search {
+    min-width: 72px;
   }
   .match-selected .ant-select-clear {
     opacity: 1;
@@ -168,6 +170,7 @@ export default function InlineMatchSelect({
         : selected.filter(value => value !== option.value),
     );
     if (!multiple) active(false);
+    else field.current?.querySelector('input')?.focus();
   };
   const selectedVisible = visible.filter(option =>
     selected.includes(option.value),
@@ -189,7 +192,23 @@ export default function InlineMatchSelect({
     </MatchMode>
   ) : null;
   return (
-    <Field ref={field}>
+    <Field
+      ref={field}
+      onCompositionStartCapture={() => {
+        composing.current = true;
+        setIsComposing(true);
+      }}
+      onCompositionEnd={event => {
+        composing.current = false;
+        setIsComposing(false);
+        if (event.target instanceof HTMLInputElement)
+          onKeywordChange(event.target.value, true);
+      }}
+      onKeyDownCapture={event => {
+        if (composing.current && ['Enter', 'Escape'].includes(event.key))
+          event.stopPropagation();
+      }}
+    >
       {matchModeContainer && createPortal(modeToggle, matchModeContainer)}
       <Select
         ref={inputRef}
@@ -199,13 +218,25 @@ export default function InlineMatchSelect({
         value={multiple ? selected : selected[0]}
         options={options}
         disabled={disabled}
-        showSearch={false}
+        showSearch
+        showAction={['focus']}
+        searchValue={open ? keyword : ''}
+        autoClearSearchValue={false}
+        filterOption={false}
+        defaultActiveFirstOption={false}
+        onSearch={value => onKeywordChange(value, !composing.current)}
+        onInputKeyDown={event => {
+          if (event.key === 'Escape' && !composing.current) {
+            event.stopPropagation();
+            active(false);
+          }
+        }}
         allowClear={{
           clearIcon: <span aria-label={`${t('清空选择')}：${column}`}>×</span>,
         }}
         maxTagCount="responsive"
         maxTagPlaceholder={omitted => `+${omitted.length} …`}
-        placeholder={t('请选择')}
+        placeholder={t('输入或选择')}
         prefix={matchModeContainer ? undefined : modeToggle}
         open={open}
         onOpenChange={active}
@@ -231,31 +262,11 @@ export default function InlineMatchSelect({
           <Options
             style={{ width: popupWidth }}
             aria-label={`${t('匹配选项')}：${column}`}
+            onMouseDown={event => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
           >
-            <Input
-              value={keyword}
-              aria-label={`${t('搜索名称')}：${column}`}
-              placeholder={t('搜索名称')}
-              allowClear
-              disabled={disabled}
-              onFocus={() => onActiveChange(true)}
-              onChange={event =>
-                onKeywordChange(event.target.value, !composing.current)
-              }
-              onCompositionStart={() => {
-                composing.current = true;
-                setIsComposing(true);
-              }}
-              onCompositionEnd={event => {
-                composing.current = false;
-                setIsComposing(false);
-                onKeywordChange(event.currentTarget.value, true);
-              }}
-              onKeyDown={event => {
-                event.stopPropagation();
-                if (event.key === 'Escape' && !composing.current) active(false);
-              }}
-            />
             {multiple && (
               <div className="match-actions">
                 <Button

@@ -104,7 +104,11 @@ test('keyboard opens the native field and Escape closes the options', async () =
   expect(
     await screen.findByRole('checkbox', { name: '华南-US' }),
   ).toBeInTheDocument();
-  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+  fireEvent.keyDown(screen.getByRole('combobox'), {
+    key: 'Escape',
+    keyCode: 27,
+    which: 27,
+  });
   await waitFor(() => expect(field).toHaveAttribute('aria-expanded', 'false'));
 });
 
@@ -126,7 +130,7 @@ test('checkboxes and both bulk actions only change current matching values', asy
     within(panel).getByRole('button', { name: '取消全选' }),
   ).toBeDisabled();
   expect(changed).toHaveBeenLastCalledWith(['北美-US']);
-  fireEvent.change(screen.getByRole('textbox'), { target: { value: '北美' } });
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '北美' } });
   expect(
     within(panel).getByRole('checkbox', { name: '北美-US' }),
   ).toBeChecked();
@@ -136,7 +140,7 @@ test('checkboxes and both bulk actions only change current matching values', asy
 
 test('composition never emits committed pinyin and stale options cannot be selected', async () => {
   const { panel, view } = await open();
-  const input = screen.getByRole('textbox');
+  const input = screen.getByRole('combobox');
   fireEvent.compositionStart(input);
   fireEvent.change(input, { target: { value: 'huanan' } });
   expect(searched).toHaveBeenLastCalledWith('huanan', false);
@@ -255,4 +259,58 @@ test('selected names remain inside the field and clear resets both keyword and s
   expect(clear).toHaveBeenCalledTimes(1);
   expect(searched).not.toHaveBeenCalled();
   await waitFor(() => expect(changed).not.toHaveBeenCalled());
+});
+
+test('direct field input needs one click and no second search input', async () => {
+  render(<Harness />);
+  const input = screen.getByRole('combobox', { name: '搜索选项：shop' });
+  await userEvent.click(input);
+  expect(input).toHaveFocus();
+  expect(input).not.toHaveAttribute('readonly');
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: '华南-CA' } });
+  expect(searched).toHaveBeenLastCalledWith('华南-CA', true);
+  expect(input).toHaveValue('华南-CA');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('checkbox', { name: '华南-CA' }).closest('label'),
+    ).toBeVisible(),
+  );
+});
+
+test('direct field composition waits for Chinese and keeps focus during option refresh', async () => {
+  const view = render(<Harness />);
+  const input = screen.getByRole('combobox', { name: '搜索选项：shop' });
+  await userEvent.click(input);
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: 'huanan' } });
+  expect(searched).not.toHaveBeenCalledWith('huanan', true);
+  expect(screen.getByRole('button', { name: '全选当前结果' })).toBeDisabled();
+  fireEvent.change(input, { target: { value: '华南' } });
+  fireEvent.compositionEnd(input, { data: '华南' });
+  expect(searched).toHaveBeenLastCalledWith('华南', true);
+  view.rerender(<Harness loading />);
+  expect(input).toHaveFocus();
+  expect(input).toHaveValue('华南');
+  view.rerender(<Harness />);
+  expect(input).toHaveFocus();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('checkbox', { name: '华南-US' }).closest('label'),
+    ).toBeVisible(),
+  );
+});
+
+test('direct field keeps native focus and options open after multiple choice', async () => {
+  render(<Harness />);
+  const input = screen.getByRole('combobox', { name: '搜索选项：shop' });
+  await userEvent.click(input);
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: '华南-US' }),
+  );
+  expect(changed).toHaveBeenLastCalledWith(['北美-US', '华南-US']);
+  expect(input).toHaveFocus();
+  expect(input).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.change(input, { target: { value: '华南-UK' } });
+  expect(searched).toHaveBeenLastCalledWith('华南-UK', true);
 });

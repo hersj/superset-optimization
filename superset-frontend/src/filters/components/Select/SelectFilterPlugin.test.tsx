@@ -36,7 +36,7 @@ function getMatchInput() {
   const field = screen.getByRole('combobox', { name: '搜索选项：gender' });
   if (field.getAttribute('aria-expanded') !== 'true')
     fireEvent.mouseDown(field);
-  return screen.getByRole('textbox', { name: '搜索名称：gender' });
+  return field;
 }
 
 const selectMultipleProps = {

@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { act, render } from '@testing-library/react';
+import {
+  act,
+  render as renderWithProviders,
+} from '../../../../spec/helpers/testing-library';
 import { AxisType } from '@superset-ui/core';
 import type { EChartsCoreOption } from 'echarts/core';
-import type { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode, ReactElement } from 'react';
 import type { EchartsHandler, EchartsProps } from '../types';
 import EchartsTimeseries from './EchartsTimeseries';
 import type { TimeseriesChartTransformedProps } from './types';
@@ -39,6 +42,9 @@ jest.mock(
 jest.mock('react-js-cron', () => ({ __esModule: true, default: () => null }), {
   virtual: true,
 });
+
+const render = (ui: ReactElement) =>
+  renderWithProviders(ui, { useRedux: true });
 
 const mockDispatchAction = jest.fn();
 const mockEchart = jest.fn();

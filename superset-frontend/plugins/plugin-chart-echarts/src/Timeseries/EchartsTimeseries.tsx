@@ -134,6 +134,7 @@ export default function EchartsTimeseries({
             ),
             skuBarsPerRow,
             rankingView,
+            legendGroups,
           )
         : undefined,
     [
@@ -143,6 +144,7 @@ export default function EchartsTimeseries({
       minCategoryHeight,
       skuBarsPerRow,
       rankingView,
+      legendGroups,
     ],
   );
   const changeRankingView = (next: typeof rankingView) => {
@@ -604,6 +606,20 @@ export default function EchartsTimeseries({
                       ...rankingView,
                       nameWidth: value as number,
                       autoNameWidth: false,
+                    })
+                  }
+                />
+                <div>柱体粗细：{rankingView.barThickness ?? 24}px</div>
+                <Slider
+                  min={16}
+                  max={32}
+                  step={2}
+                  ariaLabelForHandle="柱体粗细"
+                  value={rankingView.barThickness ?? 24}
+                  onChange={value =>
+                    changeRankingView({
+                      ...rankingView,
+                      barThickness: value as number,
                     })
                   }
                 />
