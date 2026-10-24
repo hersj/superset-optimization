@@ -390,12 +390,22 @@ test('dense matrices use one native scroll surface with all categories retained'
     data: expect.any(Array),
     inverse: true,
   });
-  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(20);
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
+    20,
+  );
   expect(result.minCategoryHeight).toBeGreaterThanOrEqual(32);
   expect(result.minCategoryHeight).toBeLessThanOrEqual(40);
   expect(result.echartOptions.dataZoom).toEqual([]);
-  expect(matrixSeries(result).flatMap(series => series.data ?? [])).toHaveLength(20);
-  expect(getScrollableChartHeight(result.echartOptions, 600, result.minCategoryHeight!)).toBeGreaterThan(600);
+  expect(
+    matrixSeries(result).flatMap(series => series.data ?? []),
+  ).toHaveLength(20);
+  expect(
+    getScrollableChartHeight(
+      result.echartOptions,
+      600,
+      result.minCategoryHeight!,
+    ),
+  ).toBeGreaterThan(600);
 });
 
 test('matrix zoom settings no longer add range handles or wheel zoom', () => {
@@ -409,7 +419,9 @@ test('short viewports retain readable row geometry without filtering rows', () =
   input.height = 100;
   const result = barTransformProps(input);
   expect(result.minCategoryHeight).toBeGreaterThanOrEqual(32);
-  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(20);
+  expect((result.echartOptions.yAxis as { data: string[] }).data).toHaveLength(
+    20,
+  );
   expect(result.echartOptions.dataZoom).toEqual([]);
 });
 
@@ -420,7 +432,9 @@ test('visible metric slots determine matrix row height without stretching bars',
   const result = barTransformProps(input);
   expect(result.minCategoryHeight).toBeGreaterThanOrEqual(72);
   expect(result.minCategoryHeight).toBeLessThanOrEqual(96);
-  expect(matrixSeries(result).flatMap(series => series.data ?? [])).toHaveLength(60);
+  expect(
+    matrixSeries(result).flatMap(series => series.data ?? []),
+  ).toHaveLength(60);
   expect(rectangle(matrixSeries(result)[0], 1).height).toBeLessThanOrEqual(22);
 });
 
@@ -441,13 +455,24 @@ test('hiding metrics immediately reduces native matrix row height', () => {
 
 test('raw-value comparison shares its metric slot as a thin tick', () => {
   const input = props(
-    { orientation: OrientationType.Horizontal, time_compare: ['1 month ago'], timeCompare: ['1 month ago'] },
+    {
+      orientation: OrientationType.Horizontal,
+      time_compare: ['1 month ago'],
+      timeCompare: ['1 month ago'],
+    },
     [{ month: 'Sep', 'sales, A': 100, 'sales, 1 month ago, A': 80 }],
-    { 'sales, A': ['sales', 'A'], 'sales, 1 month ago, A': ['sales', '1 month ago', 'A'] },
+    {
+      'sales, A': ['sales', 'A'],
+      'sales, 1 month ago, A': ['sales', '1 month ago', 'A'],
+    },
   );
   const result = barTransformProps(input);
-  const current = matrixSeries(result).find(series => series.name === 'sales, A')!;
-  const comparison = matrixSeries(result).find(series => series.name === 'sales, 1 month ago, A')!;
+  const current = matrixSeries(result).find(
+    series => series.name === 'sales, A',
+  )!;
+  const comparison = matrixSeries(result).find(
+    series => series.name === 'sales, 1 month ago, A',
+  )!;
   const bar = rectangle(current, 100);
   const tick = rectangle(comparison, 80);
   expect(tick.width).toBe(3);
@@ -459,15 +484,25 @@ test('raw-value comparison shares its metric slot as a thin tick', () => {
 test('native matrix scroll retains its first category after refresh or reordered rows', () => {
   const result = barTransformProps(denseMatrix());
   const options = result.echartOptions;
-  const height = getScrollableChartHeight(options, 600, result.minCategoryHeight!);
+  const height = getScrollableChartHeight(
+    options,
+    600,
+    result.minCategoryHeight!,
+  );
   const key = 'matrix-native-scroll-test';
   try {
-    persistSkuScroll(options, height, 300, key);
-    expect(restoreSkuScroll(options, height, 600, key)).toBeCloseTo(300);
+    persistSkuScroll(options, height, 100, key);
+    expect(restoreSkuScroll(options, height, 600, key)).toBeCloseTo(100);
     const anchor = JSON.parse(localStorage.getItem(`${key}:anchor`)!);
     expect(anchor.value).toMatch(/^Brand /);
-    const reversed = { ...options, yAxis: { ...(options.yAxis as object), data: [...(options.yAxis as { data: string[] }).data].reverse() } };
-    expect(restoreSkuScroll(reversed, height, 100, key)).not.toBe(300);
+    const reversed = {
+      ...options,
+      yAxis: {
+        ...(options.yAxis as object),
+        data: [...(options.yAxis as { data: string[] }).data].reverse(),
+      },
+    };
+    expect(restoreSkuScroll(reversed, height, 100, key)).not.toBe(100);
   } finally {
     localStorage.removeItem(`${key}:scroll`);
     localStorage.removeItem(`${key}:anchor`);

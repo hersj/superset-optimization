@@ -20,6 +20,7 @@ import type {
   BarSeriesOption,
   CustomSeriesOption,
   CustomSeriesRenderItem,
+  LegendComponentOption,
   SeriesOption,
 } from 'echarts';
 import type { CallbackDataParams } from 'echarts/types/src/util/types';
@@ -84,6 +85,9 @@ export function transformBarMatrix(
   const yIndexes = new Map<DataRecordValue, number>();
   const slots = new Map<string, number>();
   const domains = new Map<string, [number, number]>();
+  const selected = ensureIsArray(
+    base.echartOptions.legend as LegendComponentOption[],
+  )[0]?.selected;
   const sourceSeries = ensureIsArray(
     base.echartOptions.series as SeriesOption[],
   ).filter(
@@ -104,6 +108,7 @@ export function transformBarMatrix(
     const metric =
       metrics.find(
         metric =>
+          dimensions.includes(getMetricLabel(metric)) ||
           originalName === getMetricLabel(metric) ||
           originalName.startsWith(`${getMetricLabel(metric)}, `),
       ) ?? metrics[0];
@@ -113,8 +118,9 @@ export function transformBarMatrix(
       ['percentage', 'ratio'].includes(String(formData.comparisonType)),
     );
     const domainKey = JSON.stringify([getMetricLabel(metric), rate]);
-    const slotKey = JSON.stringify([getMetricLabel(metric), offset]);
-    if (!slots.has(slotKey)) slots.set(slotKey, slots.size);
+    const visible = selected?.[name] !== false;
+    // Raw-value comparisons share a metric's scale and slot; rates have their own unit.
+    if (visible && !slots.has(domainKey)) slots.set(domainKey, slots.size);
     const domain = domains.get(domainKey) ?? [0, 0];
     const points: MatrixBarDatum[] = [];
     (
@@ -129,8 +135,10 @@ export function transformBarMatrix(
         xValues.push(x);
       }
       if (typeof value !== 'number' || !Number.isFinite(value)) return;
-      domain[0] = Math.min(domain[0], value);
-      domain[1] = Math.max(domain[1], value);
+      if (visible) {
+        domain[0] = Math.min(domain[0], value);
+        domain[1] = Math.max(domain[1], value);
+      }
       points.push({
         value: [xIndexes.get(x)!, yIndexes.get(y)!, value],
         dimensionValues: [x, y],
@@ -155,7 +163,7 @@ export function transformBarMatrix(
       source,
       name,
       domainKey,
-      slot: slots.get(slotKey)!,
+      comparison: Boolean(offset && !rate),
       points,
       formatter,
     };
@@ -163,7 +171,8 @@ export function transformBarMatrix(
   const horizontal = formData.orientation === OrientationType.Horizontal;
   const slotCount = Math.max(slots.size, 1);
   const series: CustomSeriesOption[] = entries.map(
-    ({ source, name, domainKey, slot, points, formatter }) => {
+    ({ source, name, domainKey, comparison, points, formatter }) => {
+      const slot = slots.get(domainKey) ?? 0;
       const [min, max] = domains.get(domainKey)!;
       const unit = Math.max(-min, max) || 1;
       const lower = min / unit;
@@ -176,21 +185,29 @@ export function transformBarMatrix(
         const cellWidth = Math.abs(cell[0]);
         const cellHeight = Math.abs(cell[1]);
         const left = center[0] - cellWidth * 0.4;
-        const top = center[1] - cellHeight * 0.36;
+        const top = center[1] - cellHeight / 2 + 6;
         const width = cellWidth * 0.8;
-        const height = cellHeight * (formData.showValue ? 0.62 : 0.72);
+        const height = Math.max(1, cellHeight - 12);
         const slotWidth = horizontal ? width : width / slotCount;
         const slotHeight = horizontal ? height / slotCount : height;
         const x = left + (horizontal ? 0 : slot * slotWidth);
         const y = top + (horizontal ? slot * slotHeight : 0);
+        const thickness = Math.min(
+          18,
+          (horizontal ? slotHeight : slotWidth) * 0.7,
+        );
+        const barLength =
+          horizontal && formData.showValue
+            ? slotWidth - Math.min(56, slotWidth * 0.35)
+            : slotWidth;
         const zero = horizontal
-          ? x + (-lower / divisor) * slotWidth
+          ? x + (-lower / divisor) * barLength
           : y + (upper / divisor) * slotHeight;
         const end =
           zero +
           (horizontal ? 1 : -1) *
             (value / unit / divisor) *
-            (horizontal ? slotWidth : slotHeight);
+            (horizontal ? barLength : slotHeight);
         return {
           type: 'group',
           children: [
@@ -206,39 +223,48 @@ export function transformBarMatrix(
               type: 'rect',
               shape: horizontal
                 ? {
-                    x: Math.min(zero, end),
-                    y: y + slotHeight * 0.18,
-                    width: Math.abs(end - zero),
-                    height: slotHeight * 0.64,
-                    r: theme.borderRadiusXS,
+                    x: comparison ? end - 1.5 : Math.min(zero, end),
+                    y: y + (slotHeight - thickness) / 2 - (comparison ? 2 : 0),
+                    width: comparison ? 3 : Math.abs(end - zero),
+                    height: thickness + (comparison ? 4 : 0),
+                    r: comparison ? 0 : theme.borderRadiusXS,
                   }
                 : {
-                    x: x + slotWidth * 0.18,
-                    y: Math.min(zero, end),
-                    width: slotWidth * 0.64,
-                    height: Math.abs(end - zero),
-                    r: theme.borderRadiusXS,
+                    x: x + (slotWidth - thickness) / 2 - (comparison ? 2 : 0),
+                    y: comparison ? end - 1.5 : Math.min(zero, end),
+                    width: thickness + (comparison ? 4 : 0),
+                    height: comparison ? 3 : Math.abs(end - zero),
+                    r: comparison ? 0 : theme.borderRadiusXS,
                   },
               style: {
                 fill: value < 0 ? theme.colorError : api.visual('color'),
               },
               transition: ['shape'],
             },
-            ...(formData.showValue && slotWidth > 24 && slotHeight > 22
+            ...(formData.showValue &&
+            !comparison &&
+            slotWidth > 24 &&
+            slotHeight > 22
               ? [
                   {
                     type: 'text' as const,
-                    x: x + slotWidth / 2,
-                    y: horizontal ? y + slotHeight : y + height + 3,
+                    x: horizontal ? x + slotWidth : x + slotWidth / 2,
+                    y: horizontal ? y + slotHeight / 2 : y + height + 3,
                     silent: true,
                     style: {
                       text: formatter(value),
                       fill: theme.colorText,
                       fontSize: theme.fontSizeSM,
                       fontFamily: theme.fontFamily,
-                      align: 'center' as const,
-                      verticalAlign: 'top' as const,
-                      width: slotWidth - 4,
+                      align: horizontal
+                        ? ('right' as const)
+                        : ('center' as const),
+                      verticalAlign: horizontal
+                        ? ('middle' as const)
+                        : ('top' as const),
+                      width: horizontal
+                        ? Math.min(56, slotWidth * 0.35) - 2
+                        : slotWidth - 4,
                       overflow: 'truncate' as const,
                     },
                   },
@@ -250,6 +276,7 @@ export function transformBarMatrix(
       return {
         name,
         type: 'custom',
+        z: comparison ? 5 : 2,
         renderItem,
         data: points,
         encode: { x: 0, y: 1, tooltip: 2 },
@@ -265,8 +292,7 @@ export function transformBarMatrix(
       };
     },
   );
-  const visibleRows = Math.max(1, Math.floor((chartProps.height - 110) / 88));
-  const scrollRows = yValues.length > visibleRows;
+  const minCategoryHeight = horizontal ? Math.max(36, slotCount * 24 + 12) : 36;
   const label = (value: DataRecordValue) =>
     value == null ? t('NULL') : String(value);
   const xLabel = (value: DataRecordValue) =>
@@ -282,6 +308,7 @@ export function transformBarMatrix(
       orientation: formData.orientation,
       showExtraControls: false,
     },
+    minCategoryHeight,
     matrixDimensions: [
       xColumn === '__timestamp' ? formData.granularitySqla : xColumn,
       yColumn,
@@ -294,8 +321,8 @@ export function transformBarMatrix(
       grid: {
         top: formData.showLegend ? 65 : 35,
         left: 25,
-        right: formData.zoomable || scrollRows ? 45 : 25,
-        bottom: formData.zoomable ? 65 : 25,
+        right: 16,
+        bottom: 16,
         containLabel: true,
       },
       xAxis: {
@@ -322,7 +349,12 @@ export function transformBarMatrix(
         nameGap: 16,
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: theme.colorText },
+        axisLabel: {
+          color: theme.colorText,
+          width: Math.min(200, chartProps.width * 0.25),
+          overflow: 'truncate',
+          interval: 0,
+        },
         splitLine: {
           show: true,
           lineStyle: { color: theme.colorBorderSecondary },
@@ -347,49 +379,7 @@ export function transformBarMatrix(
           ]);
         },
       },
-      dataZoom: [
-        ...(formData.zoomable
-          ? [
-              {
-                type: 'slider' as const,
-                xAxisIndex: 0,
-                bottom: 0,
-                filterMode: 'weakFilter' as const,
-              },
-            ]
-          : []),
-        ...(formData.zoomable || scrollRows
-          ? [
-              {
-                id: 'matrix-rows',
-                type: 'slider' as const,
-                yAxisIndex: 0,
-                right: 0,
-                filterMode: 'weakFilter' as const,
-                ...(scrollRows && {
-                  startValue: 0,
-                  endValue: visibleRows - 1,
-                  zoomLock: false,
-                  brushSelect: false,
-                  showDetail: false,
-                }),
-              },
-            ]
-          : []),
-        ...(scrollRows
-          ? [
-              {
-                type: 'inside' as const,
-                yAxisIndex: 0,
-                filterMode: 'weakFilter' as const,
-                zoomLock: false,
-                zoomOnMouseWheel: false,
-                moveOnMouseWheel: true,
-                moveOnMouseMove: true,
-              },
-            ]
-          : []),
-      ],
+      dataZoom: [],
     },
   };
 }
