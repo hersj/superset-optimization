@@ -410,7 +410,7 @@ export function extractDataTotalValues(
         ) {
           return prev;
         }
-        if (legendState && !legendState[curr]) {
+        if (legendState?.[curr] === false) {
           return prev;
         }
         const value = datum[curr] || 0;
@@ -441,7 +441,7 @@ export function extractShowValueIndexes(
     series.forEach((entry, seriesIndex) => {
       const { data = [] } = entry;
       (data as [any, number][]).forEach((datum, dataIndex) => {
-        if (entry.id && legendState && !legendState[entry.id]) {
+        if (entry.id && legendState?.[entry.id] === false) {
           return;
         }
         if (!onlyTotal && datum[isHorizontal ? 0 : 1] !== null) {
@@ -470,6 +470,7 @@ export function extractPeriodStackValues(
   opts: Parameters<typeof extractShowValueIndexes>[1] & {
     timeCompare: string[];
     percentageThreshold: number;
+    stackId?: (entry: SeriesOption) => string;
   },
 ): Record<
   string,
@@ -479,8 +480,9 @@ export function extractPeriodStackValues(
     showValueIndexes: number[];
   }
 > {
-  if (!opts.stack || !opts.timeCompare.length) return {};
+  if (!opts.stack || (!opts.timeCompare.length && !opts.stackId)) return {};
   const periodOf = (entry: SeriesOption) =>
+    opts.stackId?.(entry) ??
     getTimeCompareStackId('obs', opts.timeCompare, entry.name);
   return Object.fromEntries(
     [...new Set(series.map(periodOf))].map(period => {
@@ -751,7 +753,7 @@ export function extractSeries(
               getTimeCompareStackId('obs', timeCompare, name)
             ] ?? totalStackedValue;
           value =
-            periodTotals && denominator === 0
+            denominator === 0 || !Number.isFinite(denominator)
               ? null
               : ((value || 0) as number) / denominator;
         }

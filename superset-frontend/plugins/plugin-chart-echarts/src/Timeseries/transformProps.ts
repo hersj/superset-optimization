@@ -363,18 +363,83 @@ export default function transformProps(
   const rebasedData = skuSelection
     ? skuData.filter(row => visibleSkus.has(String(row[xAxisLabel] ?? '')))
     : skuData;
+  const extraMetricLabels = extractExtraMetrics(chartProps.rawFormData).map(
+    getMetricLabel,
+  );
+  const metricLabels = Array.from(
+    new Set(
+      [
+        ...ensureIsArray(metrics).map(getMetricLabel),
+        ...extraMetricLabels,
+      ].filter(Boolean),
+    ),
+  ).sort((left, right) => right.length - left.length);
+  const getCurrentLegendLabel = (seriesName: string): string => {
+    if (array.includes(seriesName) && metricLabels.length === 1)
+      return metricLabels[0];
+    const originalName = getOriginalSeries(seriesName, array);
+    if (groupBy.length === 0) return originalName;
+    return (
+      metricLabels.find(
+        metric =>
+          originalName === metric || originalName.startsWith(`${metric}, `),
+      ) ?? originalName.split(',')[0].trim()
+    );
+  };
+  const inverted = invert(verboseMap);
+  const stackLegendState =
+    !colorByPrimaryAxis && (array.length || groupBy.length)
+      ? resolveLegendState(
+          legendState,
+          buildLegendGroupMetadata(
+            Object.keys(rebasedData[0] ?? {})
+              .filter(
+                name =>
+                  name !== xAxisLabel &&
+                  !extraMetricLabels.includes(name) &&
+                  extractForecastSeriesContext(name).type ===
+                    ForecastSeriesEnum.Observation,
+              )
+              .map(name => ({
+                name,
+                currentLabel: getCurrentLegendLabel(name),
+                timeOffset: array.includes(name)
+                  ? name
+                  : getTimeOffset({ name }, array),
+              })),
+            Boolean(customPeriod),
+          ),
+          customPeriod?.comparisonTimeRange,
+        )
+      : legendState;
+  const stackDimensionIndex =
+    stack === StackControlsValue.Stack && stackDimension
+      ? ensureIsArray(chartProps.rawFormData.groupby).indexOf(stackDimension)
+      : -1;
+  const stackIdForSeries = (name: string) => {
+    const period = getTimeCompareStackId('obs', array, name);
+    if (stackDimensionIndex < 0) return period;
+    const columns =
+      labelMap[name] ??
+      labelMap[inverted[name]] ??
+      labelMap[getOriginalSeries(name, array)];
+    const dimension =
+      columns?.[
+        Math.max(0, columns.length - groupBy.length) + stackDimensionIndex
+      ];
+    return dimension === undefined
+      ? period
+      : JSON.stringify([period, dimension]);
+  };
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
     rebasedData,
     {
       stack,
       percentageThreshold,
       xAxisCol: xAxisLabel,
-      legendState,
+      legendState: stackLegendState,
       timeCompare: array,
     },
-  );
-  const extraMetricLabels = extractExtraMetrics(chartProps.rawFormData).map(
-    getMetricLabel,
   );
 
   const isMultiSeries = groupBy.length || metrics?.length > 1;
@@ -395,22 +460,26 @@ export default function transformProps(
       xAxisSortSeriesAscending: isMultiSeries ? xAxisSortAsc : undefined,
       xAxisType,
       timeCompare: array,
-      legendState,
+      legendState: stackLegendState,
     },
   );
   const showValueIndexes = extractShowValueIndexes(rawSeries, {
     stack,
     onlyTotal,
     isHorizontal,
-    legendState,
+    legendState: stackLegendState,
   });
   const periodStackValues = extractPeriodStackValues(rawSeries, {
     stack,
     onlyTotal,
     isHorizontal,
-    legendState,
+    legendState: stackLegendState,
     timeCompare: array,
     percentageThreshold,
+    stackId:
+      stackDimensionIndex >= 0
+        ? entry => stackIdForSeries(String(entry.name))
+        : undefined,
   });
   const seriesContexts = extractForecastSeriesContexts(
     rawSeries.map(series => series.name as string),
@@ -451,7 +520,6 @@ export default function transformProps(
     ...chartProps.rawFormData,
     time_compare: array,
   };
-  const inverted = invert(verboseMap);
 
   // 图例是展示层分组；真实系列名仍保留维度，便于 tooltip、颜色和 ECharts 交互使用。
   const metricLegendNames = Array.from(
@@ -563,7 +631,7 @@ export default function transformProps(
         markerSize,
         areaOpacity: opacity,
         seriesType,
-        legendState,
+        legendState: stackLegendState,
         stack,
         formatter: forcePercentFormatter
           ? percentFormatter
@@ -577,7 +645,7 @@ export default function transformProps(
         totalStackedValues: sortedTotalValues,
         showValueIndexes,
         thresholdValues,
-        ...periodStackValues[getTimeCompareStackId('obs', array, entry.name)],
+        ...periodStackValues[stackIdForSeries(String(entry.name))],
         richTooltip,
         sliceId,
         isHorizontal,
@@ -590,6 +658,11 @@ export default function transformProps(
       },
     );
     if (transformedSeries) {
+      if (
+        stackDimensionIndex >= 0 &&
+        (transformedSeries.type === 'bar' || transformedSeries.type === 'line')
+      )
+        transformedSeries.stack = stackIdForSeries(String(entry.name));
       if (stack === StackControlsValue.Stream) {
         // bug in Echarts - `stackStrategy: 'all'` doesn't work with nulls, so we cast them to 0
         series.push({
@@ -730,23 +803,6 @@ export default function transformProps(
       }
     });
 
-  if (
-    stack === StackControlsValue.Stack &&
-    stackDimension &&
-    chartProps.rawFormData.groupby
-  ) {
-    const idxSelectedDimension =
-      formData.metrics.length > 1
-        ? 1
-        : 0 + chartProps.rawFormData.groupby.indexOf(stackDimension);
-    for (const s of series) {
-      if (s.id) {
-        const columnsArr = labelMap[s.id];
-        (s as any).stack = columnsArr[idxSelectedDimension];
-      }
-    }
-  }
-
   // axis bounds need to be parsed to replace incompatible values with undefined
   const [xAxisMin, xAxisMax] = (xAxisBounds || []).map(parseAxisBound);
   let [yAxisMin, yAxisMax] = (yAxisBounds || []).map(parseAxisBound);
@@ -839,26 +895,6 @@ export default function transformProps(
   const shouldGroupLogicalLegends =
     !colorByPrimaryAxis && (hasTimeCompare || groupBy.length > 0);
   const annotationLabels = new Set(extractAnnotationLabels(annotationLayers));
-  const metricLabels = Array.from(
-    new Set(
-      [
-        ...ensureIsArray(metrics).map(getMetricLabel),
-        ...extraMetricLabels,
-      ].filter(Boolean),
-    ),
-  ).sort((left, right) => right.length - left.length);
-  const getCurrentLegendLabel = (seriesName: string): string => {
-    if (customPeriod && array.includes(seriesName) && metricLabels.length === 1)
-      return metricLabels[0];
-    const originalName = getOriginalSeries(seriesName, array);
-    if (groupBy.length === 0) return originalName;
-    return (
-      metricLabels.find(
-        metric =>
-          originalName === metric || originalName.startsWith(`${metric}, `),
-      ) ?? originalName.split(',')[0].trim()
-    );
-  };
   const legendInputs: LegendGroupInput[] = series
     .filter(
       entry =>

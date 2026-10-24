@@ -143,6 +143,9 @@ function props(
         ? [query(rows(offsets))]
         : [query(rows(offsets)), query(rows(offsets, 'other-'))],
   });
+  (result as EchartsTimeseriesChartProps).legendState = Object.fromEntries(
+    offsets.map(offset => [`comparison:${offset}`, true]),
+  );
   return result as EchartsTimeseriesChartProps | EchartsMixedTimeseriesProps;
 }
 function render(
@@ -351,7 +354,7 @@ function labelsOf(
 }
 
 function dimensionProps(missingLabel = false) {
-  const offset = periods[0];
+  const [offset] = periods;
   const row: Record<string, unknown> = { sku: 'SKU' };
   const label_map: Record<string, string[]> = { sku: ['sku'] };
   [
@@ -477,3 +480,44 @@ test('Expand uses the same remembered visible period selection as the final lege
     )[0],
   ).toBe(1);
 });
+
+test('Expand without comparison keeps an all-zero or missing stack NULL instead of non-finite', () => {
+  const input = props('ordinary', [], true);
+  input.queriesData = [query([{ sku: 'empty', sales: 0, profit: null }])];
+  const entries = timeseries(input as never).echartOptions
+    .series as BarSeriesOption[];
+  expect(entries.map(entry => (entry.data![0] as unknown[])[0])).toEqual([
+    null,
+    null,
+  ]);
+});
+
+test.each(['ordinary', 'mixed'] as const)(
+  '%s bare native offsets obey the remembered current parent selection',
+  kind => {
+    const [offset] = periods;
+    const input = props(kind, [offset], false, true);
+    input.formData.metrics = ['sales'];
+    input.rawFormData.metrics = ['sales'];
+    input.queriesData[0] = query([{ sku: 'SKU', sales: 40, [offset]: 10 }]);
+    input.legendState = {
+      [kind === 'ordinary' ? 'current:sales' : 'current:sales (Query A)']:
+        false,
+      [`comparison:${offset}`]: true,
+    };
+    const output = (kind === 'ordinary' ? timeseries : mixed)(input as never);
+    const entries = output.echartOptions.series as BarSeriesOption[];
+    const current = entries.find(
+      entry =>
+        entry.name === (kind === 'ordinary' ? 'sales' : 'sales (Query A)'),
+    )!;
+    const historical = entries.find(
+      entry =>
+        entry.name === (kind === 'ordinary' ? offset : `${offset} (Query A)`),
+    )!;
+    const selected = ensureIsArray(output.echartOptions.legend)[0]?.selected;
+    expect(selected?.[String(current.name)]).toBe(false);
+    expect(selected?.[String(historical.name)]).toBe(false);
+    expect(historical.itemStyle?.borderType).toBe('dashed');
+  },
+);

@@ -301,6 +301,132 @@ export default function transformProps(
     timeGrainSqla,
     String(chartProps.rawFormData.comparison_type ?? 'values'),
   );
+  const MetricDisplayNameA: string =
+    getMetricDisplayName(metrics[0], verboseMap) || '';
+  const MetricDisplayNameB: string =
+    getMetricDisplayName(metricsB[0], verboseMap) || '';
+  const rebasedDataB = maskCustomPeriodCurrentData(
+    rebaseForecastDatum(data2, verboseMap),
+    xAxisLabel,
+    xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
+    timeGrainSqla,
+    String(chartProps.rawFormData.comparison_type_b ?? 'values'),
+  );
+  const hasTimeCompare = allTimeCompare.length > 0;
+  const displayNameForSeries = (entryName: string, primary: boolean) => {
+    const grouped = primary ? groupby.length > 0 : groupbyB.length > 0;
+    const metric = primary ? MetricDisplayNameA : MetricDisplayNameB;
+    const query = primary ? 'Query A' : 'Query B';
+    const metricPart = showQueryIdentifiers ? `${metric} (${query})` : metric;
+    let name = grouped
+      ? entryName.includes(metricPart)
+        ? entryName
+        : `${metricPart}, ${entryName}`
+      : showQueryIdentifiers
+        ? `${entryName} (${query})`
+        : entryName;
+    const timeOffset = allTimeCompare.some(offset => entryName.includes(offset))
+      ? getTimeOffset({ name: entryName }, allTimeCompare)
+      : undefined;
+    if (timeOffset && !name.includes(timeOffset))
+      name = `${name}, ${timeOffset}`;
+    return name;
+  };
+  const legendInputForSeries = (
+    entryName: string,
+    primary: boolean,
+    name = displayNameForSeries(entryName, primary),
+  ): LegendGroupInput => {
+    const metric = primary ? MetricDisplayNameA : MetricDisplayNameB;
+    const query = primary ? 'Query A' : 'Query B';
+    return {
+      name,
+      currentLabel:
+        (primary ? groupby.length > 0 : groupbyB.length > 0) ||
+        allTimeCompare.includes(entryName)
+          ? showQueryIdentifiers
+            ? `${metric} (${query})`
+            : metric
+          : getOriginalSeries(name, allTimeCompare),
+      timeOffset: allTimeCompare.includes(entryName)
+        ? entryName
+        : getTimeOffset({ name }, allTimeCompare) || undefined,
+    };
+  };
+  const resolveMixedLegendState = (metadata: LegendGroupMetadata) =>
+    hasTimeCompare
+      ? resolveLegendState(
+          legendState,
+          metadata,
+          customPeriod?.comparisonTimeRange,
+        )
+      : (() => {
+          /*
+           * 功能审计（可重写规格）：混合图关闭时间对比时的图例状态投影
+           * - 功能目的与触发方式：时间对比从开启切换为关闭后，仍按当前图的真实维度系列恢复用户刚才的当前指标选择。
+           * - 输入契约：legendState 可能同时包含 current:<指标>、真实代表系列和维度成员键；stateLegendGroups 只包含当前期真实系列。
+           * - 输出契约：保留原状态，并把明确的当前逻辑组状态展开到其所有真实成员；没有逻辑组状态时保留每个维度成员自己的状态。
+           * - 处理流程：稳定状态键优先，其次代表系列键和显示标签键；找到逻辑状态时覆盖该组全部成员，未找到时保留维度成员自己的状态，避免把无对比维度的独立选择合并成一个默认值。
+           * - 业务规则：关闭对比只移除 offset 图例，不恢复当前指标默认值；新增成员没有旧状态时继续交给 ECharts 默认开启。
+           * - 状态与副作用：纯内存映射，不发查询、不写 Redux、数据库、localStorage 或看板配置。
+           * - 异常与边界：空 legendState 或没有成员时返回副本；Query A/B 同名指标按现有分组规则共同投影。
+           * - 不变量与约束：无对比混合图继续显示维度图例，用户单独隐藏的维度在没有逻辑组覆盖时不被改写。
+           * - 验证方式：MixedTimeseries transform 测试覆盖隐藏当前逻辑组后关闭对比，以及无对比维度状态回归。
+           */
+          const input = legendState ?? {};
+          const projected = { ...input };
+          Object.entries(metadata.groups).forEach(
+            ([representative, members]) => {
+              const stateKey = metadata.stateKeys[representative];
+              const label = metadata.labels[representative];
+              const stableState =
+                stateKey && input[stateKey] !== undefined
+                  ? input[stateKey]
+                  : undefined;
+              const groupState =
+                stableState ??
+                (input[representative] !== undefined
+                  ? input[representative]
+                  : label && input[label] !== undefined
+                    ? input[label]
+                    : undefined);
+              if (groupState !== undefined) {
+                members.forEach(member => {
+                  projected[member] = groupState;
+                });
+              }
+            },
+          );
+          return projected;
+        })();
+
+  const namesA = Object.keys(rebasedDataA[0] ?? {}).filter(
+    name => name !== xAxisLabel,
+  );
+  const namesB = Object.keys(rebasedDataB[0] ?? {}).filter(
+    name => name !== xAxisLabel,
+  );
+  const stackSelection = resolveMixedLegendState(
+    buildLegendGroupMetadata(
+      [
+        ...namesA.map(name => legendInputForSeries(name, true)),
+        ...namesB.map(name => legendInputForSeries(name, false)),
+      ],
+      Boolean(customPeriod),
+    ),
+  );
+  const stackLegendStateA = Object.fromEntries(
+    namesA.map(name => [
+      name,
+      stackSelection[displayNameForSeries(name, true)] ?? stackSelection[name],
+    ]),
+  );
+  const stackLegendStateB = Object.fromEntries(
+    namesB.map(name => [
+      name,
+      stackSelection[displayNameForSeries(name, false)] ?? stackSelection[name],
+    ]),
+  );
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
     rebasedDataA,
     {
@@ -308,13 +434,9 @@ export default function transformProps(
       percentageThreshold,
       xAxisCol: xAxisLabel,
       timeCompare: array,
+      legendState: stackLegendStateA,
     },
   );
-
-  const MetricDisplayNameA: string =
-    getMetricDisplayName(metrics[0], verboseMap) || '';
-  const MetricDisplayNameB: string =
-    getMetricDisplayName(metricsB[0], verboseMap) || '';
 
   // 图例属于展示层；保留完整序列名称供交互和 tooltip 使用，只去掉分组维度文本。
   const metricLegendFormatter = (name: string): string => {
@@ -346,14 +468,8 @@ export default function transformProps(
     totalStackedValues,
     xAxisType,
     timeCompare: array,
+    legendState: stackLegendStateA,
   });
-  const rebasedDataB = maskCustomPeriodCurrentData(
-    rebaseForecastDatum(data2, verboseMap),
-    xAxisLabel,
-    xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
-    timeGrainSqla,
-    String(chartProps.rawFormData.comparison_type_b ?? 'values'),
-  );
   const {
     totalStackedValues: totalStackedValuesB,
     thresholdValues: thresholdValuesB,
@@ -362,6 +478,7 @@ export default function transformProps(
     percentageThreshold,
     xAxisCol: xAxisLabel,
     timeCompare: arrayB,
+    legendState: stackLegendStateB,
   });
   const [rawSeriesB, sortedTotalValuesB] = extractSeries(rebasedDataB, {
     fillNeighborValue: stackB && !customPeriod ? 0 : undefined,
@@ -372,6 +489,7 @@ export default function transformProps(
     totalStackedValues: totalStackedValuesB,
     xAxisType,
     timeCompare: arrayB,
+    legendState: stackLegendStateB,
   });
   const series: SeriesOption[] = [];
   // Keep query provenance independently of axis selection and display-name deduplication.
@@ -431,21 +549,25 @@ export default function transformProps(
   const showValueIndexesA = extractShowValueIndexes(rawSeriesA, {
     stack,
     onlyTotal,
+    legendState: stackLegendStateA,
   });
   const showValueIndexesB = extractShowValueIndexes(rawSeriesB, {
-    stack,
-    onlyTotal,
+    stack: Boolean(stackB),
+    onlyTotal: onlyTotalB,
+    legendState: stackLegendStateB,
   });
   const periodStackValuesA = extractPeriodStackValues(rawSeriesA, {
     stack,
     onlyTotal,
     timeCompare: array,
+    legendState: stackLegendStateA,
     percentageThreshold,
   });
   const periodStackValuesB = extractPeriodStackValues(rawSeriesB, {
     stack: Boolean(stackB),
     onlyTotal: onlyTotalB,
     timeCompare: arrayB,
+    legendState: stackLegendStateB,
     percentageThreshold,
   });
 
@@ -521,24 +643,7 @@ export default function transformProps(
     const stackValues =
       periodStackValuesA[getTimeCompareStackId('obs', array, entry.name)];
 
-    let displayName: string;
-
-    if (groupby.length > 0) {
-      const metricPart: string = showQueryIdentifiers
-        ? `${MetricDisplayNameA} (Query A)`
-        : MetricDisplayNameA;
-      displayName = entryName.includes(metricPart)
-        ? entryName
-        : `${metricPart}, ${entryName}`;
-    } else {
-      displayName = showQueryIdentifiers ? `${entryName} (Query A)` : entryName;
-    }
-    const timeOffset = allTimeCompare.some(offset => entryName.includes(offset))
-      ? getTimeOffset(entry, allTimeCompare)
-      : undefined;
-    if (timeOffset && !displayName.includes(timeOffset)) {
-      displayName = `${displayName}, ${timeOffset}`;
-    }
+    const displayName = displayNameForSeries(entryName, true);
 
     const seriesFormatter = getFormatter(
       customFormatters,
@@ -597,21 +702,7 @@ export default function transformProps(
         rawName: entryName,
       });
       const transformedName = String(transformedSeries.name || '');
-      legendInputs.push({
-        name: transformedName,
-        currentLabel:
-          groupby.length > 0 ||
-          (customPeriod && allTimeCompare.includes(entryName))
-            ? showQueryIdentifiers
-              ? `${MetricDisplayNameA} (Query A)`
-              : MetricDisplayNameA
-            : getOriginalSeries(transformedName, allTimeCompare),
-        timeOffset:
-          customPeriod && allTimeCompare.includes(entryName)
-            ? entryName
-            : getTimeOffset({ name: transformedName }, allTimeCompare) ||
-              undefined,
-      });
+      legendInputs.push(legendInputForSeries(entryName, true, transformedName));
     }
   });
 
@@ -624,24 +715,7 @@ export default function transformProps(
     const stackValues =
       periodStackValuesB[getTimeCompareStackId('obs', arrayB, entry.name)];
 
-    let displayName: string;
-
-    if (groupbyB.length > 0) {
-      const metricPart: string = showQueryIdentifiers
-        ? `${MetricDisplayNameB} (Query B)`
-        : MetricDisplayNameB;
-      displayName = entryName.includes(metricPart)
-        ? entryName
-        : `${metricPart}, ${entryName}`;
-    } else {
-      displayName = showQueryIdentifiers ? `${entryName} (Query B)` : entryName;
-    }
-    const timeOffset = allTimeCompare.some(offset => entryName.includes(offset))
-      ? getTimeOffset(entry, allTimeCompare)
-      : undefined;
-    if (timeOffset && !displayName.includes(timeOffset)) {
-      displayName = `${displayName}, ${timeOffset}`;
-    }
+    const displayName = displayNameForSeries(entryName, false);
 
     const seriesFormatter = getFormatter(
       customFormattersSecondary,
@@ -701,21 +775,9 @@ export default function transformProps(
         rawName: entryName,
       });
       const transformedName = String(transformedSeries.name || '');
-      legendInputs.push({
-        name: transformedName,
-        currentLabel:
-          groupbyB.length > 0 ||
-          (customPeriod && allTimeCompare.includes(entryName))
-            ? showQueryIdentifiers
-              ? `${MetricDisplayNameB} (Query B)`
-              : MetricDisplayNameB
-            : getOriginalSeries(transformedName, allTimeCompare),
-        timeOffset:
-          customPeriod && allTimeCompare.includes(entryName)
-            ? entryName
-            : getTimeOffset({ name: transformedName }, allTimeCompare) ||
-              undefined,
-      });
+      legendInputs.push(
+        legendInputForSeries(entryName, false, transformedName),
+      );
     }
   });
 
@@ -746,7 +808,6 @@ export default function transformProps(
     convertInteger(yAxisTitleMargin) !== 0;
   const addXAxisTitleOffset =
     !!xAxisTitle && convertInteger(xAxisTitleMargin) !== 0;
-  const hasTimeCompare = allTimeCompare.length > 0;
   const legendVisible = hasTimeCompare ? true : showLegend;
   const emptyLegendMetadata: LegendGroupMetadata = {
     groups: {},
@@ -761,51 +822,7 @@ export default function transformProps(
   );
   const legendGroups = hasTimeCompare ? stateLegendGroups : emptyLegendMetadata;
 
-  const legendStateWithTimeCompare = hasTimeCompare
-    ? resolveLegendState(
-        legendState,
-        legendGroups,
-        customPeriod?.comparisonTimeRange,
-      )
-    : (() => {
-        /*
-         * 功能审计（可重写规格）：混合图关闭时间对比时的图例状态投影
-         * - 功能目的与触发方式：时间对比从开启切换为关闭后，仍按当前图的真实维度系列恢复用户刚才的当前指标选择。
-         * - 输入契约：legendState 可能同时包含 current:<指标>、真实代表系列和维度成员键；stateLegendGroups 只包含当前期真实系列。
-         * - 输出契约：保留原状态，并把明确的当前逻辑组状态展开到其所有真实成员；没有逻辑组状态时保留每个维度成员自己的状态。
-         * - 处理流程：稳定状态键优先，其次代表系列键和显示标签键；找到逻辑状态时覆盖该组全部成员，未找到时保留维度成员自己的状态，避免把无对比维度的独立选择合并成一个默认值。
-         * - 业务规则：关闭对比只移除 offset 图例，不恢复当前指标默认值；新增成员没有旧状态时继续交给 ECharts 默认开启。
-         * - 状态与副作用：纯内存映射，不发查询、不写 Redux、数据库、localStorage 或看板配置。
-         * - 异常与边界：空 legendState 或没有成员时返回副本；Query A/B 同名指标按现有分组规则共同投影。
-         * - 不变量与约束：无对比混合图继续显示维度图例，用户单独隐藏的维度在没有逻辑组覆盖时不被改写。
-         * - 验证方式：MixedTimeseries transform 测试覆盖隐藏当前逻辑组后关闭对比，以及无对比维度状态回归。
-         */
-        const input = legendState ?? {};
-        const projected = { ...input };
-        Object.entries(stateLegendGroups.groups).forEach(
-          ([representative, members]) => {
-            const stateKey = stateLegendGroups.stateKeys[representative];
-            const label = stateLegendGroups.labels[representative];
-            const stableState =
-              stateKey && input[stateKey] !== undefined
-                ? input[stateKey]
-                : undefined;
-            const groupState =
-              stableState ??
-              (input[representative] !== undefined
-                ? input[representative]
-                : label && input[label] !== undefined
-                  ? input[label]
-                  : undefined);
-            if (groupState !== undefined) {
-              members.forEach(member => {
-                projected[member] = groupState;
-              });
-            }
-          },
-        );
-        return projected;
-      })();
+  const legendStateWithTimeCompare = resolveMixedLegendState(stateLegendGroups);
 
   const chartPadding = getPadding(
     legendVisible,
