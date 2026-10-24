@@ -42,6 +42,15 @@ export function styleComparisonSeries(
   Object.entries(metadata.groups).forEach(([group, members]) =>
     members.forEach(name => kinds.set(name, metadata.kinds[group])),
   );
+  const currentBars = series.filter(
+    entry =>
+      entry.type === 'bar' && kinds.get(String(entry.name)) === 'current',
+  );
+  const currentBarZ = Math.max(2, ...currentBars.map(entry => entry.z ?? 2));
+  const currentBarZLevel = Math.max(
+    0,
+    ...currentBars.map(entry => entry.zlevel ?? 0),
+  );
   series.forEach(entry => {
     const name = String(entry.name);
     const kind = kinds.get(name);
@@ -78,6 +87,11 @@ export function styleComparisonSeries(
       }
     } else if (entry.type === 'bar') {
       const bar = entry as BarSeriesOption;
+      if (historical) {
+        // A transparent outline must paint after the current fill, even when sorted first.
+        bar.z = Math.max(bar.z ?? 2, currentBarZ + 1);
+        bar.zlevel = Math.max(bar.zlevel ?? 0, currentBarZLevel);
+      }
       const style = (
         itemStyle: BarSeriesOption['itemStyle'],
         pairedColor = color,

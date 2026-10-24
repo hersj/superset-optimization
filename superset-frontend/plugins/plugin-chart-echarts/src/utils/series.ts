@@ -341,6 +341,44 @@ export function getLegendStateChange(
   return result;
 }
 
+/**
+ * Returns the stackId used in stacked series.
+ * It will return the defaultId if the chart is not using time comparison.
+ * If time comparison is used, it will return the time comparison value as the stackId
+ * if the name includes the time comparison value.
+ *
+ * @param {string} defaultId The default stackId.
+ * @param {string[]} timeCompare The time comparison values.
+ * @param {string | number} name The name of the serie.
+ *
+ * @returns {string} The stackId.
+ */
+export function getTimeCompareStackId(
+  defaultId: string,
+  timeCompare: string[],
+  name?: string | number,
+): string {
+  if (isEmpty(timeCompare)) {
+    return defaultId;
+  }
+  // Each timeCompare is its own stack so it doesn't stack on top of original ones
+  return (
+    timeCompare.find(value => {
+      if (typeof name === 'string') {
+        // offset is represented as <offset>, group by list
+        return (
+          name === value ||
+          name.endsWith(`, ${value}`) ||
+          name.includes(`${value},`) ||
+          // offset is represented as <metric>__<offset>
+          name.includes(`__${value}`)
+        );
+      }
+      return name?.toString().includes(value);
+    }) || defaultId
+  );
+}
+
 export function extractDataTotalValues(
   data: DataRecord[],
   opts: {
@@ -348,6 +386,7 @@ export function extractDataTotalValues(
     percentageThreshold: number;
     xAxisCol: string;
     legendState?: LegendState;
+    timeCompare?: string[];
   },
 ): {
   totalStackedValues: number[];
@@ -355,11 +394,20 @@ export function extractDataTotalValues(
 } {
   const totalStackedValues: number[] = [];
   const thresholdValues: number[] = [];
-  const { stack, percentageThreshold, xAxisCol, legendState } = opts;
+  const {
+    stack,
+    percentageThreshold,
+    xAxisCol,
+    legendState,
+    timeCompare = [],
+  } = opts;
   if (stack) {
     data.forEach(datum => {
       const values = Object.keys(datum).reduce((prev, curr) => {
-        if (curr === xAxisCol) {
+        if (
+          curr === xAxisCol ||
+          getTimeCompareStackId('obs', timeCompare, curr) !== 'obs'
+        ) {
           return prev;
         }
         if (legendState && !legendState[curr]) {
@@ -414,6 +462,53 @@ export function extractShowValueIndexes(
     });
   }
   return showValueIndexes;
+}
+
+/** Labels and thresholds belong to one period stack, never the A/B union. */
+export function extractPeriodStackValues(
+  series: SeriesOption[],
+  opts: Parameters<typeof extractShowValueIndexes>[1] & {
+    timeCompare: string[];
+    percentageThreshold: number;
+  },
+): Record<
+  string,
+  {
+    totalStackedValues: number[];
+    thresholdValues: number[];
+    showValueIndexes: number[];
+  }
+> {
+  if (!opts.stack || !opts.timeCompare.length) return {};
+  const periodOf = (entry: SeriesOption) =>
+    getTimeCompareStackId('obs', opts.timeCompare, entry.name);
+  return Object.fromEntries(
+    [...new Set(series.map(periodOf))].map(period => {
+      const members = series.map(entry =>
+        periodOf(entry) === period ? entry : { ...entry, data: [] },
+      );
+      const totals: number[] = [];
+      members.forEach(entry => {
+        if (entry.id && opts.legendState?.[entry.id] === false) return;
+        (entry.data as [unknown, unknown][]).forEach((datum, index) => {
+          const value = datum[opts.isHorizontal ? 0 : 1];
+          totals[index] =
+            (totals[index] ?? 0) +
+            (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+        });
+      });
+      return [
+        period,
+        {
+          totalStackedValues: totals,
+          thresholdValues: totals.map(
+            total => (total * (opts.percentageThreshold || 0)) / 100,
+          ),
+          showValueIndexes: extractShowValueIndexes(members, opts),
+        },
+      ];
+    }),
+  );
 }
 
 export function sortAndFilterSeries(
@@ -559,6 +654,8 @@ export function extractSeries(
     xAxisSortSeries?: SortSeriesType;
     xAxisSortSeriesAscending?: boolean;
     xAxisType?: AxisType;
+    timeCompare?: string[];
+    legendState?: LegendState;
   } = {},
 ): [SeriesOption[], number[], number | undefined] {
   const {
@@ -574,6 +671,8 @@ export function extractSeries(
     xAxisSortSeries,
     xAxisSortSeriesAscending,
     xAxisType,
+    timeCompare = [],
+    legendState,
   } = opts;
   if (data.length === 0) return [[], [], undefined];
   const rows: DataRecord[] = data.map(datum => ({
@@ -604,6 +703,21 @@ export function extractSeries(
           totalStackedValue: totalStackedValues[idx],
         }));
 
+  const periodTotals =
+    stack === StackControlsValue.Expand && timeCompare.length
+      ? sortedRows.map(({ row }) => {
+          const totals: Record<string, number> = {};
+          sortedSeries.forEach(name => {
+            if (legendState?.[name] === false) return;
+            const period = getTimeCompareStackId('obs', timeCompare, name);
+            const value = row[name];
+            totals[period] =
+              (totals[period] ?? 0) +
+              (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+          });
+          return totals;
+        })
+      : undefined;
   let minPositiveValue: number | undefined;
   const finalSeries = sortedSeries.map(name => ({
     id: name,
@@ -632,7 +746,14 @@ export function extractSeries(
           totalStackedValue !== undefined &&
           (isDefined(value) || fillNeighborValue !== undefined)
         ) {
-          value = ((value || 0) as number) / totalStackedValue;
+          const denominator =
+            periodTotals?.[idx]?.[
+              getTimeCompareStackId('obs', timeCompare, name)
+            ] ?? totalStackedValue;
+          value =
+            periodTotals && denominator === 0
+              ? null
+              : ((value || 0) as number) / denominator;
         }
         return [row[xAxis], value];
       })
@@ -933,43 +1054,6 @@ export function getMinAndMaxFromBounds(
     return ret;
   }
   return {};
-}
-
-/**
- * Returns the stackId used in stacked series.
- * It will return the defaultId if the chart is not using time comparison.
- * If time comparison is used, it will return the time comparison value as the stackId
- * if the name includes the time comparison value.
- *
- * @param {string} defaultId The default stackId.
- * @param {string[]} timeCompare The time comparison values.
- * @param {string | number} name The name of the serie.
- *
- * @returns {string} The stackId.
- */
-export function getTimeCompareStackId(
-  defaultId: string,
-  timeCompare: string[],
-  name?: string | number,
-): string {
-  if (isEmpty(timeCompare)) {
-    return defaultId;
-  }
-  // Each timeCompare is its own stack so it doesn't stack on top of original ones
-  return (
-    timeCompare.find(value => {
-      if (typeof name === 'string') {
-        // offset is represented as <offset>, group by list
-        return (
-          name === value ||
-          name.includes(`${value},`) ||
-          // offset is represented as <metric>__<offset>
-          name.includes(`__${value}`)
-        );
-      }
-      return name?.toString().includes(value);
-    }) || defaultId
-  );
 }
 
 const TOOLTIP_SERIES_KEY = 'seriesId';

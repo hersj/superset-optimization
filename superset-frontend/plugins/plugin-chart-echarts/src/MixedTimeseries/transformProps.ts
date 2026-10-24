@@ -68,6 +68,8 @@ import {
   extractDataTotalValues,
   extractSeries,
   extractShowValueIndexes,
+  extractPeriodStackValues,
+  getTimeCompareStackId,
   extractTooltipKeys,
   getAxisType,
   getColtypesMapping,
@@ -305,6 +307,7 @@ export default function transformProps(
       stack,
       percentageThreshold,
       xAxisCol: xAxisLabel,
+      timeCompare: array,
     },
   );
 
@@ -342,6 +345,7 @@ export default function transformProps(
     stack,
     totalStackedValues,
     xAxisType,
+    timeCompare: array,
   });
   const rebasedDataB = maskCustomPeriodCurrentData(
     rebaseForecastDatum(data2, verboseMap),
@@ -357,6 +361,7 @@ export default function transformProps(
     stack: Boolean(stackB),
     percentageThreshold,
     xAxisCol: xAxisLabel,
+    timeCompare: arrayB,
   });
   const [rawSeriesB, sortedTotalValuesB] = extractSeries(rebasedDataB, {
     fillNeighborValue: stackB && !customPeriod ? 0 : undefined,
@@ -366,6 +371,7 @@ export default function transformProps(
     stack: Boolean(stackB),
     totalStackedValues: totalStackedValuesB,
     xAxisType,
+    timeCompare: arrayB,
   });
   const series: SeriesOption[] = [];
   // Keep query provenance independently of axis selection and display-name deduplication.
@@ -429,6 +435,18 @@ export default function transformProps(
   const showValueIndexesB = extractShowValueIndexes(rawSeriesB, {
     stack,
     onlyTotal,
+  });
+  const periodStackValuesA = extractPeriodStackValues(rawSeriesA, {
+    stack,
+    onlyTotal,
+    timeCompare: array,
+    percentageThreshold,
+  });
+  const periodStackValuesB = extractPeriodStackValues(rawSeriesB, {
+    stack: Boolean(stackB),
+    onlyTotal: onlyTotalB,
+    timeCompare: arrayB,
+    percentageThreshold,
   });
 
   annotationLayers
@@ -495,10 +513,13 @@ export default function transformProps(
   const inverted = invert(verboseMap);
   const legendInputs: LegendGroupInput[] = [];
 
+  const seriesOffsetA = series.length;
   rawSeriesA.forEach(entry => {
     const entryName = String(entry.name || '');
     const seriesName = inverted[entryName] || entryName;
     const colorScaleKey = getOriginalSeries(seriesName, allTimeCompare);
+    const stackValues =
+      periodStackValuesA[getTimeCompareStackId('obs', array, entry.name)];
 
     let displayName: string;
 
@@ -558,9 +579,12 @@ export default function transformProps(
                 formatter: seriesFormatter,
               })
             : seriesFormatter,
-        totalStackedValues: sortedTotalValuesA,
-        showValueIndexes: showValueIndexesA,
-        thresholdValues,
+        totalStackedValues:
+          stackValues?.totalStackedValues ?? sortedTotalValuesA,
+        showValueIndexes: (
+          stackValues?.showValueIndexes ?? showValueIndexesA
+        ).map(index => index + seriesOffsetA),
+        thresholdValues: stackValues?.thresholdValues ?? thresholdValues,
         timeShiftColor,
         theme,
       },
@@ -591,11 +615,14 @@ export default function transformProps(
     }
   });
 
+  const seriesOffsetB = series.length;
   rawSeriesB.forEach(entry => {
     const entryName = String(entry.name || '');
     const seriesEntry = inverted[entryName] || entryName;
     const seriesName = `${seriesEntry} (1)`;
     const colorScaleKey = getOriginalSeries(seriesEntry, allTimeCompare);
+    const stackValues =
+      periodStackValuesB[getTimeCompareStackId('obs', arrayB, entry.name)];
 
     let displayName: string;
 
@@ -656,9 +683,12 @@ export default function transformProps(
                 formatter: seriesFormatter,
               })
             : seriesFormatter,
-        totalStackedValues: sortedTotalValuesB,
-        showValueIndexes: showValueIndexesB,
-        thresholdValues: thresholdValuesB,
+        totalStackedValues:
+          stackValues?.totalStackedValues ?? sortedTotalValuesB,
+        showValueIndexes: (
+          stackValues?.showValueIndexes ?? showValueIndexesB
+        ).map(index => index + seriesOffsetB),
+        thresholdValues: stackValues?.thresholdValues ?? thresholdValuesB,
         timeShiftColor,
         theme,
       },

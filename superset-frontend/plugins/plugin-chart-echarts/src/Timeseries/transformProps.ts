@@ -73,6 +73,8 @@ import {
   extractDataTotalValues,
   extractSeries,
   extractShowValueIndexes,
+  extractPeriodStackValues,
+  getTimeCompareStackId,
   extractTooltipKeys,
   getAxisType,
   getColtypesMapping,
@@ -368,6 +370,7 @@ export default function transformProps(
       percentageThreshold,
       xAxisCol: xAxisLabel,
       legendState,
+      timeCompare: array,
     },
   );
   const extraMetricLabels = extractExtraMetrics(chartProps.rawFormData).map(
@@ -391,6 +394,8 @@ export default function transformProps(
       xAxisSortSeries: isMultiSeries ? xAxisSort : undefined,
       xAxisSortSeriesAscending: isMultiSeries ? xAxisSortAsc : undefined,
       xAxisType,
+      timeCompare: array,
+      legendState,
     },
   );
   const showValueIndexes = extractShowValueIndexes(rawSeries, {
@@ -398,6 +403,14 @@ export default function transformProps(
     onlyTotal,
     isHorizontal,
     legendState,
+  });
+  const periodStackValues = extractPeriodStackValues(rawSeries, {
+    stack,
+    onlyTotal,
+    isHorizontal,
+    legendState,
+    timeCompare: array,
+    percentageThreshold,
   });
   const seriesContexts = extractForecastSeriesContexts(
     rawSeries.map(series => series.name as string),
@@ -564,6 +577,7 @@ export default function transformProps(
         totalStackedValues: sortedTotalValues,
         showValueIndexes,
         thresholdValues,
+        ...periodStackValues[getTimeCompareStackId('obs', array, entry.name)],
         richTooltip,
         sliceId,
         isHorizontal,

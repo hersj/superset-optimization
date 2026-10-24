@@ -24,8 +24,15 @@ import {
   type EChartsOption,
 } from 'echarts';
 import { GenericDataType } from '@apache-superset/core/common';
-import { ComparisonType, ensureIsArray } from '@superset-ui/core';
+import {
+  ComparisonType,
+  ensureIsArray,
+  type ChartDataResponseResult,
+  type DataRecord,
+} from '@superset-ui/core';
 import timeseries from '../src/Timeseries/transformProps';
+import type { EchartsTimeseriesChartProps } from '../src/types';
+import type { EchartsMixedTimeseriesProps } from '../src/MixedTimeseries/types';
 import mixed from '../src/MixedTimeseries/transformProps';
 import { DEFAULT_FORM_DATA as TIMESERIES_DEFAULTS } from '../src/Timeseries/constants';
 import { DEFAULT_FORM_DATA as MIXED_DEFAULTS } from '../src/MixedTimeseries/types';
@@ -36,16 +43,17 @@ import { createEchartsTimeseriesTestChartProps } from './helpers';
 
 const absolute = '2026-10-09 : 2026-10-16';
 const periods = ['1 day ago', '1 week ago'];
-const query = (data: Record<string, unknown>[]) => ({
-  annotation_data: null,
-  data,
-  colnames: ['sku'],
-  coltypes: [GenericDataType.String],
-  label_map: Object.fromEntries(
-    Object.keys(data[0]).map(name => [name, [name]]),
-  ),
-  status: 'success',
-});
+const query = (data: Record<string, unknown>[]) =>
+  ({
+    annotation_data: null,
+    data: data as DataRecord[],
+    colnames: ['sku'],
+    coltypes: [GenericDataType.String],
+    label_map: Object.fromEntries(
+      Object.keys(data[0]).map(name => [name, [name]]),
+    ),
+    status: 'success',
+  }) as ChartDataResponseResult;
 function rows(offsets: string[], prefix = '') {
   return [
     {
@@ -135,7 +143,7 @@ function props(
         ? [query(rows(offsets))]
         : [query(rows(offsets)), query(rows(offsets, 'other-'))],
   });
-  return result;
+  return result as EchartsTimeseriesChartProps | EchartsMixedTimeseriesProps;
 }
 function render(
   options: EChartsOption,
@@ -235,11 +243,11 @@ test('percent stacked current and each history normalize independently, retainin
   const series = output.echartOptions.series as BarSeriesOption[];
   const byPeriod = new Map<string, number>();
   series.forEach(entry => {
-    const value = (entry.data?.[0] as unknown[])[0];
+    const [value] = (entry.data?.[0] ?? []) as unknown[];
     const period =
       periods.find(offset => String(entry.name).includes(offset)) ?? 'current';
     byPeriod.set(period, (byPeriod.get(period) ?? 0) + Number(value));
-    const missing = entry.data?.[2] as unknown[];
+    const missing = (entry.data?.[2] ?? []) as unknown[];
     expect(missing[0] == null || Number.isFinite(Number(missing[0]))).toBe(
       true,
     );
