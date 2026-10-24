@@ -17,7 +17,7 @@
  * under the License.
  */
 import { layoutCategoryBars } from './barLayout';
-import type { BarSeriesOption } from 'echarts';
+import { init, setPlatformAPI, type BarSeriesOption } from 'echarts';
 
 test('automatic ranking fits readable single-line rows without manual geometry', () => {
   const before = {
@@ -94,4 +94,43 @@ test('disjoint color-by-category series share a centered lane', () => {
       expect.objectContaining({ barGap: '-100%', barWidth: 22 }),
     ]),
   );
+});
+
+test('native scrollbar gutter leaves full numeric labels inside the rendered SVG', () => {
+  setPlatformAPI({ measureText: text => ({ width: String(text).length * 7 }) });
+  const layout = layoutCategoryBars(
+    {
+      xAxis: { type: 'value' },
+      yAxis: { type: 'category', data: ['A'] },
+      series: [
+        {
+          name: 'sales',
+          type: 'bar',
+          data: [[100, 'A']],
+          label: { show: true, formatter: '253,697', position: 'right' },
+        },
+      ],
+    },
+    900,
+    { A: 'A' },
+  );
+  const chart = init(null, undefined, {
+    renderer: 'svg',
+    ssr: true,
+    width: 884,
+    height: 64,
+  });
+  try {
+    chart.setOption(layout.echartOptions);
+    const text = chart
+      .getZr()
+      .storage.getDisplayList(true)
+      .find(mark => 'text' in mark.style && mark.style.text === '253,697')!;
+    const bounds = text.getBoundingRect().clone();
+    const transform = text.getComputedTransform();
+    if (transform) bounds.applyTransform(transform);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(882);
+  } finally {
+    chart.dispose();
+  }
 });

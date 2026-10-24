@@ -181,7 +181,7 @@ export function layoutCategoryBars(
           barCategoryGap: '25%',
           labelLayout: single
             ? () => ({
-                x: width - 8,
+                x: width - 24,
                 align: 'right' as const,
                 verticalAlign: 'middle' as const,
                 hideOverlap: true,
