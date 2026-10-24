@@ -205,6 +205,7 @@ export function layoutSkuRanking(
   barsPerRow: number,
   view: SkuRankingView = DEFAULT_SKU_RANKING_VIEW,
   legendGroups?: LegendGroupMetadata,
+  timeCompare: string[] = [],
 ) {
   const textWidth = (line: string) =>
     Array.from(line).reduce(
@@ -242,14 +243,29 @@ export function layoutSkuRanking(
     ),
   );
   const barThickness = view.barThickness ?? 24;
-  const currentGroups = Object.entries(legendGroups?.groups ?? {}).filter(
-    ([name]) => legendGroups?.kinds[name] === 'current',
+  const configuredGroups = legendGroups?.groups;
+  const groups =
+    configuredGroups && Object.keys(configuredGroups).length
+      ? configuredGroups
+      : Object.fromEntries(
+          ensureIsArray(options.series as SeriesOption[])
+            .filter(
+              entry =>
+                entry.name != null &&
+                (entry.type === 'bar' || entry.type === 'scatter'),
+            )
+            .map(entry => [String(entry.name), [String(entry.name)]]),
+        );
+  // Legacy queries may name the comparison column only by its configured offset.
+  const isComparison = (name: string) =>
+    legendGroups?.kinds[name] === 'comparison' || timeCompare.includes(name);
+  const currentGroups = Object.entries(groups).filter(
+    ([name]) => !isComparison(name),
   );
-  // A single ranked metric shares one lane; comparisons mark their original value.
   const comparisons = new Set(
     currentGroups.length === 1
-      ? Object.entries(legendGroups?.groups ?? {})
-          .filter(([name]) => legendGroups?.kinds[name] === 'comparison')
+      ? Object.entries(groups)
+          .filter(([name]) => isComparison(name))
           .flatMap(([, members]) => members)
       : [],
   );

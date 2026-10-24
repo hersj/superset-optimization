@@ -1443,6 +1443,7 @@ export default function transformProps(
       skuBarsPerRow,
       undefined,
       legendGroups,
+      array,
     );
     mergedEchartOptions = layout.echartOptions;
     minCategoryHeight = layout.minCategoryHeight;

@@ -505,3 +505,50 @@ test.each([1, 12, 100])(
     }
   },
 );
+
+test('standalone comparison offset in saved SKU chart becomes a tick, not a second current metric', () => {
+  const chart = props();
+  chart.rawFormData.time_compare = ['1 month ago'];
+  chart.formData.timeCompare = ['1 month ago'];
+  chart.formData.colorByPrimaryAxis = false;
+  chart.queriesData[0].data = [
+    { kk_sku: a, 销售额: 10, '1 month ago': 20 },
+    { kk_sku: b, 销售额: 0, '1 month ago': null },
+  ];
+  chart.queriesData[0].label_map = {
+    销售额: ['销售额'],
+    '1 month ago': ['1 month ago'],
+  };
+  const result = transformProps(chart);
+  expect(result.echartOptions.series).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: '1 month ago',
+        type: 'scatter',
+        symbol: 'rect',
+        symbolSize: [3, 32],
+      }),
+      expect.objectContaining({ name: '销售额', type: 'bar', barWidth: 24 }),
+    ]),
+  );
+  expect(result.minCategoryHeight).toBe(44);
+  const redraw = layoutSkuRanking(
+    result.echartOptions,
+    720,
+    { [a]: 'SKU A', [b]: 'SKU B' },
+    2,
+    undefined,
+    result.legendGroups,
+    chart.formData.timeCompare,
+  );
+  expect(redraw.minCategoryHeight).toBe(44);
+  expect(redraw.echartOptions.series).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: '1 month ago',
+        type: 'scatter',
+        symbolSize: [3, 32],
+      }),
+    ]),
+  );
+});

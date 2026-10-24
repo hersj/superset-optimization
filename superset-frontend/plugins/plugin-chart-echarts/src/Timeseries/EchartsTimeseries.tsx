@@ -135,6 +135,7 @@ export default function EchartsTimeseries({
             skuBarsPerRow,
             rankingView,
             legendGroups,
+            formData.timeCompare,
           )
         : undefined,
     [
@@ -145,6 +146,7 @@ export default function EchartsTimeseries({
       skuBarsPerRow,
       rankingView,
       legendGroups,
+      formData.timeCompare,
     ],
   );
   const changeRankingView = (next: typeof rankingView) => {
