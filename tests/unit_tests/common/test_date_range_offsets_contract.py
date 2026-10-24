@@ -12,6 +12,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import numpy as np
@@ -92,10 +93,23 @@ class Contract(unittest.TestCase):
         patcher = patch.dict(sys.modules, {module.__name__: module})
         patcher.start()
         self.addCleanup(patcher.stop)
+
+        def time_range_bounds(time_range, time_shift=None, **_):
+            dates = bounds(time_range)
+            return (
+                tuple(
+                    value + DateOffset(**ns["normalize_time_delta"](time_shift))
+                    for value in dates
+                )
+                if time_shift
+                else dates
+            )
+
         ns = {
             "pd": pd,
             "np": np,
             "copy": copy,
+            "cast": cast,
             "datetime": datetime,
             "timedelta": timedelta,
             "DateOffset": DateOffset,
@@ -124,9 +138,7 @@ class Contract(unittest.TestCase):
             "get_x_axis_label": lambda columns: columns[0]["label"]
             if columns
             else None,
-            "get_since_until_from_time_range": lambda time_range, **_: bounds(
-                time_range
-            ),
+            "get_since_until_from_time_range": time_range_bounds,
             "get_since_until_from_query_object": lambda obj: bounds(
                 obj.time_range
                 or next(
@@ -253,6 +265,30 @@ class Contract(unittest.TestCase):
             frame(["2026-08-05", "2026-08-06"], [0.1, 0.2]),
         )
         self.assertEqual(output["metric__2026-08-05 : 2026-08-08"].tolist(), [0.1, 0.2])
+
+    def test_relative_comparison_preserves_independent_dates_and_business_filters(self):
+        self.source.join_offset_dfs = lambda current, *_args, **_kwargs: current
+        for axis in ("sku", "__timestamp"):
+            with self.subTest(axis=axis):
+                obj = query(axis=axis, offsets=["1 month ago"])
+                obj.filter.append({"col": "sku", "op": "ILIKE", "val": "%lamp%"})
+                original = copy.deepcopy(obj.to_dict())
+                main = (
+                    frame(["2026-10-01"], [100])
+                    if axis == "__timestamp"
+                    else pd.DataFrame({"sku": ["lamp-1"], "metric": [100]})
+                )
+                self.run_offset(main, main, obj)
+                actual = self.calls[-1]
+                self.assertEqual(
+                    next(f["val"] for f in actual["filter"] if f["col"] == "event_date"),
+                    "2026-09-01 00:00:00 : 2026-09-04 00:00:00",
+                )
+                self.assertEqual(
+                    [f for f in actual["filter"] if f["col"] != "event_date"],
+                    [f for f in original["filter"] if f["col"] != "event_date"],
+                )
+                self.assertEqual(obj.to_dict(), original)
 
     def test_missing_first_bucket_and_longer_b_are_preserved(self):
         output = self.run_offset(
