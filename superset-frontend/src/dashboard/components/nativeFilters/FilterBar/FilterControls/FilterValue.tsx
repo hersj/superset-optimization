@@ -362,6 +362,8 @@ const FilterValue: FC<FilterValueProps> = ({
     const filterOwnState = filter.dataMask?.ownState || {};
 
     if (isImplicitTimeDependencyBlocked) {
+      // A valid restore must reload even when its query matches the last success.
+      comparisonContextRef.current = '';
       // Blocking a dependency also invalidates requests already in flight.
       requestIdRef.current += 1;
       setFormData(newFormData);
@@ -386,6 +388,7 @@ const FilterValue: FC<FilterValueProps> = ({
         comparisonEnabled,
       );
     } catch (comparisonError) {
+      comparisonContextRef.current = '';
       requestIdRef.current += 1;
       setError(
         getNativeFilterDependencyError(
@@ -491,6 +494,8 @@ const FilterValue: FC<FilterValueProps> = ({
       if (!hasDataSource) {
         return;
       }
+      // The dependency is valid now; a pending request must not show its old error.
+      setError(undefined);
       setIsRefreshing(true);
       setHasLoadedOptions(true);
       comparisonContextRef.current = comparisonKey;

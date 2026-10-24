@@ -21,9 +21,20 @@ import {
   shouldLoadFilterOptions,
   shouldStartFilterOptionsRequest,
 } from './FilterValue';
-import { createElement } from 'react';
+import { createElement, useCallback, useState } from 'react';
 import { Provider } from 'react-redux';
-import { act, render, waitFor } from 'spec/helpers/testing-library';
+import {
+  act,
+  render,
+  waitFor,
+  fireEvent,
+  screen,
+  within,
+} from 'spec/helpers/testing-library';
+import CustomTimeFilterPlugin from 'src/filters/components/CustomTime/CustomTimeFilterPlugin';
+import setupErrorMessages from 'src/setup/setupErrorMessages';
+import dataMaskReducer from 'src/dataMask/reducer';
+import { updateDataMask } from 'src/dataMask/actions';
 import configureStore from 'redux-mock-store';
 import thunk from 'redux-thunk';
 import { SupersetClient } from '@superset-ui/core';
@@ -577,6 +588,7 @@ test('changing only B or turning comparison off reloads candidate options with t
 });
 
 test('failed comparison candidate queries never fall back to current-period-only options', async () => {
+  setupErrorMessages();
   let reject!: (error: Error) => void;
   filterOptionsRequestMock.mockImplementationOnce(
     () =>
@@ -607,5 +619,161 @@ test('failed comparison candidate queries never fall back to current-period-only
   await act(async () =>
     reject(new Error('temporary comparison options failure')),
   );
+  expect(
+    screen.getByText('temporary comparison options failure'),
+  ).toBeInTheDocument();
   expect(chartDataRequestMock).not.toHaveBeenCalled();
 });
+
+test.each([false, true])(
+  'real CustomTime invalid draft recovers child options, pending candidates=%s',
+  async pending => {
+    (SupersetClient.post as jest.Mock).mockResolvedValue({
+      json: {
+        result: {
+          shop_name: {
+            data: [{ shop_name: 'Shop A' }],
+            colnames: ['shop_name'],
+            coltypes: [1],
+          },
+        },
+      },
+    });
+    const filters = { time: createNativeFilter('time'), shop: childFilter };
+    const store = mockStore(createState(filters));
+    const current = '2026-10-16 : 2026-10-23';
+    setupErrorMessages();
+    const emitted = jest.fn();
+    function Harness() {
+      const [selected, setSelected] = useState<Record<string, any>>({
+        shop: {
+          id: 'shop',
+          filterState: { value: ['Shop A'] },
+          extraFormData: {},
+        },
+      });
+      const select = useCallback((mask: any) => {
+        emitted(mask);
+        setSelected(previous =>
+          dataMaskReducer(previous as any, updateDataMask('time', mask)),
+        );
+      }, []);
+      return createElement(
+        Provider,
+        { store },
+        createElement(CustomTimeFilterPlugin, {
+          formData: {
+            groupby: ['earliest_ship_date'],
+            defaultGrain: 'day',
+            enableCustomComparison: true,
+          },
+          filterState: selected.time?.filterState || {
+            value: current,
+            grain: 'day',
+          },
+          ownState: selected.time?.ownState || {},
+          setDataMask: select,
+          width: 215,
+        }),
+        createElement(FilterValue, {
+          filter: { ...childFilter, dataMask: selected.shop } as any,
+          dataMaskSelected: selected as any,
+          initializedFilters: new Set(['time']),
+          onFilterSelectionChange: jest.fn(),
+          inView: true,
+          isFilterActive: true,
+          orientation: FilterBarOrientation.Vertical,
+        }),
+        createElement(
+          'output',
+          { 'aria-label': 'selected shops' },
+          JSON.stringify(selected.shop.filterState.value),
+        ),
+      );
+    }
+    render(createElement(Harness));
+    await waitFor(() =>
+      expect(filterOptionsRequestMock).toHaveBeenCalledTimes(1),
+    );
+    let resolveCandidates!: (result: any) => void;
+    if (pending) {
+      (SupersetClient.post as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveCandidates = resolve;
+          }),
+      );
+    }
+    const details = screen
+      .getByRole('group', { name: '对比期间' })
+      .querySelector('details')!;
+    fireEvent.click(within(details).getByText('对比期间'));
+    fireEvent.change(screen.getByLabelText('对比方式'), {
+      target: { value: 'custom' },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText('Custom comparison period is invalid'),
+      ).toBeInTheDocument(),
+    );
+    expect(emitted.mock.calls.at(-1)[0].filterState.validateStatus).toBe(
+      'error',
+    );
+    const picker = within(screen.getByRole('group', { name: '对比开始日期' }));
+    fireEvent.change(picker.getByLabelText('快速跳转月份'), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.click(picker.getByRole('button', { name: '2026-10-09' }));
+    await waitFor(() => {
+      expect(
+        emitted.mock.calls.at(-1)[0].filterState.validateStatus,
+      ).toBeUndefined();
+      expect(
+        screen.queryByText('Custom comparison period is invalid'),
+      ).not.toBeInTheDocument();
+    });
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('selected shops')).toHaveTextContent(
+      '["Shop A"]',
+    );
+    if (pending) {
+      await act(async () =>
+        resolveCandidates({
+          json: {
+            result: {
+              shop_name: {
+                data: [{ shop_name: 'Shop A' }],
+                colnames: ['shop_name'],
+                coltypes: [1],
+              },
+            },
+          },
+        }),
+      );
+    }
+    expect(
+      (SupersetClient.post as jest.Mock).mock.calls.at(-1)[0].jsonPayload
+        .comparison_time_ranges,
+    ).toEqual(['2026-10-09 : 2026-10-16']);
+    fireEvent.click(screen.getByRole('button', { name: '修改对比结束日期' }));
+    const endPicker = within(
+      screen.getByRole('group', { name: '对比结束日期' }),
+    );
+    fireEvent.change(endPicker.getByLabelText('快速跳转月份'), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.click(endPicker.getByRole('button', { name: '2026-10-08' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Custom comparison period is invalid'),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(endPicker.getByRole('button', { name: '2026-10-15' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Custom comparison period is invalid'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(filterOptionsRequestMock).toHaveBeenCalledTimes(3);
+  },
+);
