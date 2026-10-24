@@ -60,6 +60,7 @@ import {
   Refs,
 } from '../types';
 import { parseAxisBound } from '../utils/controls';
+import { applyAutomaticBarSizing } from '../utils/barSizing';
 import { alignPeriodAxis } from '../utils/periodAxis';
 import { safeParseEChartOptions } from '../utils/safeEChartOptionsParser';
 import {
@@ -1150,7 +1151,7 @@ export default function transformProps(
     formData,
     width,
     height,
-    echartOptions: mergedEchartOptions,
+    echartOptions: applyAutomaticBarSizing(mergedEchartOptions, width),
     setDataMask,
     emitCrossFilters,
     labelMap,
