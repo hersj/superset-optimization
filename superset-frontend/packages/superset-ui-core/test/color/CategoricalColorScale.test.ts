@@ -551,3 +551,57 @@ test('preserves explicit same-color overrides with collision avoidance enabled',
     shared.reset();
   }
 });
+
+test('automatic shared colors remain repairable and copied scales retain their assignments', () => {
+  window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+  const shared = getLabelsColorMap();
+  shared.reset();
+  shared.source = LabelsColorMapSource.Explore;
+  try {
+    const scale = new CategoricalColorScale(
+      ['blue', 'red', 'green'],
+      {},
+      undefined,
+      { sales: 'blue', profit: 'blue' },
+    );
+    expect(scale.getColor('sales')).toBe('blue');
+    expect(scale.getColor('profit')).toBe('red');
+    expect(scale.getColorMap()).toEqual({ sales: 'blue', profit: 'red' });
+    const copy = scale.copy();
+    expect(copy.getColor('sales')).toBe('blue');
+    expect(copy.getColor('profit')).toBe('red');
+    copy.setColor('profit', 'green');
+    expect(copy.getColor('profit')).toBe('green');
+    expect(scale.getColor('profit')).toBe('red');
+  } finally {
+    shared.reset();
+    shared.source = LabelsColorMapSource.Dashboard;
+    window.featureFlags = {};
+  }
+});
+
+test('automatic colors avoid explicit colors even before their series renders', () => {
+  window.featureFlags = { [FeatureFlag.AvoidColorsCollision]: true };
+  const shared = getLabelsColorMap();
+  shared.reset();
+  try {
+    const scale = new CategoricalColorScale(['#1FA8C9', '#454E7C'], {
+      profit: '#1fa8c9',
+    });
+    expect(scale.getColor('sales')).toBe('#454E7C');
+    expect(scale.getColor('profit')).toBe('#1fa8c9');
+  } finally {
+    shared.reset();
+    window.featureFlags = {};
+  }
+});
+
+test('automatic color hints preserve numeric palette indexes', () => {
+  const scale = new CategoricalColorScale(
+    ['blue', 'red', 'green'],
+    {},
+    undefined,
+    { profit: 1 },
+  );
+  expect(scale.getColor('profit')).toBe('red');
+});

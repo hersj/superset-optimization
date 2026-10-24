@@ -275,7 +275,11 @@ export const applyColors = (
   // apply the final color map
   if (applicableColorMapEntries) {
     Object.keys(applicableColorMapEntries).forEach(label => {
-      categoricalNamespace.setColor(label, applicableColorMapEntries[label]);
+      categoricalNamespace.setColor(
+        label,
+        applicableColorMapEntries[label],
+        Object.prototype.hasOwnProperty.call(customLabelsColor, label),
+      );
     });
   }
 };

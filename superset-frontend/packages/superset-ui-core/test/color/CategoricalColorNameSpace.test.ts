@@ -115,6 +115,21 @@ describe('CategoricalColorNamespace', () => {
       const ns2 = ns1.setColor('dog', 'black');
       expect(ns1).toBe(ns2);
     });
+    test('automatic colors are not forced and can be reset or replaced by explicit colors', () => {
+      const namespace = getNamespace('automatic-reset');
+      namespace.setColor('sales', 'pink', false);
+      expect(namespace.forcedItems).toEqual({});
+      expect(namespace.getScale('testColors').getColor('sales')).toBe('pink');
+      namespace.setColor('sales', 'black');
+      expect(namespace.getScale('testColors').getColor('sales')).toBe('black');
+      namespace.setColor('sales', 'pink', false);
+      expect(namespace.forcedItems).toEqual({});
+      namespace.resetColorsForLabels(['sales']);
+      expect(namespace.sharedItems).toEqual({});
+      namespace.setColor('profit', 'pink', false);
+      namespace.resetColors();
+      expect(namespace.sharedItems).toEqual({});
+    });
     test('should reset colors', () => {
       const ns1 = getNamespace('test-set-scale3.1');
       ns1.setColor('dog', 'black');

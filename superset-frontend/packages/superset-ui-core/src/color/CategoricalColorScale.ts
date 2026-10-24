@@ -44,6 +44,8 @@ class CategoricalColorScale extends ExtensibleFunction {
 
   forcedColors: ColorsLookup;
 
+  sharedColors: ColorsLookup;
+
   labelsColorMapInstance: ReturnType<typeof getLabelsColorMap>;
 
   chartLabelsColorMap: Map<string, string>;
@@ -55,12 +57,14 @@ class CategoricalColorScale extends ExtensibleFunction {
    * @param {*} colors an array of colors
    * @param {*} forcedColors optional parameter that comes from parent
    * @param {*} appliedColorScheme the color scheme applied to the chart
+   * @param sharedColors automatic colors that remain eligible for collision correction
    *
    */
   constructor(
     colors: string[],
     forcedColors: ColorsInitLookup = {},
     appliedColorScheme?: string,
+    sharedColors: ColorsInitLookup = {},
   ) {
     super((value: string, sliceId?: number) =>
       this.getColor(value, sliceId, appliedColorScheme),
@@ -80,16 +84,19 @@ class CategoricalColorScale extends ExtensibleFunction {
     this.scale.range(colors);
 
     // reserve fixed colors in parent map based on their index in the scale
-    Object.entries(forcedColors).forEach(([key, value]) => {
-      if (typeof value === 'number') {
-        // eslint-disable-next-line no-param-reassign
-        forcedColors[key] = colors[value % colors.length];
-      }
+    [forcedColors, sharedColors].forEach(items => {
+      Object.entries(items).forEach(([key, value]) => {
+        if (typeof value === 'number') {
+          // eslint-disable-next-line no-param-reassign
+          items[key] = colors[value % colors.length];
+        }
+      });
     });
 
     // forced colors from parent (usually CategoricalColorNamespace)
     // currently used in dashboards to set custom label colors
     this.forcedColors = forcedColors as ColorsLookup;
+    this.sharedColors = sharedColors as ColorsLookup;
   }
 
   /**
@@ -139,7 +146,7 @@ class CategoricalColorScale extends ExtensibleFunction {
       assignedColor ||
       (isExistingLabel
         ? (currentColorMap.get(cleanedValue) as string)
-        : this.scale(cleanedValue));
+        : this.sharedColors[cleanedValue] || this.scale(cleanedValue));
 
     // a forced color will always be used independently of the usage count
     if (!forcedColor && !assignedColor) {
@@ -192,9 +199,16 @@ class CategoricalColorScale extends ExtensibleFunction {
    * @returns the count of the color usage in this slice
    */
   getColorUsageCount(color: string): number {
-    return Array.from(this.chartLabelsColorMap.values()).filter(
-      value => value === color,
-    ).length;
+    const sameColor = (value: string) =>
+      value?.toLowerCase() === color?.toLowerCase();
+    return (
+      Array.from(this.chartLabelsColorMap.values()).filter(sameColor).length +
+      // Reserve explicit colors before their series is visited.
+      Object.entries(this.forcedColors).filter(
+        ([label, value]) =>
+          !this.chartLabelsColorMap.has(label) && sameColor(value),
+      ).length
+    );
   }
 
   /**
@@ -288,7 +302,9 @@ class CategoricalColorScale extends ExtensibleFunction {
     });
 
     return {
+      ...this.sharedColors,
       ...colorMap,
+      ...Object.fromEntries(this.chartLabelsColorMap),
       ...this.forcedColors,
     };
   }
@@ -303,8 +319,11 @@ class CategoricalColorScale extends ExtensibleFunction {
     const copy = new CategoricalColorScale(
       this.scale.range(),
       this.forcedColors,
+      undefined,
+      { ...this.sharedColors },
     );
     copy.forcedColors = { ...this.forcedColors };
+    copy.chartLabelsColorMap = new Map(this.chartLabelsColorMap);
     copy.domain(this.domain());
     copy.unknown(this.unknown());
     return copy;

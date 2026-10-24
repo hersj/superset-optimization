@@ -28,6 +28,8 @@ export default class CategoricalColorNamespace {
 
   forcedItems: ColorsLookup;
 
+  sharedItems: ColorsLookup;
+
   scales: {
     [key: string]: CategoricalColorScale;
   };
@@ -36,6 +38,7 @@ export default class CategoricalColorNamespace {
     this.name = name;
     this.scales = {};
     this.forcedItems = {};
+    this.sharedItems = {};
   }
 
   /**
@@ -52,6 +55,7 @@ export default class CategoricalColorNamespace {
       scheme?.colors ?? [],
       this.forcedItems,
       colorScheme,
+      this.sharedItems,
     );
   }
 
@@ -60,27 +64,35 @@ export default class CategoricalColorNamespace {
    * This will apply across all color scales
    * in this namespace.
    * @param {*} value value
-   * @param {*} forcedColor color
+   * @param {*} color color
+   * @param force whether this is an explicit override rather than an automatic shared color
    */
-  setColor(value: string, forcedColor: string) {
-    this.forcedItems[stringifyAndTrim(value)] = forcedColor;
+  setColor(value: string, color: string, force = true) {
+    const label = stringifyAndTrim(value);
+    delete this.forcedItems[label];
+    delete this.sharedItems[label];
+    (force ? this.forcedItems : this.sharedItems)[label] = color;
 
     return this;
   }
 
   resetColors() {
     this.forcedItems = {};
+    this.sharedItems = {};
   }
 
   resetColorsForLabels(labels: string[] = []) {
     const updatedForcedItems = cloneDeep(this.forcedItems);
+    const updatedSharedItems = { ...this.sharedItems };
     labels.forEach(label => {
       if (updatedForcedItems.hasOwnProperty(label)) {
         delete updatedForcedItems[label];
       }
+      delete updatedSharedItems[label];
     });
 
     this.forcedItems = { ...updatedForcedItems };
+    this.sharedItems = updatedSharedItems;
   }
 }
 
