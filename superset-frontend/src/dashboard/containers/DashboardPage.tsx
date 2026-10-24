@@ -25,7 +25,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createSelector } from '@reduxjs/toolkit';
 import { useToasts } from 'src/components/MessageToasts/withToasts';
 import { Loading } from '@superset-ui/core/components';
-import { logging } from '@superset-ui/core';
+import { logging } from '@apache-superset/core/utils';
 import {
   useDashboard,
   useDashboardCharts,
