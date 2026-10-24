@@ -75,6 +75,8 @@ class QueryContextProcessor:
     def __init__(self, query_context: QueryContext):
         self._query_context = query_context
         self._qc_datasource = query_context.datasource
+        self._contribution_totals_query: QueryObject | None = None
+        self._contribution_totals_result: tuple[str, QueryResult] | None = None
 
     cache_type: ClassVar[str] = "df"
     enforce_numerical_metrics: ClassVar[bool] = True
@@ -240,7 +242,21 @@ class QueryContextProcessor:
         which handles query execution, normalization, time offsets, and
         post-processing.
         """
-        return self._qc_datasource.get_query_result(query_object)
+        cache_key = (
+            self.query_cache_key(query_object)
+            if query_object is self._contribution_totals_query
+            else None
+        )
+        if (
+            cache_key
+            and self._contribution_totals_result
+            and self._contribution_totals_result[0] == cache_key
+        ):
+            return self._contribution_totals_result[1]
+        result = self._qc_datasource.get_query_result(query_object)
+        if cache_key:
+            self._contribution_totals_result = (cache_key, result)
+        return result
 
     def get_data(
         self, df: pd.DataFrame, coltypes: list[GenericDataType]
@@ -331,56 +347,63 @@ class QueryContextProcessor:
 
         queries_needing_totals, totals_idx = self._prepare_contribution_totals()
 
-        # Skip ensure_totals_available when force_cached=True
-        # This prevents recalculating contribution_totals from cached results
-        if not force_cached:
-            self.ensure_totals_available(queries_needing_totals, totals_idx)
+        # Reuse only this request's full-market total; force refresh still re-runs it.
+        self._contribution_totals_query = (
+            self._query_context.queries[totals_idx]
+            if queries_needing_totals and totals_idx is not None and not force_cached
+            else None
+        )
+        self._contribution_totals_result = None
+        try:
+            # Skip ensure_totals_available when force_cached=True
+            # This prevents recalculating contribution_totals from cached results
+            if not force_cached:
+                self.ensure_totals_available(queries_needing_totals, totals_idx)
 
-            # Update cache_values to reflect modifications made by
-            # ensure_totals_available()
-            # This ensures cache keys are generated from the actual query state
-            # We merge the original query dict with the updated query dict to preserve
-            # any fields that might not be in to_dict() but were in the original request
-            self._query_context.cache_values["queries"] = [
-                {**cached_query, **query.to_dict()}
-                for cached_query, query in zip(
-                    self._query_context.cache_values["queries"],
-                    self._query_context.queries,
-                    strict=True,
+                # Keep runtime totals in sync while retaining original cached fields.
+                self._query_context.cache_values["queries"] = [
+                    {**cached_query, **query.to_dict()}
+                    for cached_query, query in zip(
+                        self._query_context.cache_values["queries"],
+                        self._query_context.queries,
+                        strict=True,
+                    )
+                ]
+
+            query_results = [
+                get_query_results(
+                    query_obj.result_type or self._query_context.result_type,
+                    self._query_context,
+                    query_obj,
+                    force_cached,
                 )
+                for query_obj in self._query_context.queries
             ]
 
-        query_results = [
-            get_query_results(
-                query_obj.result_type or self._query_context.result_type,
-                self._query_context,
-                query_obj,
-                force_cached,
-            )
-            for query_obj in self._query_context.queries
-        ]
+            return_value = {"queries": query_results}
 
-        return_value = {"queries": query_results}
-
-        if cache_query_context:
-            cache_key = self.cache_key()
-            set_and_log_cache(
-                cache_manager.cache,
-                cache_key,
-                {
-                    "data": {
-                        # setting form_data into query context cache value as well
-                        # so that it can be used to reconstruct form_data field
-                        # for query context object when reading from cache
-                        "form_data": self._query_context.form_data,
-                        **self._query_context.cache_values,
+            if cache_query_context:
+                cache_key = self.cache_key()
+                set_and_log_cache(
+                    cache_manager.cache,
+                    cache_key,
+                    {
+                        "data": {
+                            # setting form_data into query context cache value as well
+                            # so that it can be used to reconstruct form_data field
+                            # for query context object when reading from cache
+                            "form_data": self._query_context.form_data,
+                            **self._query_context.cache_values,
+                        },
                     },
-                },
-                self.get_cache_timeout(),
-            )
-            return_value["cache_key"] = cache_key  # type: ignore
+                    self.get_cache_timeout(),
+                )
+                return_value["cache_key"] = cache_key  # type: ignore
 
-        return return_value
+            return return_value
+        finally:
+            self._contribution_totals_query = None
+            self._contribution_totals_result = None
 
     def get_cache_timeout(self) -> int:
         if cache_timeout_rv := self._query_context.get_cache_timeout():

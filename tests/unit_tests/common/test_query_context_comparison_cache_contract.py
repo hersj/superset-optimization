@@ -1,5 +1,6 @@
 """Exercise actual processor methods without creating an app or accessing a DB."""
-# ruff: noqa: PT009, PT027, S102
+
+# ruff: noqa: PT009, PT027, S102, TID251
 from __future__ import annotations
 
 import ast
@@ -30,46 +31,91 @@ class ContributionQueries(unittest.TestCase):
         self.during_main = lambda: None
         self.fail_main = False
         self.datasource = SimpleNamespace(
-            uid="market", changed_on="stable", get_extra_cache_keys=lambda _: [],
+            uid="market",
+            changed_on="stable",
+            get_extra_cache_keys=lambda _: [],
             get_query_result=self.execute,
         )
         self.main = Query(
-            columns=["brand"], metrics=["sales"], row_limit=10,
+            columns=["brand"],
+            metrics=["sales"],
+            row_limit=10,
             filter=[{"col": "brand", "op": "IN", "val": ["selected"]}],
-            time_range="2026-10-01 : 2026-11-01", time_offsets=[], result_type="full",
+            time_range="2026-10-01 : 2026-11-01",
+            time_offsets=[],
+            result_type="full",
             post_processing=[{"operation": "contribution", "options": {}}],
         )
         self.total = Query(
-            columns=[], metrics=["sales"], row_limit=10,
+            columns=[],
+            metrics=["sales"],
+            row_limit=10,
             filter=[{"col": "country", "op": "IN", "val": ["US"]}],
-            time_range=self.main.time_range, time_offsets=[], result_type="full",
+            time_range=self.main.time_range,
+            time_offsets=[],
+            result_type="full",
             post_processing=[],
         )
         self.context = SimpleNamespace(
-            datasource=self.datasource, queries=[self.main, self.total],
-            force=True, result_type="full",
+            datasource=self.datasource,
+            queries=[self.main, self.total],
+            force=True,
+            result_type="full",
             cache_values={"queries": [self.main.to_dict(), self.total.to_dict()]},
         )
         namespace = {
-            "Any": object, "QueryResult": object,
+            "Any": object,
+            "QueryResult": object,
             "security_manager": SimpleNamespace(get_rls_cache_key=lambda _: self.role),
             "get_query_results": self.query_results,
         }
         tree = ast.parse(SOURCE.read_text())
-        original = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "QueryContextProcessor")
-        methods = {"__init__", "query_cache_key", "get_query_result", "_prepare_contribution_totals", "ensure_totals_available", "get_payload"}
-        cls = ast.ClassDef(name="QueryContextProcessor", bases=[], keywords=[], decorator_list=[],
-                          body=[n for n in original.body if isinstance(n, ast.FunctionDef) and n.name in methods])
-        module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), cls], type_ignores=[])
+        original = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.ClassDef) and n.name == "QueryContextProcessor"
+        )
+        methods = {
+            "__init__",
+            "query_cache_key",
+            "get_query_result",
+            "_prepare_contribution_totals",
+            "ensure_totals_available",
+            "get_payload",
+        }
+        cls = ast.ClassDef(
+            name="QueryContextProcessor",
+            bases=[],
+            keywords=[],
+            decorator_list=[],
+            body=[
+                n
+                for n in original.body
+                if isinstance(n, ast.FunctionDef) and n.name in methods
+            ],
+        )
+        module = ast.Module(
+            body=[
+                ast.ImportFrom(
+                    module="__future__", names=[ast.alias(name="annotations")], level=0
+                ),
+                cls,
+            ],
+            type_ignores=[],
+        )
         exec(compile(ast.fix_missing_locations(module), str(SOURCE), "exec"), namespace)
         self.processor = namespace["QueryContextProcessor"](self.context)
         self.context.get_query_result = self.processor.get_query_result
 
     def execute(self, query):
         self.calls.append(query.to_dict())
-        return SimpleNamespace(df=pd.DataFrame({"sales": [100 if query.columns else 1000]}))
+        return SimpleNamespace(
+            df=pd.DataFrame({"sales": [100 if query.columns else 1000]})
+        )
 
     def query_results(self, _type, context, query, force_cached):
+        if force_cached:
+            return {"data": []}
         if query.columns:
             self.during_main()
             if self.fail_main:
@@ -86,15 +132,24 @@ class ContributionQueries(unittest.TestCase):
         self.assertEqual(len(self.total_calls()), 1)
         self.assertEqual(self.total.filter, before)
         self.assertIsNone(self.total.row_limit)
-        self.assertEqual(self.main.post_processing[0]["options"]["contribution_totals"], {"sales": 1000})
+        self.assertEqual(
+            self.main.post_processing[0]["options"]["contribution_totals"],
+            {"sales": 1000},
+        )
 
     def test_force_refresh_executes_again_in_next_payload(self):
         self.processor.get_payload()
         self.processor.get_payload()
         self.assertEqual(len(self.total_calls()), 2)
 
+    def test_force_cached_request_does_not_execute_total(self):
+        self.processor.get_payload(force_cached=True)
+        self.assertEqual(self.calls, [])
+
     def test_changed_filters_do_not_reuse_total(self):
-        self.during_main = lambda: self.total.filter.append({"col": "shop", "op": "IN", "val": ["shop-a"]})
+        self.during_main = lambda: self.total.filter.append(
+            {"col": "shop", "op": "IN", "val": ["shop-a"]}
+        )
         self.processor.get_payload()
         self.assertEqual(len(self.total_calls()), 2)
 

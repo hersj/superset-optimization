@@ -1504,9 +1504,6 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             query_object_clone.time_offsets = []
             query_object_clone.post_processing = []
 
-            # Get time offset index
-            index = (get_base_axis_labels(query_object.columns) or [DTTM_ALIAS])[0]
-
             if is_date_range_offset and feature_flag_manager.is_feature_enabled(
                 "DATE_RANGE_TIMESHIFTS_ENABLED"
             ):
@@ -1542,57 +1539,26 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 )
 
             else:
-                # RELATIVE OFFSET: Original logic for non-date-range offsets
-                # The comparison is not using a temporal column so we need to modify
-                # the temporal filter so we run the query with the correct time range
-                if not dataframe_utils.is_datetime_series(df.get(index)):
-                    query_object_clone.filter = copy.deepcopy(query_object_clone.filter)
-
-                    # Find and update temporal filters
-                    for flt in query_object_clone.filter:
-                        if flt.get(
-                            "op"
-                        ) == FilterOperator.TEMPORAL_RANGE and isinstance(
-                            flt.get("val"), str
-                        ):
-                            time_range = cast(str, flt.get("val"))
-                            (
-                                new_outer_from_dttm,
-                                new_outer_to_dttm,
-                            ) = get_since_until_from_time_range(
-                                time_range=time_range,
-                                time_shift=offset,
-                            )
-                            flt["val"] = f"{new_outer_from_dttm} : {new_outer_to_dttm}"
-                else:
-                    # If it IS a datetime series, we still need to clear conflicts
-                    query_object_clone.filter = copy.deepcopy(query_object_clone.filter)
-
-                    # For relative offsets with datetime series, ensure the temporal
-                    # filter matches our range
-                    temporal_col = query_object_clone.granularity or x_axis_label
-
-                    # Update any existing temporal filters to match our shifted range
-                    for flt in query_object_clone.filter:
-                        if (
-                            flt.get("op") == FilterOperator.TEMPORAL_RANGE
-                            and flt.get("col") == temporal_col
-                        ):
-                            flt["val"] = (
-                                f"{query_object_clone.from_dttm} : "
-                                f"{query_object_clone.to_dttm}"
-                            )
-
-            # Remove non-temporal x-axis filters (but keep temporal ones)
-            query_object_clone.filter = [
-                flt
-                for flt in query_object_clone.filter
-                if not (
-                    not is_date_range_offset
-                    and flt.get("col") == x_axis_label
-                    and flt.get("op") != FilterOperator.TEMPORAL_RANGE
+                temporal_col = self._get_temporal_column_for_filter(
+                    query_object, x_axis_label
                 )
-            ]
+                if not temporal_col:
+                    raise QueryObjectValidationError(
+                        "Unable to identify the bound comparison time column"
+                    )
+                query_object_clone.granularity = temporal_col
+                query_object_clone.filter = copy.deepcopy(query_object_clone.filter)
+                # Independent dates and category filters describe the same cohort.
+                for flt in query_object_clone.filter:
+                    if (
+                        flt.get("op") == FilterOperator.TEMPORAL_RANGE
+                        and flt.get("col") == temporal_col
+                        and isinstance(flt.get("val"), str)
+                    ):
+                        flt["val"] = (
+                            f"{query_object_clone.from_dttm} : "
+                            f"{query_object_clone.to_dttm}"
+                        )
 
             # Continue with the rest of the method (caching, execution, etc.)
             cached_time_offset_key = (

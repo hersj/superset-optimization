@@ -135,9 +135,9 @@ class Contract(unittest.TestCase):
                 for col in columns
                 if isinstance(col, dict) and col.get("columnType") == "BASE_AXIS"
             ),
-            "get_x_axis_label": lambda columns: columns[0]["label"]
-            if columns
-            else None,
+            "get_x_axis_label": lambda columns: (
+                columns[0]["label"] if columns else None
+            ),
             "get_since_until_from_time_range": time_range_bounds,
             "get_since_until_from_query_object": lambda obj: bounds(
                 obj.time_range
@@ -147,8 +147,9 @@ class Contract(unittest.TestCase):
                     if f["op"] == "TEMPORAL_RANGE"
                 )
             ),
-            "get_past_or_future": lambda offset, value: value
-            + DateOffset(**ns["normalize_time_delta"](offset)),
+            "get_past_or_future": lambda offset, value: (
+                value + DateOffset(**ns["normalize_time_delta"](offset))
+            ),
         }
         from enum import StrEnum
 
@@ -234,8 +235,10 @@ class Contract(unittest.TestCase):
 
         ns["dataframe_utils"] = SimpleNamespace(
             left_join_df=left_join_df,
-            is_datetime_series=lambda series: isinstance(series, pd.Series)
-            and pd.api.types.is_datetime64_any_dtype(series),
+            is_datetime_series=lambda series: (
+                isinstance(series, pd.Series)
+                and pd.api.types.is_datetime64_any_dtype(series)
+            ),
         )
         self.ns = ns
         self.source = ns["ExploreMixin"]()
@@ -281,7 +284,9 @@ class Contract(unittest.TestCase):
                 self.run_offset(main, main, obj)
                 actual = self.calls[-1]
                 self.assertEqual(
-                    next(f["val"] for f in actual["filter"] if f["col"] == "event_date"),
+                    next(
+                        f["val"] for f in actual["filter"] if f["col"] == "event_date"
+                    ),
                     "2026-09-01 00:00:00 : 2026-09-04 00:00:00",
                 )
                 self.assertEqual(
