@@ -116,3 +116,26 @@ test('initial sort hydration preserves the saved viewport', async () => {
   });
   expect(getByTestId('body').scrollTop).toBe(75);
 });
+
+
+test('refresh loading retains browsing on existing nodes but does not initialize replacement nodes', async () => {
+  updatePersonalChartViewport('u', 'd', 'c', 'null', { positions: { table: { top: 90, left: 15 } } });
+  const { getByTestId, rerender } = render(<Viewport />);
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  rerender(<Viewport ready={false} />);
+  getByTestId('body').scrollTop = 140;
+  fireEvent.scroll(getByTestId('body'));
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(readPersonalChartViewport('u', 'd', 'c', 'null')?.positions.table.top).toBe(140);
+  rerender(<Viewport />);
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(getByTestId('body').scrollTop).toBe(140);
+  rerender(<Viewport ready={false} version={2} />);
+  expect(getByTestId('body').scrollTop).toBe(0);
+  fireEvent.scroll(getByTestId('body'));
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(readPersonalChartViewport('u', 'd', 'c', 'null')?.positions.table.top).toBe(140);
+  rerender(<Viewport version={2} />);
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(getByTestId('body').scrollTop).toBe(140);
+});

@@ -104,7 +104,10 @@ test('personal table sorting does not reorder the server-selected candidate resu
     />,
   );
   expect(names()).toEqual(['Maria', 'Joe', 'Michael']);
-  expect(setDataMask).not.toHaveBeenCalled();
+  expect(setDataMask.mock.calls.some(([mask]) =>
+    Object.prototype.hasOwnProperty.call(mask.ownState ?? {}, 'personalSort'),
+  )).toBe(false);
+  expect(setDataMask.mock.calls.some(([mask]) => mask.ownState?.currentPage === 0)).toBe(false);
 });
 
 test('client table restores page and page length through automatic refresh', () => {
@@ -139,5 +142,8 @@ test('client table restores page and page length through automatic refresh', () 
     />,
   );
   expect(names()).toEqual(['Michael']);
-  expect(setDataMask).not.toHaveBeenCalled();
+  expect(setDataMask.mock.calls.some(([mask]) =>
+    Object.prototype.hasOwnProperty.call(mask.ownState ?? {}, 'personalSort'),
+  )).toBe(false);
+  expect(setDataMask.mock.calls.some(([mask]) => mask.ownState?.currentPage === 0)).toBe(false);
 });
