@@ -16,12 +16,60 @@
 # under the License.
 """Compile only validated original columns and bound category values."""
 
+from datetime import datetime
 from typing import Any
 
+import numpy as np
+import pandas as pd
 import sqlalchemy as sa
 
 from superset.common.personal_sort import column_label
 from superset.exceptions import QueryObjectValidationError
+
+
+class _CohortTemporalType(sa.types.TypeDecorator):
+    """Preserve native driver binds, filling SQLAlchemy 1.4's literal-only gap."""
+
+    impl = sa.DateTime
+    cache_ok = True
+
+    def __init__(self, sqltype: Any) -> None:
+        super().__init__()
+        self.impl = sqltype
+
+    def literal_processor(self, dialect: Any) -> Any:
+        processor = self.impl.literal_processor(dialect)
+        if processor is not None:
+            return processor
+        quote = sa.String().literal_processor(dialect)
+        sqltype = self.impl.compile(dialect=dialect)
+
+        def render(value: Any) -> str:
+            text = (
+                value.isoformat(" ")
+                if isinstance(value, datetime)
+                else value.isoformat()
+            )
+            return f"CAST({quote(text)} AS {sqltype})"
+
+        return render
+
+
+def _native_cohort_value(value: Any, sqltype: Any) -> Any:
+    if isinstance(value, np.datetime64):
+        value = pd.Timestamp(value)
+    elif isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, pd.Timestamp):
+        value = value.to_pydatetime(warn=False)
+    if (
+        isinstance(sqltype, sa.Date)
+        and not isinstance(sqltype, sa.DateTime)
+        and isinstance(value, datetime)
+    ):
+        # A DATE is a business calendar date, not its UTC-converted instant.
+        return value.date()
+    return value
 
 
 def apply_sort_predicate(
@@ -36,7 +84,19 @@ def apply_sort_predicate(
         raise QueryObjectValidationError(
             "Personal sort grouping is missing from the query"
         ) from ex
-    values = sort["cohort_values"]
+    values = [
+        [
+            _native_cohort_value(value, col.type)
+            for col, value in zip(cols, row, strict=True)
+        ]
+        for row in sort["cohort_values"]
+    ]
+    cols = [
+        sa.type_coerce(col, _CohortTemporalType(col.type))
+        if isinstance(col.type, (sa.Date, sa.DateTime))
+        else col
+        for col in cols
+    ]
     ordinary = [tuple(row) for row in values if all(value is not None for value in row)]
     nullable = [row for row in values if any(value is None for value in row)]
     predicates = []
