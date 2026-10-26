@@ -51,6 +51,24 @@ def _temporal_axis(form_data: dict[str, Any], label: str) -> bool:
     )
 
 
+def _metric_option(metric: Any, query: str | None) -> dict[str, Any] | None:
+    if not isinstance(metric, (str, dict)) or not metric:
+        return None
+    name = metric_label(metric)
+    identity = metric if isinstance(metric, str) else metric.get("optionName") or name
+    return (
+        {
+            "value": f"{query}:{identity}" if query else identity,
+            "label": name,
+            "kind": "metric",
+            "metric": metric,
+            "query": query,
+        }
+        if identity
+        else None
+    )
+
+
 def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
     viz_type = form_data.get("viz_type", "")
     if viz_type in ("big_number", "big_number_total"):
@@ -65,22 +83,8 @@ def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
         groups.append((_list(form_data.get("metrics_b")), "B"))
     for items, query in groups:
         for metric in items:
-            if not isinstance(metric, (str, dict)) or not metric:
-                continue
-            name = metric_label(metric)
-            identity = (
-                metric if isinstance(metric, str) else metric.get("optionName") or name
-            )
-            if identity:
-                options.append(
-                    {
-                        "value": f"{query}:{identity}" if query else identity,
-                        "label": name,
-                        "kind": "metric",
-                        "metric": metric,
-                        "query": query,
-                    }
-                )
+            if option := _metric_option(metric, query):
+                options.append(option)
     if viz_type == "pivot_table_v2":
         dimensions = _list(
             form_data.get(
