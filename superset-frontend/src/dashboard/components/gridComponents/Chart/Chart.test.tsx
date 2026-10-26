@@ -1153,3 +1153,42 @@ test('corrects a rendered query made before temporal metadata without changing i
     }),
   );
 });
+
+test('does not query again for temporal metadata unrelated to the chart dimensions', () => {
+  const state = createMonthHydrationState(true);
+  state.charts[queryId].form_data.groupbyRows = ['department_label'];
+  state.charts[queryId].latestQueryFormData.groupbyRows = ['department_label'];
+  const oldId = Object.keys(state.dataMask)[0];
+  const id = 'NATIVE_DATE_UNRELATED_COLUMN';
+  state.dataMask = { [id]: { ...state.dataMask[oldId], id } };
+  state.nativeFilters.filters = {
+    [id]: { ...state.nativeFilters.filters[oldId], id },
+  };
+  const store = createStore(state, reducerIndex);
+  const spy = jest.spyOn(store, 'dispatch');
+  render(<Chart {...props} />, { store, useRouter: true });
+  expect(spy).not.toHaveBeenCalledWith({
+    type: 'TRIGGER_QUERY',
+    value: true,
+    key: queryId,
+  });
+});
+
+test('requeries when the restored native grain differs from the rendered query', async () => {
+  const state = createMonthHydrationState(true);
+  state.charts[queryId].latestQueryFormData.temporal_columns_lookup = {
+    earliest_ship_date: true,
+  };
+  state.charts[queryId].latestQueryFormData.extra_form_data.time_grain_sqla =
+    'P1D';
+  const store = createStore(state, reducerIndex);
+  const spy = jest.spyOn(store, 'dispatch');
+  render(<Chart {...props} />, { store, useRouter: true });
+  await waitFor(() =>
+    expect(spy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    }),
+  );
+});
