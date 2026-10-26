@@ -2124,3 +2124,159 @@ def test_personal_pivot_sort_executes_original_ratio_and_keeps_other_columns(
     assert result.df["country"].tolist() == ["CA", "US"]
     assert result.df["margin"].tolist() == pytest.approx([10 / 900, 0.4])
     assert len(calls) == 1
+
+
+@pytest.fixture
+def personal_history_case(database):
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from sqlalchemy import text
+
+    from superset.common.query_object import QueryObject
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    with database.get_sqla_engine() as engine:
+        engine.execute(
+            text(
+                "CREATE TABLE cohort_history (event_date DATE, order_date DATE, department TEXT, country TEXT, shop TEXT, profit FLOAT)"
+            )
+        )
+        engine.execute(
+            text(
+                "INSERT INTO cohort_history VALUES "
+                "('2026-09-01','2026-01-01','A','US','allowed',4),"
+                "('2026-10-01','2026-01-01','A','US','allowed',3),"
+                "('2026-11-01','2026-01-01','A','US','allowed',10),"
+                "('2026-04-01','2026-01-01','A','US','allowed',99),"
+                "('2026-05-01','2026-01-01','A','US','allowed',6),"
+                "('2026-11-01','2026-01-01','private','US','denied',999)"
+            )
+        )
+    table = SqlaTable(
+        database=database,
+        table_name="cohort_history",
+        columns=[
+            TableColumn(
+                column_name=name,
+                type="DATE"
+                if name.endswith("date")
+                else "FLOAT"
+                if name == "profit"
+                else "TEXT",
+                is_dttm=name.endswith("date"),
+            )
+            for name in (
+                "event_date",
+                "order_date",
+                "department",
+                "country",
+                "shop",
+                "profit",
+            )
+        ],
+    )
+    axes = [
+        {
+            "label": name,
+            "sqlExpression": name,
+            "expressionType": "SQL",
+            "columnType": "BASE_AXIS",
+            "timeGrain": "P1M",
+        }
+        for name in ("event_date", "order_date")
+    ]
+    metric = {
+        "expressionType": "SQL",
+        "sqlExpression": "SUM(profit)",
+        "label": "profit",
+    }
+    form = {
+        "viz_type": "pivot_table_v2",
+        "groupbyRows": [*axes, "department"],
+        "groupbyColumns": ["country"],
+        "metrics": [metric],
+        "row_limit": 1,
+        "personal_sort": {"mode": "metric", "field": "profit", "direction": "desc"},
+    }
+    query = QueryObject(
+        columns=[*axes, "department", "country"],
+        metrics=[metric],
+        granularity="event_date",
+        extras={"time_grain_sqla": "P1M"},
+        row_limit=1,
+        from_dttm=datetime(2026, 10, 1),
+        to_dttm=datetime(2026, 12, 1),
+        time_range="2026-10-01 : 2026-12-01",
+        filters=[
+            {
+                "col": "event_date",
+                "op": "TEMPORAL_RANGE",
+                "val": "2026-10-01 : 2026-12-01",
+            },
+            {"col": "order_date", "op": "==", "val": "2026-01-01"},
+        ],
+    )
+
+    def execute(candidate, force_cached):
+        result = table.get_query_result(candidate)
+        assert result.error_message is None
+        return {"df": result.df}
+
+    processor = SimpleNamespace(
+        _qc_datasource=table,
+        _query_context=SimpleNamespace(form_data=form, queries=[query]),
+        _personal_sort_candidates={},
+        get_df_payload=execute,
+    )
+    with patch.object(
+        table, "get_sqla_row_level_filters", return_value=[text("shop = 'allowed'")]
+    ):
+        yield table, query, processor
+
+
+def test_personal_date_cohort_legacy_offset_maps_current_bucket_before_sql(
+    personal_history_case,
+):
+    from superset.common.personal_sort_query import prepare_personal_sort
+    from superset.utils.core import TIME_COMPARISON
+
+    table, query, processor = personal_history_case
+    query.time_offsets = ["1 month ago"]
+    order = prepare_personal_sort(processor, query, False)
+    result = table.get_query_result(query)
+    assert result.error_message is None
+    assert result.df["profit"].tolist() == [10]
+    assert result.df[TIME_COMPARISON.join(["profit", "1 month ago"])].tolist() == [3]
+    assert str(order["values"][0][0]).startswith("2026-11-01")
+    assert str(order["values"][0][1]).startswith("2026-01-01")
+    assert str(query.personal_sort["cohort_values"][0][0]).startswith("2026-11-01")
+
+
+def test_personal_date_cohort_custom_pivot_queries_bind_distinct_period_buckets(
+    personal_history_case,
+):
+    from copy import deepcopy
+    from datetime import datetime
+
+    from superset.common.personal_sort_query import prepare_personal_sort
+
+    table, current, processor = personal_history_case
+    comparison = deepcopy(current)
+    comparison.from_dttm, comparison.to_dttm = (
+        datetime(2026, 4, 1),
+        datetime(2026, 6, 1),
+    )
+    comparison.time_range = "2026-04-01 : 2026-06-01"
+    comparison.filter[0]["val"] = comparison.time_range
+    processor._query_context.queries = [current, comparison]
+    order = prepare_personal_sort(processor, current, False)
+    assert prepare_personal_sort(processor, comparison, False) == order
+    result = table.get_query_result(comparison)
+    assert result.error_message is None
+    assert result.df["profit"].tolist() == [6]
+    assert str(result.df["event_date"].iloc[0]).startswith("2026-05-01")
+    assert str(result.df["order_date"].iloc[0]).startswith("2026-01-01")
+    assert str(comparison.personal_sort["cohort_values"][0][0]).startswith("2026-05-01")
+    assert str(current.personal_sort["cohort_values"][0][0]).startswith("2026-11-01")
+    assert str(order["values"][0][0]).startswith("2026-11-01")
