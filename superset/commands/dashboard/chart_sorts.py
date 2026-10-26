@@ -54,6 +54,18 @@ class DashboardChartSortsCommand(BaseCommand):
             f"superset:chart-sort:{user_id}:{self.dashboard_id}:{chart_id}",
         )
 
+    @staticmethod
+    def form_data(chart: Slice) -> dict[str, Any]:
+        # Saved params omit dataset date metadata used by query builders.
+        return {
+            **chart.form_data,
+            "temporal_columns_lookup": {
+                column.column_name: True
+                for column in getattr(getattr(chart, "datasource", None), "columns", [])
+                if column.is_dttm
+            },
+        }
+
     def run(self) -> dict[str, dict[str, Any]]:
         user_id, charts = self.scope()
         keys = {self.key(user_id, chart_id): chart_id for chart_id in charts}
@@ -73,7 +85,7 @@ class DashboardChartSortsCommand(BaseCommand):
             try:
                 saved = JsonKeyValueCodec().decode(row.value)
                 result[str(chart_id)] = validate_chart_sort(
-                    saved, charts[chart_id].form_data
+                    saved, self.form_data(charts[chart_id])
                 )
             except (ValueError, TypeError):
                 # Removed fields must not block the dashboard or become new SQL.
@@ -93,8 +105,6 @@ class DashboardChartSortsCommand(BaseCommand):
         if value is None:
             KeyValueDAO.delete_entry(KeyValueResource.APP, key)
             return None
-        value = validate_chart_sort(value, charts[chart_id].form_data)
-        KeyValueDAO.upsert_entry(
-            KeyValueResource.APP, value, JsonKeyValueCodec(), key
-        )
+        value = validate_chart_sort(value, self.form_data(charts[chart_id]))
+        KeyValueDAO.upsert_entry(KeyValueResource.APP, value, JsonKeyValueCodec(), key)
         return value

@@ -39,7 +39,10 @@ def isolated_store(mocker):
     mocker.patch("superset.commands.dashboard.chart_sorts.get_user_id", return_value=1)
     mocker.patch("superset.daos.key_value.get_user_id", return_value=None)
     dashboard = SimpleNamespace(slices=[SimpleNamespace(id=3, form_data=FORM)])
-    lookup = mocker.patch("superset.commands.dashboard.chart_sorts.DashboardDAO.get_by_id_or_slug", return_value=dashboard)
+    lookup = mocker.patch(
+        "superset.commands.dashboard.chart_sorts.DashboardDAO.get_by_id_or_slug",
+        return_value=dashboard,
+    )
     yield session, lookup
     session.close()
     engine.dispose()
@@ -59,13 +62,18 @@ def test_roundtrip_private_scopes_and_reset(isolated_store, mocker):
     assert session.query(KeyValueEntry).count() == 0
 
 
-@pytest.mark.parametrize("payload", [
-    {"chart_id": 999, "sort": SORT}, {"chart_id": True, "sort": SORT},
-    {"chart_id": 3}, {"chart_id": 3, "sort": {**SORT, "field": "not-on-chart"}},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"chart_id": 999, "sort": SORT},
+        {"chart_id": True, "sort": SORT},
+        {"chart_id": 3},
+        {"chart_id": 3, "sort": {**SORT, "field": "not-on-chart"}},
+    ],
+)
 def test_reject_unknown_chart_field_and_missing_sort(isolated_store, payload):
     session, _ = isolated_store
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Chart|Sort"):
         DashboardChartSortsCommand(2).put(payload)
     assert session.query(KeyValueEntry).count() == 0
 
@@ -73,7 +81,13 @@ def test_reject_unknown_chart_field_and_missing_sort(isolated_store, payload):
 def test_obsolete_preferences_do_not_block_dashboard(isolated_store):
     session, _ = isolated_store
     command = DashboardChartSortsCommand(2)
-    session.add(KeyValueEntry(resource=KeyValueResource.APP.value, uuid=command.key(1, 3), value=JsonKeyValueCodec().encode({**SORT, "field": "removed"})))
+    session.add(
+        KeyValueEntry(
+            resource=KeyValueResource.APP.value,
+            uuid=command.key(1, 3),
+            value=JsonKeyValueCodec().encode({**SORT, "field": "removed"}),
+        )
+    )
     session.commit()
     assert command.run() == {}
 
@@ -85,6 +99,25 @@ def test_dashboard_access_and_authenticated_user_required(isolated_store, mocker
     with pytest.raises(DashboardAccessDeniedError):
         command.run()
     lookup.side_effect = None
-    mocker.patch("superset.commands.dashboard.chart_sorts.get_user_id", return_value=None)
+    mocker.patch(
+        "superset.commands.dashboard.chart_sorts.get_user_id", return_value=None
+    )
     with pytest.raises(DashboardAccessDeniedError):
         command.run()
+
+
+def test_saved_chart_date_metadata_keeps_date_axis_out_of_sorting():
+    chart = SimpleNamespace(
+        form_data={
+            "viz_type": "echarts_timeseries_line",
+            "x_axis": "day",
+            "metrics": ["sales"],
+        },
+        datasource=SimpleNamespace(
+            columns=[SimpleNamespace(column_name="day", is_dttm=True)]
+        ),
+    )
+    from superset.common.personal_sort import get_sort_options
+
+    assert get_sort_options(DashboardChartSortsCommand.form_data(chart)) == []
+    assert "temporal_columns_lookup" not in chart.form_data

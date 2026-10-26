@@ -894,3 +894,52 @@ test('persists the personal legend selection across auto-refresh and dashboard r
   otherUser.unmount();
   localStorage.removeItem(key!);
 });
+
+test('table sort events reset the page once and cannot replay stale selection after refresh', async () => {
+  const save = jest.spyOn(SupersetClient, 'put').mockResolvedValue({} as never);
+  const sort = { mode: 'metric', field: 'sales', direction: 'asc' };
+  const store = createStore(
+    {
+      ...defaultState,
+      user: { userId: 999 },
+      dashboardState: { ...defaultState.dashboardState, chartSorts: {} },
+      charts: {
+        ...chartQueries,
+        [queryId]: {
+          ...chartQueries[queryId],
+          form_data: {
+            ...chartQueries[queryId].form_data,
+            viz_type: 'table',
+            metrics: ['sales'],
+            groupby: ['sku'],
+          },
+        },
+      },
+      dataMask: {
+        [queryId]: {
+          ownState: {
+            personalSort: sort,
+            currentPage: 4,
+            pageSize: 20,
+            otherSelection: ['SKU-a'],
+          },
+        },
+      },
+    },
+    reducerIndex,
+  );
+  render(<Chart {...props} />, { store, useRouter: true });
+  await waitFor(() =>
+    expect(store.getState().dashboardState.chartSorts[queryId]).toEqual(sort),
+  );
+  expect(store.getState().dataMask[queryId].ownState).toMatchObject({
+    currentPage: 0,
+    pageSize: 20,
+    otherSelection: ['SKU-a'],
+  });
+  expect(
+    store.getState().dataMask[queryId].ownState.personalSort,
+  ).toBeUndefined();
+  await waitFor(() => expect(save).toHaveBeenCalled());
+  save.mockRestore();
+});

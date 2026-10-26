@@ -308,6 +308,20 @@ const Chart = (props: ChartProps) => {
         state.datasources[chart.form_data.datasource]) ||
       PLACEHOLDER_DATASOURCE,
   );
+  const sortFormData = useMemo(
+    () =>
+      chart?.form_data
+        ? {
+            ...chart.form_data,
+            temporal_columns_lookup: Object.fromEntries(
+              (datasource.columns ?? [])
+                .filter(column => column.is_dttm)
+                .map(column => [column.column_name, true]),
+            ),
+          }
+        : chart?.form_data,
+    [chart?.form_data, datasource.columns],
+  );
   const dashboardInfo = useSelector((state: RootState) => state.dashboardInfo);
   const showChartTimestamps: boolean = useSelector(
     (state: RootState) =>
@@ -619,11 +633,11 @@ const Chart = (props: ChartProps) => {
   ]);
   const applySort = useCallback(
     (value: PersonalChartSort | null) => {
-      if (!sortUserId || chartSorts == null || !chart?.form_data) return;
+      if (!sortUserId || chartSorts == null || !sortFormData) return;
       const normalized =
         value === null
           ? null
-          : normalizePersonalSort(value, chart.form_data as QueryFormData);
+          : normalizePersonalSort(value, sortFormData as QueryFormData);
       if (value !== null && !normalized) {
         boundActionCreators.addDangerToast(
           t('This sorting is no longer valid. Choose a field from this chart.'),
@@ -642,7 +656,11 @@ const Chart = (props: ChartProps) => {
       );
       dispatch(
         updateDataMask(props.id, {
-          ownState: { ...dataMask[props.id]?.ownState, currentPage: 0 },
+          ownState: {
+            ...dataMask[props.id]?.ownState,
+            personalSort: undefined,
+            currentPage: 0,
+          },
         }),
       );
       dispatch(setChartSort(props.id, normalized ?? null));
@@ -677,7 +695,7 @@ const Chart = (props: ChartProps) => {
     [
       sortUserId,
       chartSorts,
-      chart?.form_data,
+      sortFormData,
       dataMask,
       props.id,
       props.dashboardId,
@@ -694,10 +712,10 @@ const Chart = (props: ChartProps) => {
       ownSortEvent !== lastOwnSortEvent.current
     ) {
       lastOwnSortEvent.current = ownSortEvent;
-      applySort(ownSortEvent as PersonalChartSort | null);
       const { personalSort: _event, ...ownState } =
         dataMask[props.id]?.ownState ?? {};
       dispatch(updateDataMask(props.id, { ownState }));
+      applySort(ownSortEvent as PersonalChartSort | null);
     }
   }, [ownSortEvent, applySort, dataMask, props.id, dispatch]);
   const previousDashboardChartControls = useRef(dashboardChartControls);
@@ -720,7 +738,7 @@ const Chart = (props: ChartProps) => {
   const formData = useMemo(
     () =>
       getFormDataWithExtraFilters({
-        chart: { id: chart?.id ?? props.id, form_data: chart?.form_data }, // avoid passing the whole chart object
+        chart: { id: chart?.id ?? props.id, form_data: sortFormData }, // avoid passing the whole chart object
         chartConfiguration,
         chartCustomizationItems:
           chartCustomizationItems as ChartCustomization[],
@@ -744,7 +762,7 @@ const Chart = (props: ChartProps) => {
       }),
     [
       chart?.id,
-      chart?.form_data,
+      sortFormData,
       chartConfiguration,
       chartCustomizationItems,
       props.id,
