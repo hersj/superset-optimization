@@ -159,6 +159,8 @@ class QueryObjectDict(TypedDict, total=False):
         timeseries_limit_metric: Series limit metric (use series_limit_metric instead)
     """
 
+    personal_sort: dict[str, Any]
+
     # Core fields from QueryObject.to_dict()
     apply_fetch_values_predicate: bool
     columns: list[Column]

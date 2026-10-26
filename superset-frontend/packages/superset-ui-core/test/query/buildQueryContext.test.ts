@@ -16,7 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { buildQueryContext, VizType } from '@superset-ui/core';
+import buildQueryContext from '../../src/query/buildQueryContext';
+import { VizType } from '../../src/chart/types/VizType';
+jest.mock('@superset-ui/core', () => ({
+  DTTM_ALIAS: '__timestamp',
+  getColumnLabel: jest.requireActual('../../src/query/getColumnLabel').default,
+  isQueryFormColumn: jest.requireActual('../../src/query/types/Column')
+    .isQueryFormColumn,
+}));
 import * as queryModule from '../../src/query/normalizeTimeColumn';
 
 describe('buildQueryContext', () => {
@@ -141,4 +148,66 @@ describe('buildQueryContext', () => {
     expect(spyNormalizeTimeColumn).toHaveBeenCalled();
     spyNormalizeTimeColumn.mockRestore();
   });
+});
+
+test('carries validated personal ordering after plugin query construction', () => {
+  const personal_sort = { mode: 'metric', field: 'sales', direction: 'asc' };
+  const result = buildQueryContext({
+    datasource: '5__table',
+    viz_type: VizType.Table,
+    metrics: ['sales'],
+    groupby: ['sku'],
+    personal_sort,
+  });
+  expect(result.queries[0].personal_sort).toEqual(personal_sort);
+});
+
+test('personal sorting keeps pivot row order and removes conflicting old sort', () => {
+  const result = buildQueryContext(
+    {
+      datasource: '5__table',
+      viz_type: VizType.Table,
+      metrics: ['sales'],
+      groupby: ['sku'],
+      personal_sort: { mode: 'metric', field: 'sales', direction: 'desc' },
+    },
+    () => [
+      {
+        post_processing: [
+          { operation: 'sort', options: { columns: { sales: false } } },
+          {
+            operation: 'pivot',
+            options: {
+              index: ['sku'],
+              columns: [],
+              aggregates: { sales: { operator: 'sum' } },
+            },
+          },
+        ],
+      },
+    ],
+  );
+  expect(result.queries[0].post_processing).toEqual([
+    {
+      operation: 'pivot',
+      options: {
+        index: ['sku'],
+        columns: [],
+        aggregates: { sales: { operator: 'sum' } },
+        preserve_row_order: true,
+      },
+    },
+  ]);
+});
+test('invalid sorting is not forwarded and original ordering remains untouched', () => {
+  const result = buildQueryContext(
+    {
+      datasource: '5__table',
+      viz_type: VizType.Table,
+      metrics: ['sales'],
+      personal_sort: { mode: 'metric', field: 'sql', direction: 'desc' },
+    },
+    () => [{ orderby: [['sales', true]] }],
+  );
+  expect(result.queries[0]).toEqual({ orderby: [['sales', true]] });
 });

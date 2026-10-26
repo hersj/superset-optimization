@@ -123,6 +123,7 @@ class QueryObject:  # pylint: disable=too-many-instance-attributes
         is_rowcount: bool = False,
         is_timeseries: bool | None = None,
         metrics: list[Metric] | None = None,
+        personal_sort: dict[str, Any] | None = None,
         order_desc: bool = True,
         orderby: list[OrderBy] | None = None,
         post_processing: list[dict[str, Any] | None] | None = None,
@@ -147,6 +148,7 @@ class QueryObject:  # pylint: disable=too-many-instance-attributes
         self.is_rowcount = is_rowcount
         self._set_is_timeseries(is_timeseries)
         self._set_metrics(metrics)
+        self.personal_sort = personal_sort
         self.order_desc = order_desc
         self.orderby = orderby or []
         self._set_post_processing(post_processing)
@@ -402,6 +404,8 @@ class QueryObject:  # pylint: disable=too-many-instance-attributes
             "to_dttm": self.to_dttm,
             "time_shift": self.time_shift,
         }
+        if self.personal_sort is not None:
+            query_object_dict["personal_sort"] = self.personal_sort
         return query_object_dict
 
     def __repr__(self) -> str:

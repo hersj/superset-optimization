@@ -173,3 +173,26 @@ export function normalizePersonalSort(
   }
   return result;
 }
+
+/** Keep the viewer override after plugin-specific query construction. */
+export function applyPersonalSortToQuery(
+  query: import('./types/Query').QueryObject,
+  formData: QueryFormData,
+): import('./types/Query').QueryObject {
+  const sort = normalizePersonalSort(formData.personal_sort, formData);
+  if (!sort) return query;
+  return {
+    ...query,
+    personal_sort: sort,
+    post_processing: query.post_processing
+      ?.filter(operation => operation?.operation !== 'sort')
+      .map(operation =>
+        operation?.operation === 'pivot'
+          ? {
+              ...operation,
+              options: { ...operation.options, preserve_row_order: true },
+            }
+          : operation,
+      ),
+  };
+}

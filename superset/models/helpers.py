@@ -66,6 +66,11 @@ from sqlalchemy_utils import UUIDType
 from superset import db, is_feature_enabled
 from superset.advanced_data_type.types import AdvancedDataTypeResponse
 from superset.common.db_query_status import QueryStatus
+from superset.common.personal_sort_sql import (
+    apply_sort_predicate,
+    custom_sort_expression,
+    enforce_personal_row_limit,
+)
 from superset.common.utils import dataframe_utils
 from superset.common.utils.time_range_utils import (
     get_since_until_from_query_object,
@@ -161,6 +166,7 @@ class CachedTimeOffset(TypedDict):
 
 # Keys used to filter QueryObjectDict for get_sqla_query parameters
 SQLA_QUERY_KEYS = {
+    "personal_sort",
     "apply_fetch_values_predicate",
     "columns",
     "extras",
@@ -1318,6 +1324,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         """
         # Execute the base query
         result = self.query(query_object.to_dict())
+        enforce_personal_row_limit(query_object.personal_sort, len(result.df))
         query = result.query + ";\n\n" if result.query else ""
 
         # Process the dataframe if not empty
@@ -1598,6 +1605,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
             # Call the unified query method on the datasource
             result = self.query(query_object_clone_dct)
+            enforce_personal_row_limit(query_object_clone.personal_sort, len(result.df))
 
             queries.append(result.query)
             cache_keys.append(None)
@@ -2907,6 +2915,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
     def get_sqla_query(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements  # noqa: C901
         self,
+        personal_sort: Optional[dict[str, Any]] = None,
         apply_fetch_values_predicate: bool = False,
         columns: Optional[list[Column]] = None,
         extras: Optional[dict[str, Any]] = None,
@@ -3588,6 +3597,14 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         if having_clause_and:
             qry = qry.having(and_(*having_clause_and))
 
+        if personal_sort:
+            sort_expressions = {col.name: col for col in select_exprs}
+            sort_expressions.update(groupby_all_columns)
+            qry = apply_sort_predicate(qry, personal_sort, sort_expressions)
+            custom_order = custom_sort_expression(personal_sort, sort_expressions)
+            if custom_order is not None:
+                qry = qry.order_by(custom_order.asc())
+
         self.make_orderby_compatible(select_exprs, orderby_exprs)
 
         for col, (_orig_col, ascending) in zip(orderby_exprs, orderby, strict=False):  # noqa: B007
@@ -3603,7 +3620,8 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             ):
                 col = literal_column(quote(col.name))
             direction = sa.asc if ascending else sa.desc
-            qry = qry.order_by(direction(col))
+            ordered = direction(col)
+            qry = qry.order_by(ordered.nullslast() if personal_sort else ordered)
 
         if row_limit:
             qry = qry.limit(row_limit)

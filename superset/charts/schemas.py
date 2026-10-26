@@ -1330,6 +1330,7 @@ class ChartDataQueryObjectSchema(Schema):
             Range(min=0, error=_("`row_offset` must be greater than or equal to 0"))
         ],
     )
+    personal_sort = fields.Dict(allow_none=True)
     order_desc = fields.Boolean(
         metadata={"description": "Reverse order. Default: `false`"},
         allow_none=True,

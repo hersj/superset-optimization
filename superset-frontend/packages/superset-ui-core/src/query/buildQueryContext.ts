@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import { applyPersonalSortToQuery } from './personalSort';
 import buildQueryObject from './buildQueryObject';
 import DatasourceKey from './DatasourceKey';
 import { QueryFieldAliases, QueryFormData } from './types/QueryFormData';
@@ -59,6 +60,7 @@ export default function buildQueryContext(
   if (isXAxisSet(formData)) {
     queries = queries.map(query => normalizeTimeColumn(formData, query));
   }
+  queries = queries.map(query => applyPersonalSortToQuery(query, formData));
   // --- query mutator end ---
   return {
     datasource: new DatasourceKey(formData.datasource).toObject(),

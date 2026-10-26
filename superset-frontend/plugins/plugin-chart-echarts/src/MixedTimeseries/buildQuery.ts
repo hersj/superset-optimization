@@ -18,6 +18,7 @@
  */
 import {
   buildQueryContext,
+  applyPersonalSortToQuery,
   ensureIsArray,
   getCustomPeriodComparison,
   normalizeOrderBy,
@@ -122,6 +123,9 @@ export default function buildQuery(formData: QueryFormData) {
 
   return {
     ...queryContexts[0],
-    queries: [...queryContexts[0].queries, ...queryContexts[1].queries],
+    form_data: formData,
+    queries: [...queryContexts[0].queries, ...queryContexts[1].queries].map(
+      query => applyPersonalSortToQuery(query, formData),
+    ),
   };
 }

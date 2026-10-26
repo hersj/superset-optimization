@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from copy import copy
 from typing import Any, cast, ClassVar, Sequence, TYPE_CHECKING
 
 import pandas as pd
@@ -26,6 +27,7 @@ from flask_babel import gettext as _
 
 from superset.common.chart_data import ChartDataResultFormat
 from superset.common.db_query_status import QueryStatus
+from superset.common.personal_sort_query import prepare_personal_sort
 from superset.common.query_actions import get_query_results
 from superset.common.utils.query_cache_manager import QueryCacheManager
 from superset.common.utils.time_range_utils import get_since_until_from_time_range
@@ -75,6 +77,8 @@ class QueryContextProcessor:
     def __init__(self, query_context: QueryContext):
         self._query_context = query_context
         self._qc_datasource = query_context.datasource
+        self._personal_sort_candidates: dict[str, Any] = {}
+        self._personal_sort_sources = [copy(query) for query in query_context.queries]
         self._contribution_totals_query: QueryObject | None = None
         self._contribution_totals_result: tuple[str, QueryResult] | None = None
 
@@ -85,6 +89,7 @@ class QueryContextProcessor:
         self, query_obj: QueryObject, force_cached: bool | None = False
     ) -> dict[str, Any]:
         """Handles caching around the df payload retrieval"""
+        personal_sort_order = prepare_personal_sort(self, query_obj, force_cached)
         if query_obj:
             # Always validate the query object before generating cache key
             # This ensures sanitize_clause() is called and extras are normalized
@@ -193,6 +198,11 @@ class QueryContextProcessor:
         cache.df.columns = [unescape_separator(col) for col in cache.df.columns.values]
 
         return {
+            **(
+                {"personal_sort_order": personal_sort_order}
+                if personal_sort_order
+                else {}
+            ),
             "cache_key": cache_key,
             "cached_dttm": cache.cache_dttm,
             "queried_dttm": cache.queried_dttm,
