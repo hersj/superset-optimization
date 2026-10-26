@@ -41,6 +41,7 @@ import {
   FilterType,
   IdType,
   Row,
+  ColumnInstance,
 } from 'react-table';
 import { matchSorter, rankings } from 'match-sorter';
 import { isEqual } from 'lodash';
@@ -67,6 +68,8 @@ export interface DataTableProps<D extends object> extends TableOptions<D> {
   width?: string | number;
   height?: string | number;
   serverPagination?: boolean;
+  personalSortEnabled?: boolean;
+  personalSortableColumns?: string[];
   onServerPaginationChange: (pageNumber: number, pageSize: number) => void;
   serverPaginationData: {
     pageSize?: number;
@@ -126,6 +129,8 @@ export default typedMemo(function DataTable<D extends object>({
   noResults: noResultsText = 'No data found',
   hooks,
   serverPagination,
+  personalSortEnabled = false,
+  personalSortableColumns = [],
   wrapperRef: userWrapperRef,
   onColumnOrderChange,
   renderGroupingHeaders,
@@ -164,7 +169,7 @@ export default typedMemo(function DataTable<D extends object>({
     // zero length means all pages, the `usePagination` plugin does not
     // understand pageSize = 0
     // sortBy: sortByRef.current,
-    sortBy: serverPagination ? sortByFromParent : sortByRef.current,
+    sortBy: serverPagination || personalSortEnabled ? sortByFromParent : sortByRef.current,
     pageSize: initialPageSize > 0 ? initialPageSize : resultsSize || 10,
   };
   const defaultWrapperRef = useRef<HTMLDivElement>(null);
@@ -246,8 +251,11 @@ export default typedMemo(function DataTable<D extends object>({
       globalFilter: defaultGlobalFilter,
       sortTypes,
       autoResetSortBy: !isEqual(columnNames, previousColumnNames),
-      manualSortBy: !!serverPagination,
+      manualSortBy: !!serverPagination || personalSortEnabled,
       ...moreUseTableOptions,
+      useControlledState: personalSortEnabled
+        ? state => ({ ...state, sortBy: sortByFromParent })
+        : moreUseTableOptions.useControlledState,
     },
     ...tableHooks,
   );
@@ -291,7 +299,7 @@ export default typedMemo(function DataTable<D extends object>({
   useEffect(() => {
     const serverSortBy = serverPaginationData?.sortBy || [];
 
-    if (serverPagination && !isEqual(sortBy, serverSortBy)) {
+    if (!personalSortEnabled && serverPagination && !isEqual(sortBy, serverSortBy)) {
       if (Array.isArray(sortBy) && sortBy.length > 0) {
         const [sortByItem] = sortBy;
         const matchingColumn = columns.find(col => col?.id === sortByItem?.id);
@@ -309,6 +317,26 @@ export default typedMemo(function DataTable<D extends object>({
       }
     }
   }, [sortBy]);
+
+  const getHeaderSortProps = (column: ColumnInstance<D>) => {
+    const toggle = column.getSortByToggleProps();
+    if (!personalSortEnabled) return toggle;
+    const key = (column as ColumnInstance<D> & { columnKey?: string }).columnKey;
+    return {
+      ...toggle,
+      onClick:
+        key && personalSortableColumns.includes(key)
+          ? () =>
+              handleSortByChange([
+                {
+                  id: column.id,
+                  key,
+                  desc: column.isSorted ? !column.isSortedDesc : true,
+                },
+              ])
+          : undefined,
+    };
+  };
 
   // make setPageSize accept 0
   const setPageSize = (size: number) => {
@@ -392,7 +420,7 @@ export default typedMemo(function DataTable<D extends object>({
                     }}
                   >
                     {column.render('Header', {
-                      ...column.getSortByToggleProps(),
+                      ...getHeaderSortProps(column),
                       onDragStart,
                       onDrop,
                     })}
@@ -400,7 +428,7 @@ export default typedMemo(function DataTable<D extends object>({
                 ) : (
                   column.render('Header', {
                     key: column.id,
-                    ...column.getSortByToggleProps(),
+                    ...getHeaderSortProps(column),
                     onDragStart,
                     onDrop,
                   })

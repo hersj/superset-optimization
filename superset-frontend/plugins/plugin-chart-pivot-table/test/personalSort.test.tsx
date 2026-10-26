@@ -154,6 +154,7 @@ test('pivot header emits stable metric identity and raw column context', async (
     <PivotTableChart
       {...props}
       personalSort={null}
+      personalSortEnabled
       ownState={{ searchText: 'keep' }}
       setDataMask={setDataMask}
     />,

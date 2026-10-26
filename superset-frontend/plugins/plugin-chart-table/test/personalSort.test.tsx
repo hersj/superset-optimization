@@ -50,6 +50,7 @@ test.each([false, true])(
     source.hooks.setDataMask = setDataMask;
     source.ownState = { pageSize: 25, searchText: 'retained' };
     source.rawFormData.server_pagination = serverPagination;
+    source.rawFormData.personal_sort = null;
     const { container } = render(
       <TableChart {...transformProps(source)} sticky={false} />,
     );

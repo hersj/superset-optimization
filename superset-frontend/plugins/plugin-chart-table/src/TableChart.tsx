@@ -328,6 +328,10 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     pageSize = 0,
     serverPagination = false,
     serverPaginationData,
+    personalSort,
+    personalSortEnabled = false,
+    sortFields = {},
+    ownState = {},
     setDataMask,
     showCellBars = true,
     sortDesc = false,
@@ -1459,6 +1463,24 @@ export default function TableChart<D extends DataRecord = DataRecord>(
 
   const handleSortByChange = useCallback(
     (sortBy: SortByItem[]) => {
+      if (personalSortEnabled) {
+        const criterion = sortBy[0];
+        const field = criterion?.key && sortFields[criterion.key];
+        setDataMask({
+          ownState: {
+            ...ownState,
+            currentPage: 0,
+            personalSort:
+              criterion && field
+                ? {
+                    ...field,
+                    direction: criterion.desc ? 'desc' : 'asc',
+                  }
+                : null,
+          },
+        });
+        return;
+      }
       if (!serverPagination) return;
       const modifiedOwnState = {
         ...serverPaginationData,
@@ -1466,8 +1488,19 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       };
       updateTableOwnState(setDataMask, modifiedOwnState);
     },
-    [serverPagination, serverPaginationData, setDataMask],
+    [serverPagination, serverPaginationData, setDataMask, personalSortEnabled, sortFields, ownState],
   );
+
+  const personalSortBy = useMemo(() => {
+    if (!personalSort || personalSort.mode === 'custom') return [];
+    const key = Object.keys(sortFields).find(
+      column => sortFields[column].field === personalSort.field,
+    );
+    const column = columns.find(entry => entry.columnKey === key);
+    return column
+      ? [{ id: String(column.id), key, desc: personalSort.direction === 'desc' }]
+      : [];
+  }, [columns, personalSort, sortFields]);
 
   const handleSearch = (searchText: string) => {
     const modifiedOwnState = {
@@ -1556,7 +1589,9 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         onServerPaginationChange={handleServerPaginationChange}
         onColumnOrderChange={() => setColumnOrderToggle(!columnOrderToggle)}
         initialSearchText={serverPaginationData?.searchText || ''}
-        sortByFromParent={serverPaginationData?.sortBy || []}
+        sortByFromParent={personalSortEnabled ? personalSortBy : serverPaginationData?.sortBy || []}
+        personalSortEnabled={personalSortEnabled}
+        personalSortableColumns={Object.keys(sortFields)}
         searchInputId={`${sliceId}-search`}
         // 9 page items in > 340px works well even for 100+ pages
         maxPageItemCount={width > 340 ? 9 : 7}

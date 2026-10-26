@@ -295,6 +295,10 @@ export default function PivotTableChart(props: PivotTableProps) {
     frozenColumnCount = 0,
     frozenColumnKey,
     freezeMetricIds = {},
+    personalSort,
+    personalSortEnabled = false,
+    personalSortOrder,
+    ownState = {},
   } = props;
 
   const theme = useTheme();
@@ -836,7 +840,7 @@ export default function PivotTableChart(props: PivotTableProps) {
 
   return (
     <Styles height={height} width={width} margin={theme.sizeUnit * 4}>
-      <PivotTableWrapper>
+      <PivotTableWrapper data-personal-sort-scroll="pivot">
         {customPeriodComparison && (
           <div role="note">
             {customPeriodComparisonLabel && (
@@ -846,6 +850,13 @@ export default function PivotTableChart(props: PivotTableProps) {
           </div>
         )}
         <PivotTable
+          personalSort={personalSort}
+          personalSortOrder={personalSortOrder}
+          onPersonalSortChange={
+            personalSortEnabled
+              ? spec => setDataMask({ ownState: { ...ownState, personalSort: spec } })
+              : undefined
+          }
           frozenColumnCount={frozenColumnCount}
           frozenColumnKey={frozenColumnKey}
           freezeMetricIds={freezeMetricIds}

@@ -28,6 +28,8 @@ import {
   QueryFormData,
   SetDataMaskHook,
   ContextMenuFilters,
+  PersonalChartSort,
+  JsonObject,
 } from '@superset-ui/core';
 import type {
   BasicColorFormatterType,
@@ -83,6 +85,10 @@ export interface TableChartProps extends ChartProps {
 }
 
 export interface TableChartTransformedProps<D extends DataRecord = DataRecord> {
+  personalSort?: PersonalChartSort | null;
+  personalSortEnabled?: boolean;
+  sortFields?: Record<string, Pick<PersonalChartSort, 'mode' | 'field'>>;
+  ownState?: JsonObject;
   frozenColumns?: number;
   onFrozenColumnsChange?: (count: number) => void;
   timeGrain?: TimeGranularity;

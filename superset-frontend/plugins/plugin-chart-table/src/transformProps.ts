@@ -30,6 +30,8 @@ import {
   ensureIsArray,
   extractTimegrain,
   getMetricLabel,
+  getPersonalSortOptions,
+  normalizePersonalSort,
   getNumberFormatter,
   getTimeFormatter,
   getTimeFormatterForGranularity,
@@ -979,6 +981,26 @@ const transformProps = (
       Array.isArray(passedColumns) && passedColumns?.length > 0
         ? passedColumns
         : cachedValues?.passedColumns || [],
+    ...(Object.prototype.hasOwnProperty.call(originalFormData, 'personal_sort')
+      ? {
+          personalSortEnabled: true,
+          personalSort:
+            normalizePersonalSort(originalFormData.personal_sort, originalFormData) ??
+            null,
+        }
+      : {}),
+    ownState: serverPaginationData,
+    sortFields: Object.fromEntries(
+      getPersonalSortOptions(originalFormData).flatMap(option =>
+        (passedColumns?.length ? passedColumns : cachedValues?.passedColumns ?? []).flatMap(column =>
+          column.key === option.label ||
+          column.key === option.value ||
+          column.key === `Main ${option.label}`
+            ? [[column.key, { mode: option.kind, field: option.value }]]
+            : [],
+        ),
+      ),
+    ),
     serverPagination,
     metrics,
     percentMetrics,

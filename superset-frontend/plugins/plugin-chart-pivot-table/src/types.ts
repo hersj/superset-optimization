@@ -18,6 +18,8 @@
  */
 import {
   QueryFormData,
+  PersonalChartSort,
+  PersonalSortOrder,
   DataRecord,
   SetDataMaskHook,
   DataRecordValue,
@@ -98,6 +100,10 @@ interface PivotTableCustomizeProps {
   dimensionLabelOverrides?: Record<string, string>;
   frozenColumnCount?: number;
   frozenColumnKey?: string | null;
+  personalSort?: PersonalChartSort | null;
+  personalSortEnabled?: boolean;
+  personalSortOrder?: PersonalSortOrder;
+  ownState?: JsonObject;
   freezeMetricIds?: Record<string, string>;
 }
 

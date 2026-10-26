@@ -18,6 +18,7 @@
  */
 import {
   ChartProps,
+  normalizePersonalSort,
   getColumnLabel,
   getCustomPeriodComparison,
   mergeCustomPeriodComparisonRows,
@@ -475,6 +476,10 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   // AUTO symbol passed through - PivotTableChart handles per-cell currency detection
 
   return {
+    personalSortEnabled: Object.prototype.hasOwnProperty.call(rawFormData, 'personal_sort'),
+    personalSort: normalizePersonalSort(rawFormData.personal_sort, rawFormData) ?? null,
+    personalSortOrder: queriesData[0].personal_sort_order,
+    ownState: chartProps.ownState,
     ...(period
       ? {
           customPeriodComparison: true,
