@@ -165,7 +165,7 @@ def validate_chart_sort(payload: Any, form_data: dict[str, Any]) -> dict[str, An
                 "Custom order must contain at most 1000 original category values"
             )
         values = list(dict.fromkeys(values))
-        if len(json.dumps(values, ensure_ascii=False)) > 65536:
+        if len(json.dumps(values)) > 65536:
             raise ValueError("Custom order is too large")
         result["customOrder"] = values
     if "columnValues" in payload:
