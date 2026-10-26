@@ -24,6 +24,7 @@ jest.mock('@superset-ui/core', () => ({
   isQueryFormColumn: jest.requireActual('../../src/query/types/Column')
     .isQueryFormColumn,
 }));
+import { getPersonalSortOptions } from '../../src/query/personalSort';
 import * as queryModule from '../../src/query/normalizeTimeColumn';
 
 describe('buildQueryContext', () => {
@@ -210,4 +211,42 @@ test('invalid sorting is not forwarded and original ordering remains untouched',
     () => [{ orderby: [['sales', true]] }],
   );
   expect(result.queries[0]).toEqual({ orderby: [['sales', true]] });
+});
+
+test('Mixed offers only shared categories and never ranks an ungrouped date axis', () => {
+  const form = {
+    datasource: '5__table',
+    viz_type: 'mixed_timeseries',
+    x_axis: 'day',
+    temporal_columns_lookup: { day: true },
+    groupby: ['sku'],
+    groupby_b: [],
+    metrics: ['sales'],
+    metrics_b: ['sales'],
+  };
+  expect(getPersonalSortOptions(form)).toEqual([]);
+  expect(
+    getPersonalSortOptions({ ...form, groupby_b: ['sku'] }).map(
+      option => option.value,
+    ),
+  ).toEqual(['A:sales', 'B:sales', 'sku']);
+  expect(
+    getPersonalSortOptions({ ...form, x_axis: 'department' }).map(
+      option => option.value,
+    ),
+  ).toEqual(['A:sales', 'B:sales', 'department']);
+  expect(getPersonalSortOptions({ ...form, groupby_b: null })).toEqual([]);
+});
+
+test('bubble uses existing x y size aggregate metrics', () => {
+  expect(
+    getPersonalSortOptions({
+      datasource: '5__table',
+      viz_type: 'bubble_v2',
+      x: 'sales',
+      y: 'margin',
+      size: 'orders',
+      entity: 'sku',
+    }).map(option => option.value),
+  ).toEqual(['sales', 'margin', 'orders', 'sku']);
 });

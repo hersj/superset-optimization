@@ -95,9 +95,11 @@ export function getPersonalSortOptions(
     mixedAxis && !mixedTemporal
       ? [mixedAxis]
       : asArray<QueryFormColumn>(formData.groupby).filter(column =>
-          asArray<QueryFormColumn>(formData.groupby_b ?? formData.groupby).some(
-            other => isEqual(column, other),
-          ),
+          asArray<QueryFormColumn>(
+            formData.groupby_b === undefined
+              ? formData.groupby
+              : formData.groupby_b,
+          ).some(other => isEqual(column, other)),
         );
   const rawColumns = mixed
     ? mixedColumns
