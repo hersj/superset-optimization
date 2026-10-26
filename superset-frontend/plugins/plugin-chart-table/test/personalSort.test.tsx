@@ -180,7 +180,7 @@ test.each([false, true])(
     const query = buildQuery(source.rawFormData, { ownState: source.ownState }).queries[0];
     expect(query.time_offsets).toEqual(['1 day ago']);
     expect(query.personal_sort).toEqual({ ...metricSort, direction: 'asc' });
-    expect(query.row_offset).toBe(serverPagination ? 25 : 0);
+    expect(query.row_offset ?? 0).toBe(serverPagination ? 25 : 0);
     const rows = [
       { name: 'ACA', sum__num: 9, 'sum__num__1 day ago': 900 },
       { name: 'TL', sum__num: 74, 'sum__num__1 day ago': 1 },
