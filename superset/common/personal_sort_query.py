@@ -36,6 +36,7 @@ from superset.common.personal_sort import (
 )
 from superset.exceptions import QueryObjectValidationError
 from superset.utils import json
+from superset.utils.core import apply_max_row_limit
 
 
 def _ranking_dimensions(form: dict[str, Any], source: Any) -> list[Any]:
@@ -71,6 +72,32 @@ def _has_multiple_periods(processor: Any, source: Any) -> bool:
         item.columns and not item.is_rowcount and item.time_range != source.time_range
         for item in processor._personal_sort_sources
     )
+
+
+def _candidate_row_limit(form_limit: Any, query_limit: int | None) -> int:
+    # Old saved forms contain numeric strings; zero/empty retain default semantics.
+    if isinstance(form_limit, bool):
+        raise QueryObjectValidationError(
+            "Personal sort row limit must be a positive integer"
+        )
+    value = query_limit if form_limit in (None, 0, "", "0") else form_limit
+    if isinstance(value, bool) or not isinstance(value, (int, str, type(None))):
+        raise QueryObjectValidationError(
+            "Personal sort row limit must be a positive integer"
+        )
+    if value in (None, 0, "", "0"):
+        value = current_app.config["SQL_MAX_ROW"]
+    try:
+        limit = int(value)
+    except (ValueError, TypeError) as ex:
+        raise QueryObjectValidationError(
+            "Personal sort row limit must be a positive integer"
+        ) from ex
+    if limit <= 0:
+        raise QueryObjectValidationError(
+            "Personal sort row limit must be a positive integer"
+        )
+    return apply_max_row_limit(limit)
 
 
 def prepare_personal_sort(
@@ -142,10 +169,7 @@ def prepare_personal_sort(
     source.series_columns = []
     source.series_limit_metric = None
     source.row_offset = query.row_offset
-    source.row_limit = min(
-        form.get("row_limit") or source.row_limit or current_app.config["SQL_MAX_ROW"],
-        current_app.config["SQL_MAX_ROW"],
-    )
+    source.row_limit = _candidate_row_limit(form.get("row_limit"), source.row_limit)
     source.orderby = deepcopy(orderby)
     source.filter = deepcopy(source.filter)
     if "columnValues" in sort:
