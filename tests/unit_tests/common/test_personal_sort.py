@@ -332,3 +332,34 @@ def test_normalized_temporal_axis_ranks_series_not_days():
         "groupby": ["sku"],
     }
     assert _ranking_dimensions(form, source) == ["sku"]
+
+
+def test_mixed_only_offers_shared_original_categories():
+    from superset.common.personal_sort import (
+        get_mixed_sort_dimensions,
+        get_sort_options,
+    )
+
+    temporal = {
+        "viz_type": "mixed_timeseries",
+        "x_axis": "day",
+        "temporal_columns_lookup": {"day": True},
+        "groupby": ["department", "sku"],
+        "groupby_b": ["department"],
+        "metrics": ["sales"],
+        "metrics_b": ["sales"],
+    }
+    assert get_mixed_sort_dimensions(temporal) == ["department"]
+    assert [item["value"] for item in get_sort_options(temporal)] == [
+        "A:sales",
+        "B:sales",
+        "department",
+    ]
+    assert get_sort_options({**temporal, "groupby_b": []}) == []
+    categorical = {**temporal, "x_axis": "pf"}
+    assert get_mixed_sort_dimensions(categorical) == ["pf"]
+    assert [item["value"] for item in get_sort_options(categorical)] == [
+        "A:sales",
+        "B:sales",
+        "pf",
+    ]

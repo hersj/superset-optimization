@@ -69,6 +69,45 @@ def _metric_option(metric: Any, query: str | None) -> dict[str, Any] | None:
     )
 
 
+def get_mixed_sort_dimensions(form_data: dict[str, Any]) -> list[Any]:
+    axis = form_data.get("x_axis")
+    if axis and not _temporal_axis(form_data, column_label(axis)):
+        return [axis]
+    groups = _list(form_data.get("groupby"))
+    other = _list(form_data.get("groupby_b", form_data.get("groupby")))
+    return [column for column in groups if column in other]
+
+
+def _sort_dimensions(form_data: dict[str, Any]) -> list[Any]:
+    viz_type = form_data.get("viz_type", "")
+    mixed = viz_type == "mixed_timeseries"
+    if mixed:
+        dimensions = get_mixed_sort_dimensions(form_data)
+    elif viz_type == "pivot_table_v2":
+        dimensions = _list(
+            form_data.get(
+                "groupbyColumns" if form_data.get("transpose_pivot") else "groupbyRows"
+            )
+        )
+    else:
+        dimensions = sum(
+            (
+                _list(form_data.get(key))
+                for key in (
+                    "x_axis",
+                    "y_axis_dimension",
+                    "groupby",
+                    "columns",
+                    "all_columns",
+                    "entity",
+                    "series",
+                )
+            ),
+            [],
+        )
+    return dimensions
+
+
 def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
     viz_type = form_data.get("viz_type", "")
     if viz_type in ("big_number", "big_number_total"):
@@ -93,28 +132,7 @@ def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
         for metric in items:
             if option := _metric_option(metric, query):
                 options.append(option)
-    if viz_type == "pivot_table_v2":
-        dimensions = _list(
-            form_data.get(
-                "groupbyColumns" if form_data.get("transpose_pivot") else "groupbyRows"
-            )
-        )
-    else:
-        dimensions = sum(
-            (
-                _list(form_data.get(key))
-                for key in (
-                    "x_axis",
-                    "y_axis_dimension",
-                    "groupby",
-                    "columns",
-                    "all_columns",
-                    "entity",
-                    "series",
-                )
-            ),
-            [],
-        )
+    dimensions = _sort_dimensions(form_data)
     for column in dimensions:
         label = column_label(column)
         if label and label != "__timestamp" and not _temporal_axis(form_data, label):

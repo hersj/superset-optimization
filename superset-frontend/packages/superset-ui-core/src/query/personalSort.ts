@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { isEqual } from 'lodash';
 import getColumnLabel from './getColumnLabel';
 import getMetricLabel from './getMetricLabel';
 import {
@@ -85,8 +86,22 @@ export function getPersonalSortOptions(
     mixed ? 'A' : undefined,
   );
   if (mixed) addMetrics(asArray<QueryFormMetric>(formData.metrics_b), 'B');
-  const rawColumns =
-    formData.viz_type === 'pivot_table_v2'
+  const mixedAxis = formData.x_axis;
+  const mixedTemporal =
+    mixedAxis &&
+    (getColumnLabel(mixedAxis) === formData.granularity_sqla ||
+      (formData.temporal_columns_lookup || {})[getColumnLabel(mixedAxis)]);
+  const mixedColumns =
+    mixedAxis && !mixedTemporal
+      ? [mixedAxis]
+      : asArray<QueryFormColumn>(formData.groupby).filter(column =>
+          asArray<QueryFormColumn>(formData.groupby_b ?? formData.groupby).some(
+            other => isEqual(column, other),
+          ),
+        );
+  const rawColumns = mixed
+    ? mixedColumns
+    : formData.viz_type === 'pivot_table_v2'
       ? asArray<QueryFormColumn>(
           formData.transpose_pivot
             ? formData.groupbyColumns

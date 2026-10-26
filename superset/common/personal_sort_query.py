@@ -30,6 +30,7 @@ from flask import current_app
 from superset.common.personal_sort import (
     _temporal_axis,
     column_label,
+    get_mixed_sort_dimensions,
     get_sort_options,
     validate_chart_sort,
 )
@@ -38,6 +39,8 @@ from superset.utils import json
 
 
 def _ranking_dimensions(form: dict[str, Any], source: Any) -> list[Any]:
+    if form.get("viz_type") == "mixed_timeseries":
+        return get_mixed_sort_dimensions(form)
     if form.get("viz_type") == "pivot_table_v2":
         return (
             form.get("groupbyColumns" if form.get("transpose_pivot") else "groupbyRows")
