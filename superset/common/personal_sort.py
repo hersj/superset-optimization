@@ -76,7 +76,15 @@ def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
     mixed = viz_type == "mixed_timeseries"
     options: list[dict[str, Any]] = []
     metrics = sum(
-        (_list(form_data.get(key)) for key in ("metrics", "metric", "metric_2")), []
+        (
+            _list(form_data.get(key))
+            for key in (
+                ("metrics", "metric", "metric_2", "x", "y", "size")
+                if viz_type == "bubble_v2"
+                else ("metrics", "metric", "metric_2")
+            )
+        ),
+        [],
     )
     groups = [(metrics, "A" if mixed else None)]
     if mixed:

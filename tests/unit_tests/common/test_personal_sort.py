@@ -260,3 +260,22 @@ def test_sort_missing_source_is_clear_validation_error():
     )
     with pytest.raises(QueryObjectValidationError, match="source query is missing"):
         prepare_personal_sort(processor, query, False)
+
+
+def test_bubble_metrics_are_original_x_y_size_and_cards_are_excluded():
+    from superset.common.personal_sort import get_sort_options
+
+    form = {
+        "viz_type": "bubble_v2",
+        "x": "sales",
+        "y": "profit",
+        "size": "volume",
+        "entity": "sku",
+    }
+    assert [item["value"] for item in get_sort_options(form)] == [
+        "sales",
+        "profit",
+        "volume",
+        "sku",
+    ]
+    assert get_sort_options({**form, "viz_type": "big_number_total"}) == []

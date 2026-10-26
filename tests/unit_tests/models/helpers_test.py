@@ -2034,3 +2034,90 @@ def test_extras_having_is_parenthesized(
         assert "(COUNT(*) > 0 OR 1 = 1)" in sql, (
             f"extras.having should be wrapped in parentheses. Generated SQL: {sql}"
         )
+
+
+def test_personal_pivot_sort_executes_original_ratio_and_keeps_other_columns(database):
+    from types import SimpleNamespace
+
+    from flask import current_app
+    from sqlalchemy import text
+
+    from superset.common.personal_sort_query import prepare_personal_sort
+    from superset.common.query_object import QueryObject
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    with database.get_sqla_engine() as engine:
+        engine.execute(
+            text(
+                "CREATE TABLE personal_sales (sku TEXT, country TEXT, shop TEXT, "
+                "sales FLOAT, profit FLOAT)"
+            )
+        )
+        engine.execute(
+            text(
+                "INSERT INTO personal_sales VALUES "
+                "('sku-a','US','allowed',100,10), "
+                "('sku-a','CA','allowed',100,190), "
+                "('sku-b','US','allowed',100,40), "
+                "('sku-b','CA','allowed',900,10), "
+                "('private','US','denied',1,9999)"
+            )
+        )
+    table = SqlaTable(
+        database=database,
+        table_name="personal_sales",
+        columns=[
+            TableColumn(
+                column_name=name,
+                type="TEXT" if name in ("sku", "country", "shop") else "FLOAT",
+            )
+            for name in ("sku", "country", "shop", "sales", "profit")
+        ],
+    )
+    ratio = {
+        "expressionType": "SQL",
+        "sqlExpression": "SUM(profit) * 1.0 / NULLIF(SUM(sales),0)",
+        "label": "margin",
+        "optionName": "margin-id",
+    }
+    form = {
+        "viz_type": "pivot_table_v2",
+        "metrics": [ratio],
+        "groupbyRows": ["sku"],
+        "groupbyColumns": ["country"],
+        "row_limit": 1,
+        "personal_sort": {
+            "mode": "metric",
+            "field": "margin-id",
+            "direction": "desc",
+            "columnValues": ["US"],
+        },
+    }
+    query = QueryObject(columns=["sku", "country"], metrics=[ratio], row_limit=1)
+    calls = []
+
+    def execute(candidate, force_cached):
+        calls.append(candidate)
+        result = table.get_query_result(candidate)
+        assert result.error_message is None
+        return {"df": result.df}
+
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(form_data=form, queries=[query]),
+        _personal_sort_candidates={},
+        get_df_payload=execute,
+    )
+    with (
+        patch.object(
+            table, "get_sqla_row_level_filters", return_value=[text("shop = 'allowed'")]
+        ),
+        patch.dict(current_app.config, SQL_MAX_ROW=100),
+    ):
+        order = prepare_personal_sort(processor, query, False)
+        assert order == {"columns": ["sku"], "values": [["sku-b"]]}
+        result = table.get_query_result(query)
+    assert result.error_message is None
+    assert result.df["sku"].tolist() == ["sku-b", "sku-b"]
+    assert result.df["country"].tolist() == ["CA", "US"]
+    assert result.df["margin"].tolist() == pytest.approx([10 / 900, 0.4])
+    assert len(calls) == 1

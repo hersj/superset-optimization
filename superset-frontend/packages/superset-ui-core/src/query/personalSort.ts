@@ -74,6 +74,13 @@ export function getPersonalSortOptions(
       ...asArray<QueryFormMetric>(formData.metrics),
       ...asArray<QueryFormMetric>(formData.metric),
       ...asArray<QueryFormMetric>(formData.metric_2),
+      ...(formData.viz_type === 'bubble_v2'
+        ? [
+            ...asArray<QueryFormMetric>(formData.x),
+            ...asArray<QueryFormMetric>(formData.y),
+            ...asArray<QueryFormMetric>(formData.size),
+          ]
+        : []),
     ],
     mixed ? 'A' : undefined,
   );
