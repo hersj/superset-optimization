@@ -102,7 +102,7 @@ import {
   transformSeries,
   transformTimeseriesAnnotation,
 } from '../Timeseries/transformers';
-import { TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
+import { NULL_STRING, TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import { applyComparisonStyles } from '../utils/comparisonStyles';
 import {
@@ -902,7 +902,7 @@ export default function transformProps(
     },
     xAxis: {
       type: xAxisType,
-      ...(personalCategoryValues && { data: personalCategoryValues }),
+      ...(personalCategoryValues && { data: personalCategoryValues.map(value => value === null ? NULL_STRING : value) }),
       name: xAxisTitle,
       nameGap: convertInteger(xAxisTitleMargin),
       nameLocation: 'middle',

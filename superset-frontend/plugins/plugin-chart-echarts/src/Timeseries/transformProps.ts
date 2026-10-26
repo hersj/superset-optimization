@@ -109,6 +109,7 @@ import {
   transformTimeseriesAnnotation,
 } from './transformers';
 import {
+  NULL_STRING,
   OpacityEnum,
   StackControlsValue,
   TIMEGRAIN_TO_TIMESTAMP,
@@ -1116,7 +1117,7 @@ export default function transformProps(
   }
 
   if (personalCategoryValues) {
-    (isHorizontal ? yAxis : xAxis).data = personalCategoryValues;
+    (isHorizontal ? yAxis : xAxis).data = personalCategoryValues.map(value => value === null ? NULL_STRING : value);
   }
 
   if (skuSelection) {

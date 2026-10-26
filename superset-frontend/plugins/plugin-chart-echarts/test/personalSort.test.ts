@@ -150,3 +150,12 @@ test('full original dimension tuples keep distinct SKU groups and current/histor
   expect(order?.('currentA')).toBe(1);
   expect(order?.('historyA')).toBe(1);
 });
+
+
+test('null categories use the same renderer identity in ranking and plotted data', () => {
+  const input = standard({}, [{ category: 'A', sales: 20 }, { category: null, sales: 100 }]);
+  input.queriesData[0].personal_sort_order = { columns: ['category'], values: [[null], ['A']] };
+  const output = timeseries(input).echartOptions;
+  expect(seriesData(output, 'sales')).toEqual([['<NULL>', 100], ['A', 20]]);
+  expect(output.xAxis).toEqual(expect.objectContaining({ data: ['<NULL>', 'A'] }));
+});
