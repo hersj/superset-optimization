@@ -369,9 +369,7 @@ def test_mixed_only_offers_shared_original_categories():
     ]
 
 
-@pytest.mark.parametrize(
-    "invalid_limit", [True, False, "bad", "", "0", "-1", "1.5", 0, -1, 1.5]
-)
+@pytest.mark.parametrize("invalid_limit", [True, False, "bad", "-1", "1.5", -1, 1.5])
 def test_pivot_candidate_rejects_invalid_limits_before_query(invalid_limit):
     form = {
         "viz_type": "pivot_table_v2",
@@ -401,3 +399,46 @@ def test_pivot_candidate_rejects_invalid_limits_before_query(invalid_limit):
     ):
         prepare_personal_sort(processor, query, False)
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "form_limit, source_limit, expected",
+    [
+        (0, 2, 2),
+        ("0", 2, 2),
+        ("", 2, 2),
+        (None, 2, 2),
+        (0, None, 100),
+        (None, None, 100),
+    ],
+)
+def test_pivot_candidate_legacy_defaults_remain_bounded(
+    form_limit, source_limit, expected
+):
+    form = {
+        "viz_type": "pivot_table_v2",
+        "groupbyRows": ["sku"],
+        "groupbyColumns": ["country"],
+        "metrics": ["sales"],
+        "row_limit": form_limit,
+        "personal_sort": spec(),
+    }
+    query = QueryObject(
+        columns=["sku", "country"], metrics=["sales"], row_limit=source_limit
+    )
+    calls = []
+
+    def execute(candidate, force_cached):
+        calls.append(candidate)
+        return {"df": pd.DataFrame([{"sku": "a", "sales": 1}])}
+
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(form_data=form, queries=[query]),
+        _personal_sort_candidates={},
+        get_df_payload=execute,
+    )
+    app = Flask(__name__)
+    app.config["SQL_MAX_ROW"] = 100
+    with app.app_context():
+        prepare_personal_sort(processor, query, False)
+    assert calls[0].row_limit == expected
