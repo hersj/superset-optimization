@@ -223,3 +223,40 @@ def test_no_sort_preserves_query():
     )
     assert prepare_personal_sort(processor, query, False) is None
     assert query.to_dict() == baseline
+
+
+def test_explicit_default_clears_stale_internal_sort():
+    query = QueryObject(
+        columns=["sku"],
+        metrics=["sales"],
+        personal_sort={"cohort_columns": ["sku"], "cohort_values": [["stale"]]},
+    )
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(
+            form_data={**FORM, "personal_sort": None}, queries=[query]
+        )
+    )
+    assert prepare_personal_sort(processor, query, False) is None
+    assert query.personal_sort is None
+
+
+def test_internal_query_keys_are_not_accepted_from_the_browser():
+    query = QueryObject(
+        columns=["sku"],
+        metrics=["sales"],
+        personal_sort={**spec(), "cohort_values": [["injected"]]},
+    )
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(form_data=FORM, queries=[query])
+    )
+    with pytest.raises(QueryObjectValidationError, match="Sort must contain only"):
+        prepare_personal_sort(processor, query, False)
+
+
+def test_sort_missing_source_is_clear_validation_error():
+    query = QueryObject(columns=["sku"], metrics=["sales"], personal_sort=spec())
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(form_data=FORM, queries=[])
+    )
+    with pytest.raises(QueryObjectValidationError, match="source query is missing"):
+        prepare_personal_sort(processor, query, False)

@@ -51,16 +51,30 @@ def _ranking_dimensions(form: dict[str, Any], source: Any) -> list[Any]:
     return source.columns
 
 
+def _source_query(processor: Any, option: dict[str, Any]) -> Any:
+    if getattr(processor, "_personal_sort_sources", None) is None:
+        processor._personal_sort_sources = [
+            copy(item) for item in processor._query_context.queries
+        ]
+    source_index = 1 if option.get("query") == "B" else 0
+    if source_index >= len(processor._personal_sort_sources):
+        raise QueryObjectValidationError("Personal sort source query is missing")
+    return copy(processor._personal_sort_sources[source_index])
+
+
 def prepare_personal_sort(
     processor: Any, query: Any, force_cached: bool | None
 ) -> dict[str, Any] | None:
-    if getattr(query, "_personal_sort_candidate", False):
+    if query is None or getattr(query, "_personal_sort_candidate", False):
         return None
     if getattr(query, "_personal_sort_prepared", False):
         return getattr(query, "_personal_sort_order", None)
     form = processor._query_context.form_data or {}
-    payload = form.get("personal_sort") or query.personal_sort
-    if not isinstance(payload, dict) or not payload:
+    if not isinstance(form, dict):
+        form = {}
+    payload = form.get("personal_sort", getattr(query, "personal_sort", None))
+    if payload is None:
+        query.personal_sort = None
         return None
     try:
         sort = validate_chart_sort(payload, form)
@@ -73,8 +87,10 @@ def prepare_personal_sort(
         if item["value"] == sort["field"]
         and item["kind"] == ("metric" if sort["mode"] == "metric" else "name")
     )
-    source = processor._personal_sort_sources[1 if option.get("query") == "B" else 0]
-    source = copy(source)
+    source = _source_query(processor, option)
+    source.columns = deepcopy(source.columns)
+    source.metrics = deepcopy(source.metrics)
+    source.extras = deepcopy(source.extras)
     source._personal_sort_candidate = True
     source.personal_sort = dict(sort)
     viz = form.get("viz_type", "")
@@ -97,13 +113,13 @@ def prepare_personal_sort(
         or viz == "pivot_table_v2"
     )
     query.personal_sort = dict(sort)
-    query.orderby = orderby
+    query.orderby = deepcopy(orderby)
     query.series_limit = 0
     query._personal_sort_prepared = True
     if not complex_query:
         return None
     source.columns = dimensions
-    source.metrics = [option["metric"]] if sort["mode"] == "metric" else []
+    source.metrics = [deepcopy(option["metric"])] if sort["mode"] == "metric" else []
     source.is_timeseries = False
     source.time_offsets = []
     source.post_processing = []
@@ -116,7 +132,7 @@ def prepare_personal_sort(
         form.get("row_limit") or source.row_limit or current_app.config["SQL_MAX_ROW"],
         current_app.config["SQL_MAX_ROW"],
     )
-    source.orderby = orderby
+    source.orderby = deepcopy(orderby)
     source.filter = deepcopy(source.filter)
     if "columnValues" in sort:
         columns = (

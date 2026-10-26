@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import re
-from copy import copy
 from typing import Any, cast, ClassVar, Sequence, TYPE_CHECKING
 
 import pandas as pd
@@ -78,7 +77,7 @@ class QueryContextProcessor:
         self._query_context = query_context
         self._qc_datasource = query_context.datasource
         self._personal_sort_candidates: dict[str, Any] = {}
-        self._personal_sort_sources = [copy(query) for query in query_context.queries]
+        self._personal_sort_sources: list[Any] | None = None
         self._contribution_totals_query: QueryObject | None = None
         self._contribution_totals_result: tuple[str, QueryResult] | None = None
 
