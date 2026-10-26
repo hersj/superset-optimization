@@ -362,21 +362,29 @@ test('history semantics survive the final theme merge without extra series or ne
   expect(series[1].data).toEqual([[1, 60]]);
 });
 
-
 test('a ranked SKU keeps its raw anchor after reorder, refresh and remount', async () => {
   const scope = '[87,839,"kk_sku"]';
   const key = `echarts__matrix_viewport:${JSON.stringify([1, scope])}`;
   const values = Array.from({ length: 100 }, (_, i) => `SKU${i}`);
   const options = (data: string[]) => ({
-    yAxis: { data, inverse: true }, grid: { top: 38, bottom: 42 },
+    yAxis: { data, inverse: true },
+    grid: { top: 38, bottom: 42 },
     dataZoom: [{ id: 'matrix-rows', yAxisIndex: 0, start: 0, end: 100 }],
   });
   const chart = (data: string[]) => (
-    <Echart refs={{}} width={800} height={300} minCategoryHeight={52}
-      echartOptions={options(data)} dataZoomStorageKey={scope} />
+    <Echart
+      refs={{}}
+      width={800}
+      height={300}
+      minCategoryHeight={52}
+      echartOptions={options(data)}
+      dataZoomStorageKey={scope}
+    />
   );
   const first = render(chart(values));
-  await waitFor(() => expect(mockChart.resize).toHaveBeenCalledWith({ width: 784, height: 5280 }));
+  await waitFor(() =>
+    expect(mockChart.resize).toHaveBeenCalledWith({ width: 784, height: 5280 }),
+  );
   fireEvent.scroll(screen.getByRole('region'), { target: { scrollTop: 558 } });
   const saved = JSON.parse(localStorage.getItem(`${key}:anchor`)!);
   expect(saved.value).toBe('SKU10');
@@ -388,6 +396,8 @@ test('a ranked SKU keeps its raw anchor after reorder, refresh and remount', asy
   expect(screen.getByRole('region').scrollTop).toBe(position);
   first.unmount();
   render(chart(ranked));
-  await waitFor(() => expect(screen.getByRole('region').scrollTop).toBe(position));
+  await waitFor(() =>
+    expect(screen.getByRole('region').scrollTop).toBe(position),
+  );
   expect(JSON.parse(localStorage.getItem(`${key}:anchor`)!)).toEqual(saved);
 });

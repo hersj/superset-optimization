@@ -308,7 +308,10 @@ test('dashboard default ignores the legacy server-table sort while Explore retai
   };
   const ownState = { sortBy: [{ key: 'category', desc: false }] };
   const legacy = buildQuery(formData, { ownState }).queries[0];
-  const dashboard = buildQuery({ ...formData, personal_sort: null }, { ownState }).queries[0];
+  const dashboard = buildQuery(
+    { ...formData, personal_sort: null },
+    { ownState },
+  ).queries[0];
   const baseline = buildQuery(formData).queries[0];
   expect(legacy.orderby).toEqual([['category', true]]);
   expect(dashboard.orderby).toEqual(baseline.orderby);

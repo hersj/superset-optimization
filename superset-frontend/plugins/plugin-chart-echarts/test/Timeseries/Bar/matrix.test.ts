@@ -513,20 +513,26 @@ test('native matrix scroll retains its first category after refresh or reordered
   }
 });
 
-
 test('personal matrix ranking is shared across months and remaps every cell', () => {
   const input = props({
     personal_sort: { mode: 'metric', field: 'sales', direction: 'desc' },
     y_axis_dimension: 'shop',
   } as Partial<EchartsTimeseriesFormData>);
-  input.queriesData[0].personal_sort_order = { columns: ['shop'], values: [['B'], ['A']] };
+  input.queriesData[0].personal_sort_order = {
+    columns: ['shop'],
+    values: [['B'], ['A']],
+  };
   const result = barTransformProps(input);
   expect(result.echartOptions.xAxis).toMatchObject({ data: ['Sep', 'Oct'] });
   expect(result.echartOptions.yAxis).toMatchObject({ data: ['B', 'A'] });
-  const cells = matrixSeries(result).flatMap(series => series.data as MatrixBarDatum[]);
-  expect(cells).toEqual(expect.arrayContaining([
-    { value: [0, 0, -100], dimensionValues: ['Sep', 'B'] },
-    { value: [0, 1, 100], dimensionValues: ['Sep', 'A'] },
-    { value: [1, 1, 200], dimensionValues: ['Oct', 'A'] },
-  ]));
+  const cells = matrixSeries(result).flatMap(
+    series => series.data as MatrixBarDatum[],
+  );
+  expect(cells).toEqual(
+    expect.arrayContaining([
+      { value: [0, 0, -100], dimensionValues: ['Sep', 'B'] },
+      { value: [0, 1, 100], dimensionValues: ['Sep', 'A'] },
+      { value: [1, 1, 200], dimensionValues: ['Oct', 'A'] },
+    ]),
+  );
 });

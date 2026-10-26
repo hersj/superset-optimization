@@ -267,6 +267,7 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         "get_chart_templates",
         "pivot_templates",
         "chart_row_limits",
+        "chart_sorts",
         "put_chart_template",
         "rename_chart_template",
         "delete_chart_template",
@@ -1143,6 +1144,27 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
         )
 
         command = DashboardChartRowLimitsCommand(pk)
+        try:
+            if request.method == "GET":
+                return self.response(200, result=command.run())
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                raise ValueError("JSON object required")
+            return self.response(200, result=command.put(payload))
+        except ValueError as error:
+            return self.response_400(message=str(error))
+        except (DashboardAccessDeniedError, DashboardNotFoundError):
+            return self.response_404()
+
+    @expose("/<pk>/chart_sorts", methods=("GET", "PUT"))
+    @protect()
+    @safe
+    @permission_name("read")
+    def chart_sorts(self, pk: int) -> Response:
+        """Viewers may persist only their own sorting of charts they can access."""
+        from superset.commands.dashboard.chart_sorts import DashboardChartSortsCommand
+
+        command = DashboardChartSortsCommand(pk)
         try:
             if request.method == "GET":
                 return self.response(200, result=command.run())

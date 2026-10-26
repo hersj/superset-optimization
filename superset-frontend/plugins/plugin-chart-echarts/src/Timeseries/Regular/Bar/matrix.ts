@@ -16,7 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { getChartPersonalSort, getPersonalSortOrder, orderedDimensionValues } from '../../../utils/personalSort';
+import {
+  getChartPersonalSort,
+  getPersonalSortOrder,
+  orderedDimensionValues,
+} from '../../../utils/personalSort';
 import type {
   BarSeriesOption,
   CustomSeriesOption,
@@ -174,17 +178,26 @@ export function transformBarMatrix(
     const reorder = (values: DataRecordValue[], column: string) => {
       const ordered = orderedDimensionValues(order, column);
       if (!ordered) return;
-      const positions = new Map(ordered.map((value, index) => [String(value), index]));
-      values.sort((left, right) => (positions.get(String(left)) ?? Infinity) - (positions.get(String(right)) ?? Infinity));
+      const positions = new Map(
+        ordered.map((value, index) => [String(value), index]),
+      );
+      values.sort(
+        (left, right) =>
+          (positions.get(String(left)) ?? Infinity) -
+          (positions.get(String(right)) ?? Infinity),
+      );
     };
-    if (base.xAxis.type !== AxisType.Time) reorder(xValues, getColumnLabel(xColumn));
+    if (base.xAxis.type !== AxisType.Time)
+      reorder(xValues, getColumnLabel(xColumn));
     reorder(yValues, yLabel);
     xValues.forEach((value, index) => xIndexes.set(value, index));
     yValues.forEach((value, index) => yIndexes.set(value, index));
-    entries.forEach(({ points }) => points.forEach(point => {
-      point.value[0] = xIndexes.get(point.dimensionValues[0])!;
-      point.value[1] = yIndexes.get(point.dimensionValues[1])!;
-    }));
+    entries.forEach(({ points }) =>
+      points.forEach(point => {
+        point.value[0] = xIndexes.get(point.dimensionValues[0])!;
+        point.value[1] = yIndexes.get(point.dimensionValues[1])!;
+      }),
+    );
   }
   const horizontal = formData.orientation === OrientationType.Horizontal;
   const slotCount = Math.max(slots.size, 1);

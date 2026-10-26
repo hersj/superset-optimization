@@ -25,7 +25,14 @@ import {
   useState,
 } from 'react';
 import { t } from '@apache-superset/core/translation';
-import { getExtensionsRegistry, QueryData } from '@superset-ui/core';
+import {
+  getExtensionsRegistry,
+  QueryData,
+  PersonalChartSort,
+  QueryFormData,
+  DataRecord,
+} from '@superset-ui/core';
+import ChartSortControl from './ChartSortControl';
 import {
   css,
   styled,
@@ -50,6 +57,12 @@ import { Link } from 'react-router-dom';
 const extensionsRegistry = getExtensionsRegistry();
 
 type SliceHeaderProps = SliceHeaderControlsProps & {
+  personalSort?: PersonalChartSort | null;
+  sortData?: DataRecord[];
+  onSortChange?: (sort: PersonalChartSort | null) => void;
+  isSortDisabled?: boolean;
+  isSavingSort?: boolean;
+  sortSaveError?: boolean;
   personalRowLimit?: number;
   onRowLimitChange?: (value: number | null) => void;
   isRowLimitDisabled?: boolean;
@@ -188,6 +201,12 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
       onSetPersonalChartTemplateDefault,
       onDeletePersonalChartTemplate,
       isSavingPersonalChartLayout,
+      personalSort,
+      sortData,
+      onSortChange,
+      isSortDisabled,
+      isSavingSort,
+      sortSaveError,
       personalRowLimit,
       onRowLimitChange,
       isRowLimitDisabled,
@@ -348,6 +367,17 @@ const SliceHeader = forwardRef<HTMLDivElement, SliceHeaderProps>(
                 <FiltersBadge chartId={slice.slice_id} />
               )}
 
+              {!uiConfig.hideChartControls && onSortChange && (
+                <ChartSortControl
+                  value={personalSort}
+                  formData={formData as QueryFormData}
+                  data={sortData}
+                  onChange={onSortChange}
+                  disabled={isSortDisabled}
+                  saving={isSavingSort}
+                  error={sortSaveError}
+                />
+              )}
               {!uiConfig.hideChartControls && onRowLimitChange && (
                 <ChartRowLimitControl
                   value={personalRowLimit}

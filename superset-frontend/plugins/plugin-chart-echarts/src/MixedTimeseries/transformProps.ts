@@ -17,7 +17,13 @@
  * under the License.
  */
 /* eslint-disable camelcase */
-import { chronologicalRows, getChartPersonalSort, getPersonalCategoryValues, getPersonalSeriesOrder, orderRowsByDimension } from '../utils/personalSort';
+import {
+  chronologicalRows,
+  getChartPersonalSort,
+  getPersonalCategoryValues,
+  getPersonalSeriesOrder,
+  orderRowsByDimension,
+} from '../utils/personalSort';
 import { invert } from 'lodash';
 import {
   AnnotationLayer,
@@ -102,7 +108,11 @@ import {
   transformSeries,
   transformTimeseriesAnnotation,
 } from '../Timeseries/transformers';
-import { NULL_STRING, TIMEGRAIN_TO_TIMESTAMP, TIMESERIES_CONSTANTS } from '../constants';
+import {
+  NULL_STRING,
+  TIMEGRAIN_TO_TIMESTAMP,
+  TIMESERIES_CONSTANTS,
+} from '../constants';
 import { getDefaultTooltip } from '../utils/tooltip';
 import { applyComparisonStyles } from '../utils/comparisonStyles';
 import {
@@ -314,12 +324,33 @@ export default function transformProps(
     String(chartProps.rawFormData.comparison_type_b ?? 'values'),
   );
   const personalSort = getChartPersonalSort(chartProps.rawFormData);
-  const personalCategoryValues = personalSort && xAxisDataType !== GenericDataType.Temporal
-    ? getPersonalCategoryValues(queriesData, [rebasedDataA, rebasedDataB], xAxisLabel, personalSort, getXAxisLabel(chartProps.rawFormData))
-    : undefined;
+  const personalCategoryValues =
+    personalSort && xAxisDataType !== GenericDataType.Temporal
+      ? getPersonalCategoryValues(
+          queriesData,
+          [rebasedDataA, rebasedDataB],
+          xAxisLabel,
+          personalSort,
+          getXAxisLabel(chartProps.rawFormData),
+        )
+      : undefined;
   if (personalSort) {
-    rebasedDataA = xAxisDataType === GenericDataType.Temporal ? chronologicalRows(rebasedDataA, xAxisLabel) : orderRowsByDimension(rebasedDataA, xAxisLabel, personalCategoryValues);
-    rebasedDataB = xAxisDataType === GenericDataType.Temporal ? chronologicalRows(rebasedDataB, xAxisLabel) : orderRowsByDimension(rebasedDataB, xAxisLabel, personalCategoryValues);
+    rebasedDataA =
+      xAxisDataType === GenericDataType.Temporal
+        ? chronologicalRows(rebasedDataA, xAxisLabel)
+        : orderRowsByDimension(
+            rebasedDataA,
+            xAxisLabel,
+            personalCategoryValues,
+          );
+    rebasedDataB =
+      xAxisDataType === GenericDataType.Temporal
+        ? chronologicalRows(rebasedDataB, xAxisLabel)
+        : orderRowsByDimension(
+            rebasedDataB,
+            xAxisLabel,
+            personalCategoryValues,
+          );
   }
   const hasTimeCompare = allTimeCompare.length > 0;
   const displayNameForSeries = (entryName: string, primary: boolean) => {
@@ -473,7 +504,9 @@ export default function transformProps(
     xAxis: xAxisLabel,
     sortSeriesType,
     sortSeriesAscending,
-    personalSeriesOrder: personalSort ? getPersonalSeriesOrder(queriesData, labelMap ?? {}, groupby) : undefined,
+    personalSeriesOrder: personalSort
+      ? getPersonalSeriesOrder(queriesData, labelMap ?? {}, groupby)
+      : undefined,
     stack,
     totalStackedValues,
     xAxisType,
@@ -495,7 +528,9 @@ export default function transformProps(
     xAxis: xAxisLabel,
     sortSeriesType: sortSeriesTypeB,
     sortSeriesAscending: sortSeriesAscendingB,
-    personalSeriesOrder: personalSort ? getPersonalSeriesOrder(queriesData, labelMapB ?? {}, groupbyB) : undefined,
+    personalSeriesOrder: personalSort
+      ? getPersonalSeriesOrder(queriesData, labelMapB ?? {}, groupbyB)
+      : undefined,
     stack: Boolean(stackB),
     totalStackedValues: totalStackedValuesB,
     xAxisType,
@@ -902,7 +937,11 @@ export default function transformProps(
     },
     xAxis: {
       type: xAxisType,
-      ...(personalCategoryValues && { data: personalCategoryValues.map(value => value === null ? NULL_STRING : value) }),
+      ...(personalCategoryValues && {
+        data: personalCategoryValues.map(value =>
+          value === null ? NULL_STRING : value,
+        ),
+      }),
       name: xAxisTitle,
       nameGap: convertInteger(xAxisTitleMargin),
       nameLocation: 'middle',

@@ -169,7 +169,10 @@ export default typedMemo(function DataTable<D extends object>({
     // zero length means all pages, the `usePagination` plugin does not
     // understand pageSize = 0
     // sortBy: sortByRef.current,
-    sortBy: serverPagination || personalSortEnabled ? sortByFromParent : sortByRef.current,
+    sortBy:
+      serverPagination || personalSortEnabled
+        ? sortByFromParent
+        : sortByRef.current,
     pageSize: initialPageSize > 0 ? initialPageSize : resultsSize || 10,
   };
   const defaultWrapperRef = useRef<HTMLDivElement>(null);
@@ -256,20 +259,26 @@ export default typedMemo(function DataTable<D extends object>({
       ...moreUseTableOptions,
       useControlledState: personalSortEnabled
         ? state => {
-            const restoredPageSize = serverPaginationData?.pageSize === 0
-              ? resultsSize || 10
-              : serverPaginationData?.pageSize ?? state.pageSize;
-            const restoredPage = Math.max(0, Math.min(
-              serverPaginationData?.currentPage ?? state.pageIndex,
-              Math.ceil(resultsSize / restoredPageSize) - 1,
-            ));
+            const restoredPageSize =
+              serverPaginationData?.pageSize === 0
+                ? resultsSize || 10
+                : (serverPaginationData?.pageSize ?? state.pageSize);
+            const restoredPage = Math.max(
+              0,
+              Math.min(
+                serverPaginationData?.currentPage ?? state.pageIndex,
+                Math.ceil(resultsSize / restoredPageSize) - 1,
+              ),
+            );
             return {
               ...state,
               sortBy: sortByFromParent,
-              ...(serverPagination ? {} : {
-                pageIndex: restoredPage,
-                pageSize: restoredPageSize,
-              }),
+              ...(serverPagination
+                ? {}
+                : {
+                    pageIndex: restoredPage,
+                    pageSize: restoredPageSize,
+                  }),
             };
           }
         : moreUseTableOptions.useControlledState,
@@ -316,7 +325,11 @@ export default typedMemo(function DataTable<D extends object>({
   useEffect(() => {
     const serverSortBy = serverPaginationData?.sortBy || [];
 
-    if (!personalSortEnabled && serverPagination && !isEqual(sortBy, serverSortBy)) {
+    if (
+      !personalSortEnabled &&
+      serverPagination &&
+      !isEqual(sortBy, serverSortBy)
+    ) {
       if (Array.isArray(sortBy) && sortBy.length > 0) {
         const [sortByItem] = sortBy;
         const matchingColumn = columns.find(col => col?.id === sortByItem?.id);
@@ -338,7 +351,8 @@ export default typedMemo(function DataTable<D extends object>({
   const getHeaderSortProps = (column: ColumnInstance<D>) => {
     const toggle = column.getSortByToggleProps();
     if (!personalSortEnabled) return toggle;
-    const key = (column as ColumnInstance<D> & { columnKey?: string }).columnKey;
+    const key = (column as ColumnInstance<D> & { columnKey?: string })
+      .columnKey;
     return {
       ...toggle,
       onClick:

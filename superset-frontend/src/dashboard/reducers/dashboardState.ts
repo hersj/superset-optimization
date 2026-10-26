@@ -17,7 +17,8 @@
  * under the License.
  */
 /* eslint-disable camelcase */
-import { JsonObject } from '@superset-ui/core';
+import { JsonObject, PersonalChartSort } from '@superset-ui/core';
+import { SET_CHART_SORTS, SET_CHART_SORT } from '../actions/chartSorts';
 import {
   ADD_SLICE,
   ON_CHANGE,
@@ -129,6 +130,7 @@ interface DashboardStateShape {
   chartStates?: Record<string, ChartStateEntry>;
   dashboardChartControls?: DashboardChartControls;
   chartRowLimits?: Record<string, number> | null;
+  chartSorts?: Record<string, PersonalChartSort> | null;
   personalChartLayouts?: Record<string, JsonObject>;
   pivotTemplateLibrary?: PivotTemplateLibrary | null;
   personalChartTemplates?: Record<
@@ -186,6 +188,8 @@ interface DashboardStateAction {
   chartStates?: Record<string, ChartStateEntry>;
   dashboardChartControls?: DashboardChartControls;
   rowLimits?: Record<string, number> | null;
+  sorts?: Record<string, PersonalChartSort> | null;
+  sort?: PersonalChartSort | null;
   rowLimit?: number | null;
   layouts?: Record<string, JsonObject>;
   layout?: JsonObject;
@@ -217,6 +221,15 @@ export default function dashboardStateReducer(
   action: DashboardStateAction,
 ): DashboardStateShape {
   const actionHandlers: Record<string, () => DashboardStateShape> = {
+    [SET_CHART_SORTS](): DashboardStateShape {
+      return { ...state, chartSorts: action.sorts };
+    },
+    [SET_CHART_SORT](): DashboardStateShape {
+      const sorts = { ...state.chartSorts };
+      if (action.sort == null) delete sorts[action.chartId!];
+      else sorts[action.chartId!] = action.sort;
+      return { ...state, chartSorts: sorts };
+    },
     [SET_CHART_ROW_LIMITS](): DashboardStateShape {
       return { ...state, chartRowLimits: action.rowLimits };
     },

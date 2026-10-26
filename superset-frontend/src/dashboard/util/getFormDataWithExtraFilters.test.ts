@@ -101,6 +101,44 @@ describe('getFormDataWithExtraFilters', () => {
     expect(args.chart.form_data.row_limit).toBe(10000);
   });
 
+  test('personal sort overrides only the private form and invalidates the form cache', () => {
+    const args = {
+      ...mockArgs,
+      sliceId: 987654,
+      chart: {
+        ...mockChart,
+        form_data: {
+          ...mockChart.form_data,
+          viz_type: 'echarts_timeseries_bar',
+          x_axis: 'sku',
+          metrics: ['sales'],
+          order_desc: true,
+        },
+      },
+    };
+    const descending = {
+      mode: 'metric' as const,
+      field: 'sales',
+      direction: 'desc' as const,
+    };
+    const ascending = { ...descending, direction: 'asc' as const };
+    const first = getFormDataWithExtraFilters({
+      ...args,
+      personalSort: descending,
+    });
+    expect(first.personal_sort).toEqual(descending);
+    expect(
+      getFormDataWithExtraFilters({ ...args, personalSort: ascending })
+        .personal_sort,
+    ).toEqual(ascending);
+    expect(first.extra_filters).toEqual(
+      getFormDataWithExtraFilters(args).extra_filters,
+    );
+    expect(getFormDataWithExtraFilters(args).personal_sort).toBeNull();
+    expect(args.chart.form_data).not.toHaveProperty('personal_sort');
+    expect(args.chart.form_data.order_desc).toBe(true);
+  });
+
   test('should include filters from the passed filters', () => {
     const result = getFormDataWithExtraFilters(mockArgs);
     expect(result.extra_filters).toHaveLength(2);

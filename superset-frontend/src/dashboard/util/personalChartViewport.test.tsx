@@ -28,18 +28,22 @@ beforeEach(() => localStorage.clear());
 
 test('viewport is isolated by user, dashboard, chart and active sort', () => {
   updatePersonalChartViewport('u', 'd', 'c', 'null', {
-    positions: { table: { top: 80, left: 20 } }, currentPage: 3, pageSize: 25,
+    positions: { table: { top: 80, left: 20 } },
+    currentPage: 3,
+    pageSize: 25,
   });
   expect(readPersonalChartViewport('v', 'd', 'c', 'null')).toBeUndefined();
   expect(readPersonalChartViewport('u', 'e', 'c', 'null')).toBeUndefined();
   expect(readPersonalChartViewport('u', 'd', 'x', 'null')).toBeUndefined();
   expect(readPersonalChartViewport('u', 'd', 'c', 'metric')).toBeUndefined();
   updatePersonalChartViewport('u', 'd', 'c', 'null', {
-    positions: { pivot: { top: 30, left: 5 } }, currentPage: 4,
+    positions: { pivot: { top: 30, left: 5 } },
+    currentPage: 4,
   });
   expect(readPersonalChartViewport('u', 'd', 'c', 'null')).toEqual({
     positions: { table: { top: 80, left: 20 }, pivot: { top: 30, left: 5 } },
-    currentPage: 4, pageSize: 25,
+    currentPage: 4,
+    pageSize: 25,
   });
 });
 
@@ -49,40 +53,66 @@ test('corrupt viewport storage degrades without breaking charts', () => {
   localStorage.setItem(key, '{broken');
   expect(readPersonalChartViewport('u', 'd', 'c', 'null')).toBeUndefined();
   updatePersonalChartViewport('u', 'd', 'c', 'new', { pageSize: 50 });
-  expect(readPersonalChartViewport('u', 'd', 'c', 'new')).toEqual({ positions: {}, pageSize: 50 });
+  expect(readPersonalChartViewport('u', 'd', 'c', 'new')).toEqual({
+    positions: {},
+    pageSize: 50,
+  });
 });
 
 const Viewport = ({ ready = true, signature = 'null', version = 1 }) => {
   const ref = createRef<HTMLDivElement>();
   usePersonalChartViewport(ref, 'u', 'd', 'c', signature, ready);
-  return <div ref={ref}><div key={version} data-test="body" data-personal-sort-scroll="table" /></div>;
+  return (
+    <div ref={ref}>
+      <div key={version} data-test="body" data-personal-sort-scroll="table" />
+    </div>
+  );
 };
 
 test('viewport restores refreshed DOM only after success and saves real browsing', async () => {
-  updatePersonalChartViewport('u', 'd', 'c', 'null', { positions: { table: { top: 90, left: 15 } } });
+  updatePersonalChartViewport('u', 'd', 'c', 'null', {
+    positions: { table: { top: 90, left: 15 } },
+  });
   const { getByTestId, rerender } = render(<Viewport ready={false} />);
   expect(getByTestId('body').scrollTop).toBe(0);
   rerender(<Viewport />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(getByTestId('body').scrollTop).toBe(90);
   getByTestId('body').scrollTop = 120;
   fireEvent.scroll(getByTestId('body'));
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
-  expect(readPersonalChartViewport('u', 'd', 'c', 'null')?.positions.table.top).toBe(120);
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
+  expect(
+    readPersonalChartViewport('u', 'd', 'c', 'null')?.positions.table.top,
+  ).toBe(120);
   rerender(<Viewport version={2} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(getByTestId('body').scrollTop).toBe(120);
   rerender(<Viewport signature="changed" version={2} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(getByTestId('body').scrollTop).toBe(0);
-  expect(readPersonalChartViewport('u', 'd', 'c', 'changed')?.currentPage).toBeUndefined();
+  expect(
+    readPersonalChartViewport('u', 'd', 'c', 'changed')?.currentPage,
+  ).toBeUndefined();
 });
 
-
 test('initial sort hydration preserves the saved viewport', async () => {
-  updatePersonalChartViewport('u', 'd', 'c', 'saved-sort', { positions: { table: { top: 75, left: 10 } } });
-  const { getByTestId, rerender } = render(<Viewport ready={false} signature="null" />);
+  updatePersonalChartViewport('u', 'd', 'c', 'saved-sort', {
+    positions: { table: { top: 75, left: 10 } },
+  });
+  const { getByTestId, rerender } = render(
+    <Viewport ready={false} signature="null" />,
+  );
   rerender(<Viewport signature="saved-sort" />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(getByTestId('body').scrollTop).toBe(75);
 });

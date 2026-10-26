@@ -17,14 +17,28 @@
  * under the License.
  */
 import cx from 'classnames';
+import { updateDataMask } from 'src/dataMask/actions';
+import {
+  updatePersonalChartViewport,
+  usePersonalChartViewport,
+} from 'src/dashboard/util/personalChartViewport';
 import { useCallback, useEffect, useRef, useMemo, useState, memo } from 'react';
 import type {
   ChartCustomization,
   JsonObject,
   QueryFormMetric,
+  PersonalChartSort,
+  QueryFormData,
+  DataRecord,
 } from '@superset-ui/core';
 import { styled } from '@apache-superset/core/theme';
 import { t } from '@apache-superset/core/translation';
+import { normalizePersonalSort } from '@superset-ui/core';
+import {
+  setChartSort,
+  writePendingChartSort,
+  saveQueuedChartSort,
+} from '../../../actions/chartSorts';
 import { debounce } from 'lodash';
 import { bindActionCreators } from 'redux';
 import { useDispatch, useSelector } from 'react-redux';
@@ -222,6 +236,7 @@ const Chart = (props: ChartProps) => {
   const dispatch = useDispatch();
   const descriptionRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const boundActionCreators = useMemo(
     () =>
@@ -551,6 +566,140 @@ const Chart = (props: ChartProps) => {
     },
     [props.dashboardId, props.id, dispatch, boundActionCreators.addDangerToast],
   );
+  const chartSorts = useSelector(
+    (state: RootState) => state.dashboardState.chartSorts,
+  );
+  const sortUserId = useSelector((state: RootState) => state.user?.userId);
+  const personalSort = chartSorts?.[props.id] ?? null;
+  const [isSavingSort, setIsSavingSort] = useState(false);
+  const [sortSaveError, setSortSaveError] = useState(false);
+  const pendingSortCount = useRef(0);
+  const personalSortSignature = JSON.stringify(personalSort);
+  usePersonalChartViewport(
+    viewportRef,
+    sortUserId ?? 'anonymous',
+    props.dashboardId,
+    props.id,
+    personalSortSignature,
+    !!sortUserId && chartSorts != null && chartStatus === 'success',
+  );
+  const currentPage = dataMask[props.id]?.ownState?.currentPage;
+  const pageSize = dataMask[props.id]?.ownState?.pageSize;
+  useEffect(() => {
+    if (!sortUserId || chartSorts == null || sliceVizType !== 'table') return;
+    if (
+      typeof currentPage === 'number' &&
+      Number.isInteger(currentPage) &&
+      currentPage >= 0
+    ) {
+      updatePersonalChartViewport(
+        sortUserId,
+        props.dashboardId,
+        props.id,
+        personalSortSignature,
+        {
+          currentPage,
+          ...(typeof pageSize === 'number' &&
+          Number.isInteger(pageSize) &&
+          pageSize > 0
+            ? { pageSize }
+            : {}),
+        },
+      );
+    }
+  }, [
+    sortUserId,
+    chartSorts,
+    sliceVizType,
+    currentPage,
+    pageSize,
+    props.dashboardId,
+    props.id,
+    personalSortSignature,
+  ]);
+  const applySort = useCallback(
+    (value: PersonalChartSort | null) => {
+      if (!sortUserId || chartSorts == null || !chart?.form_data) return;
+      const normalized =
+        value === null
+          ? null
+          : normalizePersonalSort(value, chart.form_data as QueryFormData);
+      if (value !== null && !normalized) {
+        boundActionCreators.addDangerToast(
+          t('This sorting is no longer valid. Choose a field from this chart.'),
+        );
+        return;
+      }
+      const nextSignature = JSON.stringify(normalized ?? null);
+      if (nextSignature === JSON.stringify(chartSorts[props.id] ?? null))
+        return;
+      updatePersonalChartViewport(
+        sortUserId,
+        props.dashboardId,
+        props.id,
+        nextSignature,
+        { currentPage: 0 },
+      );
+      dispatch(
+        updateDataMask(props.id, {
+          ownState: { ...dataMask[props.id]?.ownState, currentPage: 0 },
+        }),
+      );
+      dispatch(setChartSort(props.id, normalized ?? null));
+      writePendingChartSort(
+        sortUserId,
+        props.dashboardId,
+        props.id,
+        normalized ?? null,
+      );
+      setSortSaveError(false);
+      setIsSavingSort(true);
+      pendingSortCount.current += 1;
+      saveQueuedChartSort(
+        sortUserId,
+        props.dashboardId,
+        props.id,
+        normalized ?? null,
+      )
+        .catch(() => {
+          setSortSaveError(true);
+          boundActionCreators.addDangerToast(
+            t(
+              'Unable to save personal sorting. Your pending choice is kept on this browser.',
+            ),
+          );
+        })
+        .finally(() => {
+          pendingSortCount.current -= 1;
+          if (!pendingSortCount.current) setIsSavingSort(false);
+        });
+    },
+    [
+      sortUserId,
+      chartSorts,
+      chart?.form_data,
+      dataMask,
+      props.id,
+      props.dashboardId,
+      dispatch,
+      boundActionCreators.addDangerToast,
+    ],
+  );
+  const ownSortEvent = dataMask[props.id]?.ownState?.personalSort;
+  const lastOwnSortEvent = useRef<unknown>();
+  useEffect(() => {
+    if (ownSortEvent === undefined) lastOwnSortEvent.current = undefined;
+    if (
+      ownSortEvent !== undefined &&
+      ownSortEvent !== lastOwnSortEvent.current
+    ) {
+      lastOwnSortEvent.current = ownSortEvent;
+      applySort(ownSortEvent as PersonalChartSort | null);
+      const { personalSort: _event, ...ownState } =
+        dataMask[props.id]?.ownState ?? {};
+      dispatch(updateDataMask(props.id, { ownState }));
+    }
+  }, [ownSortEvent, applySort, dataMask, props.id, dispatch]);
   const previousDashboardChartControls = useRef(dashboardChartControls);
   const lastRequestedDashboardChartControlSignature = useRef<string | null>(
     null,
@@ -591,6 +740,7 @@ const Chart = (props: ChartProps) => {
         sharedLabelsColors,
         ownColorScheme,
         rowLimit,
+        personalSort,
       }),
     [
       chart?.id,
@@ -609,6 +759,7 @@ const Chart = (props: ChartProps) => {
       sharedLabelsColors,
       ownColorScheme,
       rowLimit,
+      personalSort,
     ],
   );
 
@@ -616,6 +767,7 @@ const Chart = (props: ChartProps) => {
     getDashboardChartControlQuerySignature(formData as JsonObject),
     (formData as JsonObject).row_limit,
     (formData as JsonObject).row_limit_b,
+    (formData as JsonObject).personal_sort ?? null,
   ]);
   const latestQueryChartControlSignature = JSON.stringify([
     getDashboardChartControlQuerySignature(
@@ -623,6 +775,7 @@ const Chart = (props: ChartProps) => {
     ),
     chart?.latestQueryFormData?.row_limit,
     chart?.latestQueryFormData?.row_limit_b,
+    chart?.latestQueryFormData?.personal_sort ?? null,
   ]);
   const latestQueryFormData = chart?.latestQueryFormData as
     | JsonObject
@@ -631,7 +784,13 @@ const Chart = (props: ChartProps) => {
     | JsonObject
     | undefined;
   const latestQueryHasDashboardChartControls =
-    ['time_compare', 'show_value', 'show_valueB', 'row_limit'].some(field =>
+    [
+      'time_compare',
+      'show_value',
+      'show_valueB',
+      'row_limit',
+      'personal_sort',
+    ].some(field =>
       Object.prototype.hasOwnProperty.call(latestQueryFormData || {}, field),
     ) ||
     Object.prototype.hasOwnProperty.call(
@@ -1003,6 +1162,7 @@ const Chart = (props: ChartProps) => {
 
   return (
     <SliceContainer
+      ref={viewportRef}
       className="chart-slice"
       data-test="chart-grid-component"
       data-test-chart-id={props.id}
@@ -1051,6 +1211,16 @@ const Chart = (props: ChartProps) => {
         height={getHeaderHeight()}
         exportPivotExcel={exportPivotExcel as unknown as (arg0: string) => void}
         defaultRowLimit={Number(chart?.form_data?.row_limit ?? 10000)}
+        personalSort={personalSort}
+        sortData={
+          (queriesResponse?.flatMap(
+            (response: { data?: DataRecord[] }) => response.data ?? [],
+          ) ?? []) as DataRecord[]
+        }
+        onSortChange={applySort}
+        isSortDisabled={chartSorts == null}
+        isSavingSort={isSavingSort}
+        sortSaveError={sortSaveError}
         personalRowLimit={rowLimit}
         onRowLimitChange={
           chart?.form_data &&

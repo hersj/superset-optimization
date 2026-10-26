@@ -985,14 +985,19 @@ const transformProps = (
       ? {
           personalSortEnabled: true,
           personalSort:
-            normalizePersonalSort(originalFormData.personal_sort, originalFormData) ??
-            null,
+            normalizePersonalSort(
+              originalFormData.personal_sort,
+              originalFormData,
+            ) ?? null,
         }
       : {}),
     ownState: serverPaginationData,
     sortFields: Object.fromEntries(
       getPersonalSortOptions(originalFormData).flatMap(option =>
-        (passedColumns?.length ? passedColumns : cachedValues?.passedColumns ?? []).flatMap(column =>
+        (passedColumns?.length
+          ? passedColumns
+          : (cachedValues?.passedColumns ?? [])
+        ).flatMap(column =>
           column.key === option.label ||
           column.key === option.value ||
           column.key === `Main ${option.label}`
@@ -1004,9 +1009,11 @@ const transformProps = (
     serverPagination,
     metrics,
     percentMetrics,
-    serverPaginationData: serverPagination || Object.prototype.hasOwnProperty.call(originalFormData, 'personal_sort')
-      ? serverPaginationData
-      : defaultServerPaginationData,
+    serverPaginationData:
+      serverPagination ||
+      Object.prototype.hasOwnProperty.call(originalFormData, 'personal_sort')
+        ? serverPaginationData
+        : defaultServerPaginationData,
     setDataMask,
     alignPositiveNegative,
     colorPositiveNegative,

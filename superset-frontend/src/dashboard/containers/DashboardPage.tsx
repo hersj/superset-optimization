@@ -35,6 +35,13 @@ import {
   getChartRowLimits,
   setChartRowLimits,
 } from 'src/dashboard/actions/chartRowLimits';
+import {
+  getChartSorts,
+  setChartSorts,
+  readPendingChartSorts,
+  saveQueuedChartSort,
+} from 'src/dashboard/actions/chartSorts';
+import { readPersonalChartViewport } from 'src/dashboard/util/personalChartViewport';
 import { hydrateDashboard } from 'src/dashboard/actions/hydrate';
 import { setDatasources } from 'src/dashboard/actions/datasources';
 import injectCustomCss from 'src/dashboard/util/injectCustomCss';
@@ -298,6 +305,7 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
       const [
         { dataMask, hasPendingFilterState, activeTabs, chartStates, anchor },
         rowLimits,
+        chartSorts,
       ] = await Promise.all([
         loadDashboardDataMask(id, userId),
         userId
@@ -305,6 +313,16 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
               addDangerToast(
                 t(
                   'Unable to load row limits. Reload the dashboard to try again.',
+                ),
+              );
+              return null;
+            })
+          : Promise.resolve(null),
+        userId
+          ? getChartSorts(id).catch(() => {
+              addDangerToast(
+                t(
+                  'Unable to load personal sorting. Reload the dashboard to try again.',
                 ),
               );
               return null;
@@ -321,6 +339,57 @@ export const DashboardPage: FC<PageProps> = ({ idOrSlug }: PageProps) => {
           ? null
           : serializeLastFilterState(dataMask);
         dispatch(setChartRowLimits(rowLimits));
+        const recoveredSorts = chartSorts === null ? null : { ...chartSorts };
+        if (recoveredSorts && userId) {
+          const pendingSorts = readPendingChartSorts(userId, id);
+          Object.entries(pendingSorts).forEach(([chartId, sort]) => {
+            if (sort === null) delete recoveredSorts[chartId];
+            else recoveredSorts[chartId] = sort;
+            saveQueuedChartSort(userId, id, Number(chartId), sort).catch(() =>
+              addDangerToast(
+                t(
+                  'Unable to save personal sorting. Your pending choice is kept on this browser.',
+                ),
+              ),
+            );
+          });
+        }
+        dispatch(setChartSorts(recoveredSorts));
+        if (userId && recoveredSorts) {
+          charts?.forEach(chart => {
+            const mask = dataMask[chart.id];
+            if (mask?.ownState) {
+              const { personalSort: _event, ...ownState } = mask.ownState;
+              dataMask[chart.id] = { ...mask, ownState };
+            }
+            if (chart.form_data?.viz_type !== 'table') return;
+            const page = readPersonalChartViewport(
+              userId,
+              id,
+              chart.id,
+              JSON.stringify(recoveredSorts[chart.id] ?? null),
+            );
+            if (page?.currentPage === undefined) return;
+            // Explicit URL or permalink browsing state takes precedence.
+            dataMask[chart.id] = {
+              ...dataMask[chart.id],
+              ownState:
+                getUrlParam(URL_PARAMS.permalinkKey) ||
+                getUrlParam(URL_PARAMS.nativeFiltersKey) ||
+                getUrlParam(URL_PARAMS.nativeFilters)
+                  ? {
+                      currentPage: page.currentPage,
+                      ...(page.pageSize ? { pageSize: page.pageSize } : {}),
+                      ...dataMask[chart.id]?.ownState,
+                    }
+                  : {
+                      ...dataMask[chart.id]?.ownState,
+                      currentPage: page.currentPage,
+                      ...(page.pageSize ? { pageSize: page.pageSize } : {}),
+                    },
+            };
+          });
+        }
         dispatch(
           hydrateDashboard({
             history,

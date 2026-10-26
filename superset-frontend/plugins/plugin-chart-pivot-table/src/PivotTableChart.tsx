@@ -854,7 +854,8 @@ export default function PivotTableChart(props: PivotTableProps) {
           personalSortOrder={personalSortOrder}
           onPersonalSortChange={
             personalSortEnabled
-              ? spec => setDataMask({ ownState: { ...ownState, personalSort: spec } })
+              ? spec =>
+                  setDataMask({ ownState: { ...ownState, personalSort: spec } })
               : undefined
           }
           frozenColumnCount={frozenColumnCount}

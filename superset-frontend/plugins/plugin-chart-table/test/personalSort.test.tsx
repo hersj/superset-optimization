@@ -86,9 +86,9 @@ test('personal table sorting does not reorder the server-selected candidate resu
     <TableChart {...props} setDataMask={setDataMask} sticky={false} />,
   );
   const names = () =>
-    [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(
-      cell => cell.textContent,
-    );
+    [
+      ...container.querySelectorAll('tbody td[aria-labelledby="header-name"]'),
+    ].map(cell => cell.textContent);
   expect(names()).toEqual(['Maria', 'Joe', 'Michael']);
   rerender(
     <TableChart
@@ -112,11 +112,28 @@ test('client table restores page and page length through automatic refresh', () 
   const { container, rerender } = render(
     <TableChart {...props} setDataMask={setDataMask} sticky={false} />,
   );
-  const names = () => [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(cell => cell.textContent);
+  const names = () =>
+    [
+      ...container.querySelectorAll('tbody td[aria-labelledby="header-name"]'),
+    ].map(cell => cell.textContent);
   expect(names()).toEqual(['Joe']);
-  rerender(<TableChart {...props} data={[...props.data]} setDataMask={setDataMask} sticky={false} />);
+  rerender(
+    <TableChart
+      {...props}
+      data={[...props.data]}
+      setDataMask={setDataMask}
+      sticky={false}
+    />,
+  );
   expect(names()).toEqual(['Joe']);
-  rerender(<TableChart {...props} data={props.data.slice(0, 1)} setDataMask={setDataMask} sticky={false} />);
+  rerender(
+    <TableChart
+      {...props}
+      data={props.data.slice(0, 1)}
+      setDataMask={setDataMask}
+      sticky={false}
+    />,
+  );
   expect(names()).toEqual(['Michael']);
   expect(setDataMask).not.toHaveBeenCalled();
 });

@@ -1489,7 +1489,14 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       };
       updateTableOwnState(setDataMask, modifiedOwnState);
     },
-    [serverPagination, serverPaginationData, setDataMask, personalSortEnabled, sortFields, ownState],
+    [
+      serverPagination,
+      serverPaginationData,
+      setDataMask,
+      personalSortEnabled,
+      sortFields,
+      ownState,
+    ],
   );
 
   const personalSortBy = useMemo(() => {
@@ -1499,7 +1506,13 @@ export default function TableChart<D extends DataRecord = DataRecord>(
     );
     const column = columns.find(entry => entry.columnKey === key);
     return column
-      ? [{ id: String(column.id), key, desc: personalSort.direction === 'desc' }]
+      ? [
+          {
+            id: String(column.id),
+            key,
+            desc: personalSort.direction === 'desc',
+          },
+        ]
       : [];
   }, [columns, personalSort, sortFields]);
 
@@ -1590,7 +1603,11 @@ export default function TableChart<D extends DataRecord = DataRecord>(
         onServerPaginationChange={handleServerPaginationChange}
         onColumnOrderChange={() => setColumnOrderToggle(!columnOrderToggle)}
         initialSearchText={serverPaginationData?.searchText || ''}
-        sortByFromParent={personalSortEnabled ? personalSortBy : serverPaginationData?.sortBy || []}
+        sortByFromParent={
+          personalSortEnabled
+            ? personalSortBy
+            : serverPaginationData?.sortBy || []
+        }
         personalSortEnabled={personalSortEnabled}
         personalSortableColumns={Object.keys(sortFields)}
         searchInputId={`${sliceId}-search`}

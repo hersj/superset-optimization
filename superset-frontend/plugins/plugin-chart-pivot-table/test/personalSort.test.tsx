@@ -135,9 +135,7 @@ test('pivot metric sorting distinguishes a specific original column from all-col
       { shop: 'B', country: 'DE', sales: 1 },
     ],
   };
-  const { container, rerender } = render(
-    <PivotTableChart {...configured} />,
-  );
+  const { container, rerender } = render(<PivotTableChart {...configured} />);
   expect(rowLabels(container)).toEqual(['A', 'B']);
   rerender(
     <PivotTableChart
@@ -196,7 +194,12 @@ test('pivot custom sort preserves child groups and does not emit on refresh', ()
     groupbyRows: ['shop', 'sku'],
     personalSortEnabled: true,
     setDataMask,
-    personalSort: { mode: 'custom', field: 'sku', direction: 'asc', customOrder: ['Z', 'X'] } as PersonalChartSort,
+    personalSort: {
+      mode: 'custom',
+      field: 'sku',
+      direction: 'asc',
+      customOrder: ['Z', 'X'],
+    } as PersonalChartSort,
     data: [
       { shop: 'A', sku: 'X', sales: 10 },
       { shop: 'B', sku: 'X', sales: 20 },

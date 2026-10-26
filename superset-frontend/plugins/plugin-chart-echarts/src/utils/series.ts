@@ -693,8 +693,12 @@ export function extractSeries(
     sortSeriesType,
     sortSeriesAscending,
   );
-  if (personalSeriesOrder) sortedSeries.sort((left, right) =>
-    (personalSeriesOrder(left) ?? Infinity) - (personalSeriesOrder(right) ?? Infinity));
+  if (personalSeriesOrder)
+    sortedSeries.sort(
+      (left, right) =>
+        (personalSeriesOrder(left) ?? Infinity) -
+        (personalSeriesOrder(right) ?? Infinity),
+    );
   const sortedRows =
     isDefined(xAxisSortSeries) && isDefined(xAxisSortSeriesAscending)
       ? sortRows(

@@ -16,10 +16,18 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { getPeriodOperation, PERIOD_KEY, PERIOD_COLUMNS } from '../plugin/customPeriodComparison';
+import {
+  getPeriodOperation,
+  PERIOD_KEY,
+  PERIOD_COLUMNS,
+} from '../plugin/customPeriodComparison';
 
 import { Component, ReactNode, MouseEvent, createRef } from 'react';
-import { safeHtmlSpan, type PersonalChartSort, type PersonalSortOrder } from '@superset-ui/core';
+import {
+  safeHtmlSpan,
+  type PersonalChartSort,
+  type PersonalSortOrder,
+} from '@superset-ui/core';
 import { t } from '@apache-superset/core/translation';
 import PropTypes from 'prop-types';
 import { FaSort } from 'react-icons/fa';
@@ -405,18 +413,33 @@ export class TableRenderer extends Component<
   // PivotData orders dimension keys independently from SQL. Replay the complete
   // candidate ranking, keeping generated axes and subtotal parentage intact.
   applyPersonalSort(rowKeys: string[][], partialOnTop: boolean) {
-    const { personalSort: spec, personalSortOrder: order, rows, cols,
-      freezeMetricAxis = t('Metric'), freezeMetricIds = {} } = this.props;
+    const {
+      personalSort: spec,
+      personalSortOrder: order,
+      rows,
+      cols,
+      freezeMetricAxis = t('Metric'),
+      freezeMetricIds = {},
+    } = this.props;
     if (!spec) return rowKeys;
-    const realRows = rows.filter(name => name !== freezeMetricAxis && name !== PERIOD_KEY);
-    const realCols = cols.filter(name => name !== freezeMetricAxis && name !== PERIOD_KEY);
-    const metricLabel = Object.keys(freezeMetricIds).find(label => freezeMetricIds[label] === spec.field) || spec.field;
+    const realRows = rows.filter(
+      name => name !== freezeMetricAxis && name !== PERIOD_KEY,
+    );
+    const realCols = cols.filter(
+      name => name !== freezeMetricAxis && name !== PERIOD_KEY,
+    );
+    const metricLabel =
+      Object.keys(freezeMetricIds).find(
+        label => freezeMetricIds[label] === spec.field,
+      ) || spec.field;
     const rank = new Map<string, number>();
     order?.values.forEach((tuple, index) => {
       // Prefix ranks keep each parent with its descendants, even when a child's
       // metric rank differs from that of its parent.
       realRows.forEach((_, level) => {
-        const prefix = realRows.slice(0, level + 1).map(name => String(tuple[order.columns.indexOf(name)] ?? 'null'));
+        const prefix = realRows
+          .slice(0, level + 1)
+          .map(name => String(tuple[order.columns.indexOf(name)] ?? 'null'));
         const key = JSON.stringify(prefix);
         if (!rank.has(key)) rank.set(key, index);
       });
@@ -426,49 +449,81 @@ export class TableRenderer extends Component<
     if (spec.mode === 'metric' && !order) {
       // Reuse the metric's aggregator (including ratio components), rather than
       // summing visible percentage cells or mixing current and history periods.
-      const records = (this.props.data as Record<string, unknown>[]).filter(record =>
-        String(record[freezeMetricAxis]) === metricLabel &&
-        (!record[PERIOD_KEY] || record[PERIOD_KEY] === PERIOD_COLUMNS[0]) &&
-        (!spec.columnValues || realCols.every((name, index) => String(record[name] ?? 'null') === spec.columnValues?.[index])),
+      const records = (this.props.data as Record<string, unknown>[]).filter(
+        record =>
+          String(record[freezeMetricAxis]) === metricLabel &&
+          (!record[PERIOD_KEY] || record[PERIOD_KEY] === PERIOD_COLUMNS[0]) &&
+          (!spec.columnValues ||
+            realCols.every(
+              (name, index) =>
+                String(record[name] ?? 'null') === spec.columnValues?.[index],
+            )),
       );
       const hasPeriod = records.some(record => record[PERIOD_KEY]);
       metricKey = [metricLabel, ...(hasPeriod ? [PERIOD_COLUMNS[0]] : [])];
-      metricData = new PivotData({ ...this.props, data: records, rows: realRows,
-        cols: [freezeMetricAxis, ...(hasPeriod ? [PERIOD_KEY] : [])] },
-        { rowEnabled: true, colEnabled: false, rowPartialOnTop: partialOnTop });
+      metricData = new PivotData(
+        {
+          ...this.props,
+          data: records,
+          rows: realRows,
+          cols: [freezeMetricAxis, ...(hasPeriod ? [PERIOD_KEY] : [])],
+        },
+        { rowEnabled: true, colEnabled: false, rowPartialOnTop: partialOnTop },
+      );
     }
-    const original = new Map(rowKeys.map((key, index) => [JSON.stringify(key), index]));
-    const custom = new Map(spec.customOrder?.map((value, index) => [value, index]));
+    const original = new Map(
+      rowKeys.map((key, index) => [JSON.stringify(key), index]),
+    );
+    const custom = new Map(
+      spec.customOrder?.map((value, index) => [value, index]),
+    );
     return [...rowKeys].sort((left, right) => {
       const limit = Math.min(left.length, right.length);
       for (let level = 0; level < limit; level += 1) {
         if (left[level] === right[level]) continue;
         const name = rows[level];
         if (name === freezeMetricAxis || name === PERIOD_KEY) break;
-        const prefix = (key: string[]) => key.slice(0, level + 1).filter((_, index) => realRows.includes(rows[index]));
-        const a = prefix(left); const b = prefix(right);
+        const prefix = (key: string[]) =>
+          key
+            .slice(0, level + 1)
+            .filter((_, index) => realRows.includes(rows[index]));
+        const a = prefix(left);
+        const b = prefix(right);
         let comparison = 0;
         if (rank.size) {
-          comparison = (rank.get(JSON.stringify(a)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(JSON.stringify(b)) ?? Number.MAX_SAFE_INTEGER);
+          comparison =
+            (rank.get(JSON.stringify(a)) ?? Number.MAX_SAFE_INTEGER) -
+            (rank.get(JSON.stringify(b)) ?? Number.MAX_SAFE_INTEGER);
         } else if (spec.mode === 'metric' && metricData) {
           const av = metricData.getAggregator(a, metricKey).value();
           const bv = metricData.getAggregator(b, metricKey).value();
           const aMissing = av == null || !Number.isFinite(Number(av));
           const bMissing = bv == null || !Number.isFinite(Number(bv));
           if (aMissing !== bMissing) return aMissing ? 1 : -1;
-          comparison = aMissing ? 0 : (Number(av) - Number(bv)) * (spec.direction === 'asc' ? 1 : -1);
+          comparison = aMissing
+            ? 0
+            : (Number(av) - Number(bv)) * (spec.direction === 'asc' ? 1 : -1);
         } else if (name === spec.field) {
-          comparison = spec.mode === 'custom'
-            ? (custom.get(left[level]) ?? Number.MAX_SAFE_INTEGER) - (custom.get(right[level]) ?? Number.MAX_SAFE_INTEGER)
-            : left[level].localeCompare(right[level], undefined, { numeric: true }) * (spec.direction === 'asc' ? 1 : -1);
+          comparison =
+            spec.mode === 'custom'
+              ? (custom.get(left[level]) ?? Number.MAX_SAFE_INTEGER) -
+                (custom.get(right[level]) ?? Number.MAX_SAFE_INTEGER)
+              : left[level].localeCompare(right[level], undefined, {
+                  numeric: true,
+                }) * (spec.direction === 'asc' ? 1 : -1);
         }
         if (comparison) return comparison;
         break;
       }
-      if (left.slice(0, limit).every((value, index) => value === right[index])) {
+      if (
+        left.slice(0, limit).every((value, index) => value === right[index])
+      ) {
         return (left.length - right.length) * (partialOnTop ? 1 : -1);
       }
-      return original.get(JSON.stringify(left))! - original.get(JSON.stringify(right))!;
+      return (
+        original.get(JSON.stringify(left))! -
+        original.get(JSON.stringify(right))!
+      );
     });
   }
 
@@ -517,7 +572,10 @@ export class TableRenderer extends Component<
       rowPartialOnTop: rowSubtotalDisplay.displayOnTop,
       colPartialOnTop: colSubtotalDisplay.displayOnTop,
     });
-    const rowKeys = this.applyPersonalSort(pivotData.getRowKeys(), rowSubtotalDisplay.displayOnTop);
+    const rowKeys = this.applyPersonalSort(
+      pivotData.getRowKeys(),
+      rowSubtotalDisplay.displayOnTop,
+    );
     const colKeys = pivotData.getColKeys();
 
     // Also pre-calculate all the callbacks for cells, etc... This is nice to have to
@@ -812,8 +870,16 @@ export class TableRenderer extends Component<
       const field = this.props.rows[dimensionIndex];
       if (field === this.props.freezeMetricAxis || field === PERIOD_KEY) return;
       const current = this.props.personalSort;
-      this.props.onPersonalSortChange({ mode: 'name', field,
-        direction: current?.mode === 'name' && current.field === field && current.direction === 'desc' ? 'asc' : 'desc' });
+      this.props.onPersonalSortChange({
+        mode: 'name',
+        field,
+        direction:
+          current?.mode === 'name' &&
+          current.field === field &&
+          current.direction === 'desc'
+            ? 'asc'
+            : 'desc',
+      });
       return;
     }
     // 只按选中的行维度原始值排序；值相同时保留原索引，使同一配送日期下的
@@ -870,14 +936,31 @@ export class TableRenderer extends Component<
   ) {
     if (this.props.onPersonalSortChange) {
       const key = visibleColKeys[columnIndex];
-      const metricIndex = this.props.cols.indexOf(this.props.freezeMetricAxis || t('Metric'));
+      const metricIndex = this.props.cols.indexOf(
+        this.props.freezeMetricAxis || t('Metric'),
+      );
       const label = key?.[metricIndex];
       if (!label) return;
       const field = this.props.freezeMetricIds?.[label] || label;
-      const columnValues = key.filter((_, index) => this.props.cols[index] !== this.props.freezeMetricAxis && this.props.cols[index] !== PERIOD_KEY);
+      const columnValues = key.filter(
+        (_, index) =>
+          this.props.cols[index] !== this.props.freezeMetricAxis &&
+          this.props.cols[index] !== PERIOD_KEY,
+      );
       const current = this.props.personalSort;
-      this.props.onPersonalSortChange({ mode: 'metric', field, columnValues,
-        direction: current?.mode === 'metric' && current.field === field && JSON.stringify(current.columnValues || []) === JSON.stringify(columnValues) && current.direction === 'asc' ? 'desc' : 'asc' });
+      this.props.onPersonalSortChange({
+        mode: 'metric',
+        field,
+        columnValues,
+        direction:
+          current?.mode === 'metric' &&
+          current.field === field &&
+          JSON.stringify(current.columnValues || []) ===
+            JSON.stringify(columnValues) &&
+          current.direction === 'asc'
+            ? 'desc'
+            : 'asc',
+      });
       return;
     }
     // 指标列排序在升序和降序之间切换，并按指标、层级配置和方向缓存结果，
@@ -1042,10 +1125,28 @@ export class TableRenderer extends Component<
             const spec = this.props.personalSort;
             const metricAxis = this.props.freezeMetricAxis || t('Metric');
             const label = colKey[colAttrs.indexOf(metricAxis)];
-            const context = colKey.filter((_, index) => colAttrs[index] !== metricAxis && colAttrs[index] !== PERIOD_KEY);
-            const active = spec?.mode === 'metric' && spec.field === (this.props.freezeMetricIds?.[label] || label) && JSON.stringify(spec.columnValues || []) === JSON.stringify(context);
-            const Icon = active ? (spec.direction === 'asc' ? FaSortAsc : FaSortDesc) : FaSort;
-            return <Icon onClick={() => this.sortData(key, visibleColKeys, pivotData, maxRowIndex)} />;
+            const context = colKey.filter(
+              (_, index) =>
+                colAttrs[index] !== metricAxis &&
+                colAttrs[index] !== PERIOD_KEY,
+            );
+            const active =
+              spec?.mode === 'metric' &&
+              spec.field === (this.props.freezeMetricIds?.[label] || label) &&
+              JSON.stringify(spec.columnValues || []) ===
+                JSON.stringify(context);
+            const Icon = active
+              ? spec.direction === 'asc'
+                ? FaSortAsc
+                : FaSortDesc
+              : FaSort;
+            return (
+              <Icon
+                onClick={() =>
+                  this.sortData(key, visibleColKeys, pivotData, maxRowIndex)
+                }
+              />
+            );
           }
 
           if (activeSortColumn !== key) {
@@ -1229,9 +1330,16 @@ export class TableRenderer extends Component<
             ? r !== this.props.freezeMetricAxis && r !== PERIOD_KEY
             : i === 0;
           const rowDimensionLabel = String(namesMapping[r] || r);
-          const personalRowSort = this.props.onPersonalSortChange && this.props.personalSort?.mode !== 'metric' && this.props.personalSort?.field === r;
-          const isActiveRowSort = this.props.onPersonalSortChange ? personalRowSort : this.state.activeSortRowDimension === i;
-          const rowDirection = this.props.onPersonalSortChange ? this.props.personalSort?.direction : this.state.rowSortingOrder[i];
+          const personalRowSort =
+            this.props.onPersonalSortChange &&
+            this.props.personalSort?.mode !== 'metric' &&
+            this.props.personalSort?.field === r;
+          const isActiveRowSort = this.props.onPersonalSortChange
+            ? personalRowSort
+            : this.state.activeSortRowDimension === i;
+          const rowDirection = this.props.onPersonalSortChange
+            ? this.props.personalSort?.direction
+            : this.state.rowSortingOrder[i];
           const RowSortIcon = !isActiveRowSort
             ? FaSort
             : rowDirection === 'asc'
@@ -1263,9 +1371,7 @@ export class TableRenderer extends Component<
                   aria-label={
                     isActiveRowSort
                       ? `Sorted by ${rowDimensionLabel} ${
-                          rowDirection === 'asc'
-                            ? 'ascending'
-                            : 'descending'
+                          rowDirection === 'asc' ? 'ascending' : 'descending'
                         }`
                       : `Sort ${rowDimensionLabel}`
                   }

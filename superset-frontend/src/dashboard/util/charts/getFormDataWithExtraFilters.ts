@@ -101,6 +101,7 @@ export interface GetFormDataWithExtraFiltersArguments {
   sharedLabelsColors?: string[];
   allSliceIds: number[];
   chartCustomization?: JsonObject;
+  personalSort?: import('@superset-ui/core').PersonalChartSort | null;
   rowLimit?: number;
   activeFilters?: ActiveFilters;
 }
@@ -436,6 +437,7 @@ export default function getFormDataWithExtraFilters({
   allSliceIds,
   chartCustomization,
   rowLimit,
+  personalSort,
   activeFilters: passedActiveFilters,
 }: GetFormDataWithExtraFiltersArguments) {
   const cachedFormData = cachedFormdataByChart[sliceId];
@@ -448,6 +450,7 @@ export default function getFormDataWithExtraFilters({
     { ignoreUndefined: true },
   );
   if (
+    areObjectsEqual(cachedFormData?.personal_sort, personalSort ?? null) &&
     cachedFormData?.personalRowLimit === rowLimit &&
     cachedFiltersByChart[sliceId] === filters &&
     areObjectsEqual(cachedFormData?.own_color_scheme, ownColorScheme) &&
@@ -594,6 +597,8 @@ export default function getFormDataWithExtraFilters({
     ...(chartCustomization && { chart_customization: chartCustomization }),
     ...(layerFilterScope && { layer_filter_scope: layerFilterScope }),
   };
+
+  formData.personal_sort = personalSort ?? null;
 
   if (Number.isInteger(rowLimit) && rowLimit! > 0) {
     formData.row_limit = rowLimit;
