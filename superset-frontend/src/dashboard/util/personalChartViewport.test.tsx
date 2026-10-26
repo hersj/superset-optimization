@@ -155,57 +155,138 @@ test('refresh loading retains browsing on existing nodes but does not initialize
   expect(getByTestId('body').scrollTop).toBe(140);
 });
 
-const apiSortSignature = JSON.stringify({ direction: 'asc', field: 'quantity', mode: 'metric' });
-const clientSortSignature = JSON.stringify({ mode: 'metric', field: 'quantity', direction: 'asc' });
+const apiSortSignature = JSON.stringify({
+  direction: 'asc',
+  field: 'quantity',
+  mode: 'metric',
+});
+const clientSortSignature = JSON.stringify({
+  mode: 'metric',
+  field: 'quantity',
+  direction: 'asc',
+});
 
 test('legacy raw sort signatures preserve viewport and pagination across JSON key order changes', () => {
   updatePersonalChartViewport('u', 'd', 'c', apiSortSignature, {
-    positions: { table: { top: 195, left: 40 } }, currentPage: 3, pageSize: 200,
+    positions: { table: { top: 195, left: 40 } },
+    currentPage: 3,
+    pageSize: 200,
   });
   const key = localStorage.key(0)!;
   const legacy = JSON.parse(localStorage.getItem(key)!);
-  localStorage.setItem(key, JSON.stringify({ ...legacy, signature: apiSortSignature }));
-  expect(readPersonalChartViewport('u', 'd', 'c', clientSortSignature)).toEqual({
-    positions: { table: { top: 195, left: 40 } }, currentPage: 3, pageSize: 200,
-  });
+  localStorage.setItem(
+    key,
+    JSON.stringify({ ...legacy, signature: apiSortSignature }),
+  );
+  expect(readPersonalChartViewport('u', 'd', 'c', clientSortSignature)).toEqual(
+    {
+      positions: { table: { top: 195, left: 40 } },
+      currentPage: 3,
+      pageSize: 200,
+    },
+  );
   updatePersonalChartViewport('u', 'd', 'c', clientSortSignature, {
     positions: { table: { top: 210, left: 40 } },
   });
   expect(readPersonalChartViewport('u', 'd', 'c', apiSortSignature)).toEqual({
-    positions: { table: { top: 210, left: 40 } }, currentPage: 3, pageSize: 200,
+    positions: { table: { top: 210, left: 40 } },
+    currentPage: 3,
+    pageSize: 200,
   });
 });
 
 test('sort hydration, reload and equivalent key reordering retain scroll and page', async () => {
   updatePersonalChartViewport('u', 'd', 'c', apiSortSignature, {
-    positions: { table: { top: 195, left: 40 } }, currentPage: 3, pageSize: 200,
+    positions: { table: { top: 195, left: 40 } },
+    currentPage: 3,
+    pageSize: 200,
   });
   const first = render(<Viewport ready={false} signature="null" />);
   first.rerender(<Viewport signature={clientSortSignature} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(first.getByTestId('body').scrollTop).toBe(195);
   first.rerender(<Viewport signature={apiSortSignature} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(first.getByTestId('body').scrollTop).toBe(195);
-  expect(readPersonalChartViewport('u', 'd', 'c', clientSortSignature)?.currentPage).toBe(3);
+  expect(
+    readPersonalChartViewport('u', 'd', 'c', clientSortSignature)?.currentPage,
+  ).toBe(3);
   first.unmount();
   const second = render(<Viewport signature={clientSortSignature} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(second.getByTestId('body').scrollTop).toBe(195);
-  second.rerender(<Viewport signature={JSON.stringify({ mode: 'metric', field: 'quantity', direction: 'desc' })} />);
-  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  second.rerender(
+    <Viewport
+      signature={JSON.stringify({
+        mode: 'metric',
+        field: 'quantity',
+        direction: 'desc',
+      })}
+    />,
+  );
+  await act(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  });
   expect(second.getByTestId('body').scrollTop).toBe(0);
 });
 
 test('signature normalization retains array order and value types', () => {
-  const original = JSON.stringify({ mode: 'custom', field: 'sku', direction: 'asc', customOrder: ['A', 'B'], columnValues: ['US', 'DE'] });
+  const original = JSON.stringify({
+    mode: 'custom',
+    field: 'sku',
+    direction: 'asc',
+    customOrder: ['A', 'B'],
+    columnValues: ['US', 'DE'],
+  });
   updatePersonalChartViewport('u', 'd', 'c', original, { currentPage: 2 });
-  const reorderedKeys = JSON.stringify({ columnValues: ['US', 'DE'], direction: 'asc', customOrder: ['A', 'B'], field: 'sku', mode: 'custom' });
-  expect(readPersonalChartViewport('u', 'd', 'c', reorderedKeys)?.currentPage).toBe(2);
-  expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), customOrder: ['B', 'A'] }))).toBeUndefined();
-  expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), columnValues: ['DE', 'US'] }))).toBeUndefined();
-  const numericContext = JSON.stringify({ ...JSON.parse(original), columnValues: [1, 'DE'] });
-  updatePersonalChartViewport('u', 'd', 'c', numericContext, { currentPage: 4 });
-  expect(readPersonalChartViewport('u', 'd', 'c', numericContext)?.currentPage).toBe(4);
-  expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), columnValues: ['1', 'DE'] }))).toBeUndefined();
+  const reorderedKeys = JSON.stringify({
+    columnValues: ['US', 'DE'],
+    direction: 'asc',
+    customOrder: ['A', 'B'],
+    field: 'sku',
+    mode: 'custom',
+  });
+  expect(
+    readPersonalChartViewport('u', 'd', 'c', reorderedKeys)?.currentPage,
+  ).toBe(2);
+  expect(
+    readPersonalChartViewport(
+      'u',
+      'd',
+      'c',
+      JSON.stringify({ ...JSON.parse(original), customOrder: ['B', 'A'] }),
+    ),
+  ).toBeUndefined();
+  expect(
+    readPersonalChartViewport(
+      'u',
+      'd',
+      'c',
+      JSON.stringify({ ...JSON.parse(original), columnValues: ['DE', 'US'] }),
+    ),
+  ).toBeUndefined();
+  const numericContext = JSON.stringify({
+    ...JSON.parse(original),
+    columnValues: [1, 'DE'],
+  });
+  updatePersonalChartViewport('u', 'd', 'c', numericContext, {
+    currentPage: 4,
+  });
+  expect(
+    readPersonalChartViewport('u', 'd', 'c', numericContext)?.currentPage,
+  ).toBe(4);
+  expect(
+    readPersonalChartViewport(
+      'u',
+      'd',
+      'c',
+      JSON.stringify({ ...JSON.parse(original), columnValues: ['1', 'DE'] }),
+    ),
+  ).toBeUndefined();
 });
