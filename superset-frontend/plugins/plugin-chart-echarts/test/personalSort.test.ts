@@ -22,6 +22,7 @@ import type { SeriesOption } from 'echarts';
 import { ChartProps, ChartDataResponseResult, DataRecord, GenericDataType } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
 import timeseries from '../src/Timeseries/transformProps';
+import { getPersonalSeriesOrder } from '../src/utils/personalSort';
 import mixed from '../src/MixedTimeseries/transformProps';
 import funnel from '../src/Funnel/transformProps';
 import pie from '../src/Pie/transformProps';
@@ -134,4 +135,18 @@ test('authoritative current-period metadata wins over row order and unrelated me
   const output = timeseries(input).echartOptions;
   expect(seriesData(output, 'sales')).toEqual([['A', 20], ['B', 100]]);
   expect(output.xAxis).toEqual(expect.objectContaining({ data: ['A', 'B'] }));
+});
+
+
+test('full original dimension tuples keep distinct SKU groups and current/history share their rank', () => {
+  const response = query([]);
+  response.personal_sort_order = { columns: ['shop', 'sku'], values: [['B', 'SKU'], ['A', 'SKU']] };
+  const order = getPersonalSeriesOrder([response], {
+    currentA: ['sales', 'A', 'SKU'], historyA: ['1 day ago', 'sales', 'A', 'SKU'],
+    currentB: ['sales', 'B', 'SKU'], historyB: ['1 day ago', 'sales', 'B', 'SKU'],
+  }, ['shop', 'sku']);
+  expect(order?.('currentB')).toBe(0);
+  expect(order?.('historyB')).toBe(0);
+  expect(order?.('currentA')).toBe(1);
+  expect(order?.('historyA')).toBe(1);
 });

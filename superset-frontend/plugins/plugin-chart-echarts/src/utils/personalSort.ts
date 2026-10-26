@@ -86,7 +86,7 @@ export function getPersonalSeriesOrder(
   if (indexes.some(index => index < 0)) return undefined;
   const rank = new Map<string, number>();
   order.values.forEach((values, index) => {
-    const key = JSON.stringify(indexes.map(i => String(values[i] ?? '')));
+    const key = JSON.stringify(indexes.map(i => String(values[i])));
     if (!rank.has(key)) rank.set(key, index);
   });
   return (name: string) => {
