@@ -595,7 +595,9 @@ const Chart = (props: ChartProps) => {
     props.dashboardId,
     props.id,
     personalSortSignature,
-    !!sortUserId && chartSorts != null && chartStatus === 'success',
+    !!sortUserId &&
+      chartSorts != null &&
+      (chartStatus === 'success' || chartStatus === 'rendered'),
   );
   const currentPage = dataMask[props.id]?.ownState?.currentPage;
   const pageSize = dataMask[props.id]?.ownState?.pageSize;
