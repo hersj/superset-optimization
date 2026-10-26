@@ -526,3 +526,27 @@ def test_personal_date_cohort_executes_sqlite_multidimensional_nullable_keys():
             (date(2026, 10, 1), "a"),
             (date(2026, 10, 1), None),
         ]
+
+
+def test_date_string_cohort_keeps_existing_sqlalchemy_coercion():
+    from datetime import date
+
+    from sqlalchemy.dialects import postgresql
+
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    table = sa.Table("date_strings", metadata, sa.Column("day", sa.Date))
+    metadata.create_all(engine)
+    query = apply_sort_predicate(
+        sa.select([table]),
+        {"cohort_columns": ["day"], "cohort_values": [["2026-10-01"]]},
+        dict(table.c),
+    )
+    assert "2026-10-01" in str(
+        query.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    with engine.begin() as conn:
+        conn.execute(table.insert(), [{"day": date(2026, 10, 1)}])
+        assert list(conn.execute(query)) == [(date(2026, 10, 1),)]
