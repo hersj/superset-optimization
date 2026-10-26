@@ -1139,6 +1139,8 @@ export default function transformProps(
   }
 
   if (personalCategoryValues) {
+    // Horizontal categories otherwise run bottom to top, reversing private ranks.
+    if (isHorizontal) yAxis.inverse = true;
     (isHorizontal ? yAxis : xAxis).data = personalCategoryValues.map(value =>
       value === null ? NULL_STRING : value,
     );

@@ -313,3 +313,42 @@ test('null categories use the same renderer identity in ranking and plotted data
     expect.objectContaining({ data: ['<NULL>', 'A'] }),
   );
 });
+
+test.each([
+  ['metric', 'desc', ['B', 'A']],
+  ['metric', 'asc', ['A', 'B']],
+  ['name', 'asc', ['A', 'B']],
+  ['custom', 'desc', ['A', 'B']],
+] as const)(
+  'horizontal %s %s shows the first ranked category at the top',
+  (mode, direction, values) => {
+    const input = standard({
+      orientation: 'horizontal',
+      personal_sort: {
+        mode,
+        direction,
+        field: mode === 'metric' ? 'sales' : 'category',
+        ...(mode === 'custom' ? { customOrder: [...values] } : {}),
+      },
+    });
+    input.queriesData[0].personal_sort_order = {
+      columns: ['category'],
+      values: values.map(value => [value]),
+    };
+    const result = timeseries(input);
+    expect(result.echartOptions.yAxis).toEqual(
+      expect.objectContaining({
+        type: 'category',
+        data: [...values],
+        inverse: true,
+      }),
+    );
+  },
+);
+
+test('horizontal charts without personal sorting keep their existing axis direction', () => {
+  const result = timeseries(
+    standard({ orientation: 'horizontal', personal_sort: null }),
+  );
+  expect(result.echartOptions.yAxis).not.toHaveProperty('inverse', true);
+});
