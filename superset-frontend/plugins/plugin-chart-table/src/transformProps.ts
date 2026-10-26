@@ -635,6 +635,52 @@ const transformProps = (
       ],
     };
   }
+  const firstQuery = chartProps.queriesData[0];
+  const candidateOrder = firstQuery?.personal_sort_order;
+  if (
+    candidateOrder?.columns.length &&
+    normalizePersonalSort(
+      chartProps.rawFormData.personal_sort,
+      chartProps.rawFormData,
+    )
+  ) {
+    // Comparison queries retrieve every period of the selected cohort in
+    // dimension order. Replay the complete current-period ranking before any
+    // column transforms or row-indexed color rules, rather than locally sorting
+    // the returned page's metrics (which may include history or ratio values).
+    const ranks = new Map<string, number>();
+    candidateOrder.values.forEach((values, index) => {
+      const key = JSON.stringify(values.map(value => value ?? null));
+      if (!ranks.has(key)) ranks.set(key, index);
+    });
+    const orderedData = firstQuery.data
+      .map((row, index) => ({
+        row,
+        index,
+        rank: candidateOrder.columns.every(column =>
+          Object.prototype.hasOwnProperty.call(row, column),
+        )
+          ? ranks.get(
+              JSON.stringify(
+                candidateOrder.columns.map(column => row[column] ?? null),
+              ),
+            )
+          : undefined,
+      }))
+      .sort(
+        (a, b) =>
+          (a.rank ?? Number.MAX_SAFE_INTEGER) -
+            (b.rank ?? Number.MAX_SAFE_INTEGER) || a.index - b.index,
+      )
+      .map(({ row }) => row);
+    chartProps = {
+      ...chartProps,
+      queriesData: [
+        { ...firstQuery, data: orderedData },
+        ...chartProps.queriesData.slice(1),
+      ],
+    };
+  }
   const {
     height,
     width,
