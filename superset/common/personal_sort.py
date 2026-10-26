@@ -124,7 +124,12 @@ def get_sort_options(form_data: dict[str, Any]) -> list[dict[str, Any]]:
     unique: dict[tuple[str, str], dict[str, Any]] = {}
     for option in options:
         unique.setdefault((option["value"], option["kind"]), option)
-    return list(unique.values())
+    return (
+        []
+        if (viz_type.startswith("echarts_timeseries") or mixed)
+        and not any(item["kind"] == "name" for item in unique.values())
+        else list(unique.values())
+    )
 
 
 def validate_chart_sort(payload: Any, form_data: dict[str, Any]) -> dict[str, Any]:

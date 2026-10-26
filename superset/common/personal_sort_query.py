@@ -28,6 +28,7 @@ from typing import Any
 from flask import current_app
 
 from superset.common.personal_sort import (
+    _temporal_axis,
     column_label,
     get_sort_options,
     validate_chart_sort,
@@ -44,7 +45,7 @@ def _ranking_dimensions(form: dict[str, Any], source: Any) -> list[Any]:
         )
     if form.get("y_axis_dimension"):
         return [form["y_axis_dimension"]]
-    if source.is_timeseries:
+    if source.is_timeseries or _temporal_axis(form, column_label(form.get("x_axis"))):
         return source.series_columns or form.get("groupby") or []
     if form.get("x_axis"):
         return [form["x_axis"]]

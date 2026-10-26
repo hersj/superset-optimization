@@ -116,6 +116,11 @@ export function getPersonalSortOptions(
       options.push({ value: label, label, kind: 'name', column });
     }
   });
+  if (
+    ((formData.viz_type || '').startsWith('echarts_timeseries') || mixed) &&
+    !options.some(option => option.kind === 'name')
+  )
+    return [];
   return options.filter(
     (entry, index) =>
       options.findIndex(

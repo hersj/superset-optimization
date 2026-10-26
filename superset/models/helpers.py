@@ -2915,7 +2915,6 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
     def get_sqla_query(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements  # noqa: C901
         self,
-        personal_sort: Optional[dict[str, Any]] = None,
         apply_fetch_values_predicate: bool = False,
         columns: Optional[list[Column]] = None,
         extras: Optional[dict[str, Any]] = None,
@@ -2942,6 +2941,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
         timeseries_limit: Optional[int] = None,
         timeseries_limit_metric: Optional[Metric] = None,
         time_shift: Optional[str] = None,
+        personal_sort: Optional[dict[str, Any]] = None,
     ) -> SqlaQuery:
         """Querying any sqla table from this common interface.
 

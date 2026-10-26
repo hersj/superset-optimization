@@ -299,3 +299,36 @@ def test_server_pagination_auxiliary_count_and_totals_do_not_expand_page():
         baseline = auxiliary.to_dict()
         assert prepare_personal_sort(processor, auxiliary, False) is None
         assert auxiliary.to_dict() == baseline
+
+
+def test_temporal_axis_is_never_exposed_for_value_ranking():
+    from superset.common.personal_sort import get_sort_options
+
+    form = {
+        "viz_type": "echarts_timeseries_bar",
+        "x_axis": "day",
+        "granularity_sqla": "day",
+        "metrics": ["sales"],
+    }
+    assert get_sort_options(form) == []
+    assert [
+        item["value"] for item in get_sort_options({**form, "groupby": ["sku"]})
+    ] == ["sales", "sku"]
+
+
+def test_normalized_temporal_axis_ranks_series_not_days():
+    from superset.common.personal_sort_query import _ranking_dimensions
+
+    source = QueryObject(
+        columns=["day", "sku"],
+        metrics=["sales"],
+        is_timeseries=False,
+        series_columns=["sku"],
+    )
+    form = {
+        "viz_type": "echarts_timeseries_bar",
+        "x_axis": "day",
+        "granularity_sqla": "day",
+        "groupby": ["sku"],
+    }
+    assert _ranking_dimensions(form, source) == ["sku"]
