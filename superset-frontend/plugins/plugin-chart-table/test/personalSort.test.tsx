@@ -18,7 +18,11 @@
  */
 import { cloneDeep } from 'lodash';
 import { fireEvent, render, waitFor } from '@superset-ui/core/spec';
-import { ComparisonType, QueryMode, type PersonalChartSort } from '@superset-ui/core';
+import {
+  ComparisonType,
+  QueryMode,
+  type PersonalChartSort,
+} from '@superset-ui/core';
 import { GenericDataType } from '@apache-superset/core/common';
 import buildQuery from '../src/buildQuery';
 import TableChart from '../src/TableChart';
@@ -160,8 +164,11 @@ test('client table restores page and page length through automatic refresh', () 
   ).toBe(false);
 });
 
-
-test.each([[false, 25], [true, 2], [true, 200]] as const)(
+test.each([
+  [false, 25],
+  [true, 2],
+  [true, 200],
+] as const)(
   'time-comparison table replays the full candidate ranking before rendering, server pagination=%s, page size=%s',
   (serverPagination, pageSize) => {
     const source = cloneDeep(testData.advanced);
@@ -178,10 +185,13 @@ test.each([[false, 25], [true, 2], [true, 200]] as const)(
     };
     const currentPage = pageSize === 2 ? 1 : 0;
     source.ownState = { currentPage, pageSize };
-    const query = buildQuery(source.rawFormData, { ownState: source.ownState }).queries[0];
+    const query = buildQuery(source.rawFormData, { ownState: source.ownState })
+      .queries[0];
     expect(query.time_offsets).toEqual(['1 day ago']);
     expect(query.personal_sort).toEqual({ ...metricSort, direction: 'asc' });
-    expect(query.row_offset ?? 0).toBe(serverPagination ? currentPage * pageSize : 0);
+    expect(query.row_offset ?? 0).toBe(
+      serverPagination ? currentPage * pageSize : 0,
+    );
     if (serverPagination) expect(query.row_limit).toBe(pageSize);
     const rows = [
       { name: 'ACA', sum__num: 9, 'sum__num__1 day ago': 900 },
@@ -191,26 +201,62 @@ test.each([[false, 25], [true, 2], [true, 200]] as const)(
       { name: '售后A60三色', sum__num: 38, 'sum__num__1 day ago': 380 },
       { name: '售后Q50三色', sum__num: 10, 'sum__num__1 day ago': 3 },
     ];
-    const fullOrder = ['售后A60黑', 'ACA', '售后Q50三色', '售后A60三色', 'TL', '售后Q50黑'];
+    const fullOrder = [
+      '售后A60黑',
+      'ACA',
+      '售后Q50三色',
+      '售后A60三色',
+      'TL',
+      '售后Q50黑',
+    ];
     const expected = pageSize === 2 ? fullOrder.slice(2, 4) : fullOrder;
     const pageRows = rows.filter(row => expected.includes(row.name));
     source.queriesData = [
-      { ...source.queriesData[0], data: pageRows,
+      {
+        ...source.queriesData[0],
+        data: pageRows,
         colnames: ['name', 'sum__num', 'sum__num__1 day ago'],
-        coltypes: [GenericDataType.String, GenericDataType.Numeric, GenericDataType.Numeric],
-        personal_sort_order: { columns: ['name'], values: expected.map(name => [name]) },
+        coltypes: [
+          GenericDataType.String,
+          GenericDataType.Numeric,
+          GenericDataType.Numeric,
+        ],
+        personal_sort_order: {
+          columns: ['name'],
+          values: expected.map(name => [name]),
+        },
       },
-      { ...source.queriesData[0], data: [{ rowcount: 6 }], colnames: ['rowcount'], coltypes: [GenericDataType.Numeric] },
+      {
+        ...source.queriesData[0],
+        data: [{ rowcount: 6 }],
+        colnames: ['rowcount'],
+        coltypes: [GenericDataType.Numeric],
+      },
     ];
     const transformed = transformProps(source);
     expect(transformed.data.map(row => row.name)).toEqual(expected);
-    expect(transformed.data.map(row => row['Main sum__num'])).toEqual(expected.map(name => rows.find(row => row.name === name)!.sum__num));
-    expect(transformed.data.map(row => row['# sum__num'])).toEqual(expected.map(name => rows.find(row => row.name === name)!['sum__num__1 day ago']));
+    expect(transformed.data.map(row => row['Main sum__num'])).toEqual(
+      expected.map(name => rows.find(row => row.name === name)!.sum__num),
+    );
+    expect(transformed.data.map(row => row['# sum__num'])).toEqual(
+      expected.map(
+        name => rows.find(row => row.name === name)!['sum__num__1 day ago'],
+      ),
+    );
     expect(source.queriesData[0].data).toEqual(pageRows);
-    const { container, rerender } = render(<TableChart {...transformed} sticky={false} />);
-    const names = () => [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(cell => cell.textContent);
+    const { container, rerender } = render(
+      <TableChart {...transformed} sticky={false} />,
+    );
+    const names = () =>
+      [
+        ...container.querySelectorAll(
+          'tbody td[aria-labelledby="header-name"]',
+        ),
+      ].map(cell => cell.textContent);
     expect(names()).toEqual(expected);
-    rerender(<TableChart {...transformProps(cloneDeep(source))} sticky={false} />);
+    rerender(
+      <TableChart {...transformProps(cloneDeep(source))} sticky={false} />,
+    );
     expect(names()).toEqual(expected);
   },
 );
@@ -226,9 +272,24 @@ test('table candidate ranking uses every raw dimension, keeps null distinct and 
   ];
   source.queriesData[0].data = rows;
   source.queriesData[0].personal_sort_order = {
-    columns: ['name', 'shop'], values: [['A', 'US'], ['A', null], ['A', 'null']],
+    columns: ['name', 'shop'],
+    values: [
+      ['A', 'US'],
+      ['A', null],
+      ['A', 'null'],
+    ],
   };
-  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([3, 2, 1, null]);
+  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([
+    3,
+    2,
+    1,
+    null,
+  ]);
   source.rawFormData.personal_sort = null;
-  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([1, 2, 3, null]);
+  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([
+    1,
+    2,
+    3,
+    null,
+  ]);
 });
