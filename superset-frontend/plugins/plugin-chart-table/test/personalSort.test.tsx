@@ -55,9 +55,10 @@ test.each([false, true])(
       <TableChart {...transformProps(source)} sticky={false} />,
     );
     const header = container.querySelector<HTMLElement>(
-      'th[data-column-name="sum__num"]',
+      'th[data-column-name="1"]',
     )!;
     expect(header).not.toBeNull();
+    expect(header).toHaveTextContent('Sum of Num');
     fireEvent.click(header);
     await waitFor(() =>
       expect(setDataMask).toHaveBeenCalledWith({
@@ -85,7 +86,7 @@ test('personal table sorting does not reorder the server-selected candidate resu
     <TableChart {...props} setDataMask={setDataMask} sticky={false} />,
   );
   const names = () =>
-    [...container.querySelectorAll('tbody td[data-column-name="name"]')].map(
+    [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(
       cell => cell.textContent,
     );
   expect(names()).toEqual(['Maria', 'Joe', 'Michael']);
@@ -111,7 +112,7 @@ test('client table restores page and page length through automatic refresh', () 
   const { container, rerender } = render(
     <TableChart {...props} setDataMask={setDataMask} sticky={false} />,
   );
-  const names = () => [...container.querySelectorAll('tbody td[data-column-name="name"]')].map(cell => cell.textContent);
+  const names = () => [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(cell => cell.textContent);
   expect(names()).toEqual(['Joe']);
   rerender(<TableChart {...props} data={[...props.data]} setDataMask={setDataMask} sticky={false} />);
   expect(names()).toEqual(['Joe']);

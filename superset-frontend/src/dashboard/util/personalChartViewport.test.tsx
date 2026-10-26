@@ -55,7 +55,7 @@ test('corrupt viewport storage degrades without breaking charts', () => {
 const Viewport = ({ ready = true, signature = 'null', version = 1 }) => {
   const ref = createRef<HTMLDivElement>();
   usePersonalChartViewport(ref, 'u', 'd', 'c', signature, ready);
-  return <div ref={ref}><div key={version} data-testid="body" data-personal-sort-scroll="table" /></div>;
+  return <div ref={ref}><div key={version} data-test="body" data-personal-sort-scroll="table" /></div>;
 };
 
 test('viewport restores refreshed DOM only after success and saves real browsing', async () => {
