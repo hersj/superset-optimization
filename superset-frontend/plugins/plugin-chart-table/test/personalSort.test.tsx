@@ -115,5 +115,7 @@ test('client table restores page and page length through automatic refresh', () 
   expect(names()).toEqual(['Joe']);
   rerender(<TableChart {...props} data={[...props.data]} setDataMask={setDataMask} sticky={false} />);
   expect(names()).toEqual(['Joe']);
+  rerender(<TableChart {...props} data={props.data.slice(0, 1)} setDataMask={setDataMask} sticky={false} />);
+  expect(names()).toEqual(['Michael']);
   expect(setDataMask).not.toHaveBeenCalled();
 });

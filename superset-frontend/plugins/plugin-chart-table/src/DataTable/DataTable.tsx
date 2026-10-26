@@ -255,16 +255,23 @@ export default typedMemo(function DataTable<D extends object>({
       ...(personalSortEnabled ? { autoResetPage: false } : {}),
       ...moreUseTableOptions,
       useControlledState: personalSortEnabled
-        ? state => ({
-            ...state,
-            sortBy: sortByFromParent,
-            ...(serverPagination ? {} : {
-              pageIndex: serverPaginationData?.currentPage ?? state.pageIndex,
-              pageSize: serverPaginationData?.pageSize === 0
-                ? resultsSize || 10
-                : serverPaginationData?.pageSize ?? state.pageSize,
-            }),
-          })
+        ? state => {
+            const restoredPageSize = serverPaginationData?.pageSize === 0
+              ? resultsSize || 10
+              : serverPaginationData?.pageSize ?? state.pageSize;
+            const restoredPage = Math.max(0, Math.min(
+              serverPaginationData?.currentPage ?? state.pageIndex,
+              Math.ceil(resultsSize / restoredPageSize) - 1,
+            ));
+            return {
+              ...state,
+              sortBy: sortByFromParent,
+              ...(serverPagination ? {} : {
+                pageIndex: restoredPage,
+                pageSize: restoredPageSize,
+              }),
+            };
+          }
         : moreUseTableOptions.useControlledState,
     },
     ...tableHooks,
