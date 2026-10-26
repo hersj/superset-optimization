@@ -25,6 +25,11 @@ import { AnnotationData } from './AnnotationLayer';
  */
 export type DataRecordValue = number | string | boolean | Date | null | bigint;
 
+export interface PersonalSortOrder {
+  columns: string[];
+  values: DataRecordValue[][];
+}
+
 export interface DataRecord {
   [key: string]: DataRecordValue;
 }
@@ -38,6 +43,7 @@ export interface ChartDataResponseResult {
    * Data for the annotation layer.
    */
   annotation_data: AnnotationData | null;
+  personal_sort_order?: PersonalSortOrder;
   cache_key: string | null;
   cache_timeout: number | null;
   cached_dttm: string | null;

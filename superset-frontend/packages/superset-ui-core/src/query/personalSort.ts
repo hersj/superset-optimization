@@ -80,9 +80,14 @@ export function getPersonalSortOptions(
   if (mixed) addMetrics(asArray<QueryFormMetric>(formData.metrics_b), 'B');
   const rawColumns =
     formData.viz_type === 'pivot_table_v2'
-      ? asArray<QueryFormColumn>(formData.groupbyRows)
+      ? asArray<QueryFormColumn>(
+          formData.transpose_pivot
+            ? formData.groupbyColumns
+            : formData.groupbyRows,
+        )
       : [
           ...asArray<QueryFormColumn>(formData.x_axis),
+          ...asArray<QueryFormColumn>(formData.y_axis_dimension),
           ...asArray<QueryFormColumn>(formData.groupby),
           ...asArray<QueryFormColumn>(formData.columns),
           ...asArray<QueryFormColumn>(formData.all_columns),
@@ -94,8 +99,12 @@ export function getPersonalSortOptions(
     if (
       label &&
       label !== '__timestamp' &&
-      label !== formData.granularity_sqla &&
-      !(formData.temporal_columns_lookup || {})[label]
+      !(
+        ((formData.viz_type || '').startsWith('echarts_timeseries') || mixed) &&
+        label === getColumnLabel(formData.x_axis || '') &&
+        (label === formData.granularity_sqla ||
+          (formData.temporal_columns_lookup || {})[label])
+      )
     ) {
       options.push({ value: label, label, kind: 'name', column });
     }
@@ -149,7 +158,12 @@ export function normalizePersonalSort(
       input.mode !== 'metric' ||
       formData.viz_type !== 'pivot_table_v2' ||
       !Array.isArray(input.columnValues) ||
-      input.columnValues.length !== asArray(formData.groupbyColumns).length ||
+      input.columnValues.length !==
+        asArray(
+          formData.transpose_pivot
+            ? formData.groupbyRows
+            : formData.groupbyColumns,
+        ).length ||
       input.columnValues.some(
         item => typeof item !== 'string' || item.length > 4096,
       )
