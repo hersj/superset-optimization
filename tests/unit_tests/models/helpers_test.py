@@ -2246,6 +2246,8 @@ def test_personal_date_cohort_legacy_offset_maps_current_bucket_before_sql(
     order = prepare_personal_sort(processor, query, False)
     result = table.get_query_result(query)
     assert result.error_message is None
+    print("COHORT_SQL", result.query)
+    print("COHORT_BIND", query.personal_sort)
     assert result.df["profit"].tolist() == [10], (
         result.query,
         query.personal_sort,
@@ -2283,6 +2285,8 @@ def test_personal_date_cohort_custom_pivot_queries_bind_distinct_period_buckets(
     assert prepare_personal_sort(processor, comparison, False) == order
     result = table.get_query_result(comparison)
     assert result.error_message is None
+    print("COHORT_SQL", result.query)
+    print("COHORT_BIND", comparison.personal_sort)
     assert result.df["profit"].tolist() == [6], (
         result.query,
         comparison.personal_sort,
