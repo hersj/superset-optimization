@@ -2246,8 +2246,17 @@ def test_personal_date_cohort_legacy_offset_maps_current_bucket_before_sql(
     order = prepare_personal_sort(processor, query, False)
     result = table.get_query_result(query)
     assert result.error_message is None
-    assert result.df["profit"].tolist() == [10]
-    assert result.df[TIME_COMPARISON.join(["profit", "1 month ago"])].tolist() == [3]
+    assert result.df["profit"].tolist() == [10], (
+        result.query,
+        query.personal_sort,
+        [
+            [type(v).__name__ for v in row]
+            for row in query.personal_sort["cohort_values"]
+        ],
+    )
+    assert result.df[TIME_COMPARISON.join(["profit", "1 month ago"])].tolist() == [3], (
+        result.query
+    )
     assert str(order["values"][0][0]).startswith("2026-11-01")
     assert str(order["values"][0][1]).startswith("2026-01-01")
     assert str(query.personal_sort["cohort_values"][0][0]).startswith("2026-11-01")
@@ -2274,7 +2283,14 @@ def test_personal_date_cohort_custom_pivot_queries_bind_distinct_period_buckets(
     assert prepare_personal_sort(processor, comparison, False) == order
     result = table.get_query_result(comparison)
     assert result.error_message is None
-    assert result.df["profit"].tolist() == [6]
+    assert result.df["profit"].tolist() == [6], (
+        result.query,
+        comparison.personal_sort,
+        [
+            [type(v).__name__ for v in row]
+            for row in comparison.personal_sort["cohort_values"]
+        ],
+    )
     assert str(result.df["event_date"].iloc[0]).startswith("2026-05-01")
     assert str(result.df["order_date"].iloc[0]).startswith("2026-01-01")
     assert str(comparison.personal_sort["cohort_values"][0][0]).startswith("2026-05-01")
