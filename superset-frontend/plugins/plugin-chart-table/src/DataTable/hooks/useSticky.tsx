@@ -280,7 +280,6 @@ export function StickyWrap({
           scrollbarGutter: 'stable',
         }}
         css={scrollBarStyles}
-        data-personal-sort-scroll="table"
         role="presentation"
       >
         {cloneElement(
