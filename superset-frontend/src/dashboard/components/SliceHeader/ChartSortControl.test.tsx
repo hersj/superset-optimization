@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { useState } from 'react';
+import { type PersonalChartSort } from '@superset-ui/core';
 import { render, screen, userEvent } from 'spec/helpers/testing-library';
 import ChartSortControl, { getSortCategoryValues } from './ChartSortControl';
 const formData = {
@@ -75,4 +77,28 @@ test('does not display sorting for number cards', () => {
     />,
   );
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
+
+test('controlled custom mode renders real drag handles and reorders immediately', async () => {
+  const Controlled = () => {
+    const [value, setValue] = useState<PersonalChartSort | null>(null);
+    return (
+      <ChartSortControl
+        value={value}
+        formData={formData}
+        data={[
+          { sku: 'SKU-a', sales: 2 },
+          { sku: 'SKU-b', sales: 1 },
+        ]}
+        onChange={setValue}
+      />
+    );
+  };
+  render(<Controlled />);
+  await userEvent.click(screen.getByRole('button', { name: '排序：默认' }));
+  await userEvent.click(screen.getByText('自定义', { exact: true }));
+  expect(screen.getByRole('button', { name: '拖动 SKU-a' })).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: '上移 SKU-b' }));
+  expect(screen.getByRole('button', { name: '上移 SKU-b' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '下移 SKU-a' })).toBeDisabled();
 });

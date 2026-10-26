@@ -117,7 +117,7 @@ function SortableCategory({
         {...attributes}
         {...listeners}
       >
-        <Icons.HolderOutlined />
+        <Icons.MenuOutlined />
       </Button>
       <Tooltip title={value}>
         <Name>{value}</Name>
