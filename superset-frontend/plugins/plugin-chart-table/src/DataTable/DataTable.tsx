@@ -252,9 +252,19 @@ export default typedMemo(function DataTable<D extends object>({
       sortTypes,
       autoResetSortBy: !isEqual(columnNames, previousColumnNames),
       manualSortBy: !!serverPagination || personalSortEnabled,
+      ...(personalSortEnabled ? { autoResetPage: false } : {}),
       ...moreUseTableOptions,
       useControlledState: personalSortEnabled
-        ? state => ({ ...state, sortBy: sortByFromParent })
+        ? state => ({
+            ...state,
+            sortBy: sortByFromParent,
+            ...(serverPagination ? {} : {
+              pageIndex: serverPaginationData?.currentPage ?? state.pageIndex,
+              pageSize: serverPaginationData?.pageSize === 0
+                ? resultsSize || 10
+                : serverPaginationData?.pageSize ?? state.pageSize,
+            }),
+          })
         : moreUseTableOptions.useControlledState,
     },
     ...tableHooks,
@@ -340,7 +350,7 @@ export default typedMemo(function DataTable<D extends object>({
 
   // make setPageSize accept 0
   const setPageSize = (size: number) => {
-    if (serverPagination) {
+    if (serverPagination || personalSortEnabled) {
       onServerPaginationChange(0, size);
     }
     // keep the original size if data is empty
@@ -499,7 +509,12 @@ export default typedMemo(function DataTable<D extends object>({
   let resultPageCount = pageCount;
   let resultCurrentPageSize = pageSize;
   let resultCurrentPage = pageIndex;
-  let resultOnPageChange: (page: number) => void = gotoPage;
+  let resultOnPageChange: (page: number) => void = personalSortEnabled
+    ? nextPage => {
+        gotoPage(nextPage);
+        onServerPaginationChange(nextPage, pageSize);
+      }
+    : gotoPage;
   if (serverPagination) {
     const serverPageSize = serverPaginationData?.pageSize ?? initialPageSize;
     resultPageCount = Math.ceil(rowCount / serverPageSize);

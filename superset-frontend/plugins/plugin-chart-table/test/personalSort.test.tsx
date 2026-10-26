@@ -101,3 +101,19 @@ test('personal table sorting does not reorder the server-selected candidate resu
   expect(names()).toEqual(['Maria', 'Joe', 'Michael']);
   expect(setDataMask).not.toHaveBeenCalled();
 });
+
+test('client table restores page and page length through automatic refresh', () => {
+  const source = cloneDeep(testData.advanced);
+  source.rawFormData.personal_sort = metricSort;
+  source.ownState = { currentPage: 1, pageSize: 1 };
+  const props = transformProps(source);
+  const setDataMask = jest.fn();
+  const { container, rerender } = render(
+    <TableChart {...props} setDataMask={setDataMask} sticky={false} />,
+  );
+  const names = () => [...container.querySelectorAll('tbody td[data-column-name="name"]')].map(cell => cell.textContent);
+  expect(names()).toEqual(['Joe']);
+  rerender(<TableChart {...props} data={[...props.data]} setDataMask={setDataMask} sticky={false} />);
+  expect(names()).toEqual(['Joe']);
+  expect(setDataMask).not.toHaveBeenCalled();
+});

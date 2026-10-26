@@ -1401,13 +1401,14 @@ export default function TableChart<D extends DataRecord = DataRecord>(
   const handleServerPaginationChange = useCallback(
     (pageNumber: number, pageSize: number) => {
       const modifiedOwnState = {
+        ...ownState,
         ...serverPaginationData,
         currentPage: pageNumber,
         pageSize,
       };
       updateTableOwnState(setDataMask, modifiedOwnState);
     },
-    [serverPaginationData, setDataMask],
+    [serverPaginationData, setDataMask, ownState],
   );
 
   useEffect(() => {

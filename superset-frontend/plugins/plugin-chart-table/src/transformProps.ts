@@ -1004,7 +1004,7 @@ const transformProps = (
     serverPagination,
     metrics,
     percentMetrics,
-    serverPaginationData: serverPagination
+    serverPaginationData: serverPagination || Object.prototype.hasOwnProperty.call(originalFormData, 'personal_sort')
       ? serverPaginationData
       : defaultServerPaginationData,
     setDataMask,
