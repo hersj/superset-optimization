@@ -448,6 +448,12 @@ def test_pivot_candidate_legacy_defaults_remain_bounded(
     "column_type, value, expected",
     [
         (sa.Date(), pd.Timestamp("2026-10-01 00:30:00+08:00"), "2026-10-01"),
+        (sa.Date(), pd.Timestamp("2026-10-01 00:30:00+08:00").date(), "2026-10-01"),
+        (
+            sa.DateTime(timezone=True),
+            pd.Timestamp("2026-10-01 00:30:00+08:00").to_pydatetime(),
+            "2026-10-01 00:30:00+08:00",
+        ),
         (
             sa.DateTime(timezone=True),
             pd.Timestamp("2026-10-01 00:30:00+08:00"),
