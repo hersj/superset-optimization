@@ -279,3 +279,23 @@ def test_bubble_metrics_are_original_x_y_size_and_cards_are_excluded():
         "sku",
     ]
     assert get_sort_options({**form, "viz_type": "big_number_total"}) == []
+
+
+def test_server_pagination_auxiliary_count_and_totals_do_not_expand_page():
+    query = QueryObject(columns=["sku"], metrics=["sales"], row_limit=20, row_offset=20)
+    count = QueryObject(
+        columns=["sku"], metrics=["sales"], row_limit=1000, is_rowcount=True
+    )
+    totals = QueryObject(columns=[], metrics=["sales"], row_limit=0)
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(
+            form_data={**FORM, "personal_sort": spec()}, queries=[query, count, totals]
+        )
+    )
+    assert prepare_personal_sort(processor, query, False) is None
+    assert query.row_limit == 20
+    assert query.row_offset == 20
+    for auxiliary in (count, totals):
+        baseline = auxiliary.to_dict()
+        assert prepare_personal_sort(processor, auxiliary, False) is None
+        assert auxiliary.to_dict() == baseline

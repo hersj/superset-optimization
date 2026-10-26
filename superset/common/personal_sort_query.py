@@ -62,16 +62,25 @@ def _source_query(processor: Any, option: dict[str, Any]) -> Any:
     return copy(processor._personal_sort_sources[source_index])
 
 
+def _has_multiple_periods(processor: Any, source: Any) -> bool:
+    return any(
+        item.columns and not item.is_rowcount and item.time_range != source.time_range
+        for item in processor._personal_sort_sources
+    )
+
+
 def prepare_personal_sort(
     processor: Any, query: Any, force_cached: bool | None
 ) -> dict[str, Any] | None:
     if query is None or getattr(query, "_personal_sort_candidate", False):
         return None
+    if query.is_rowcount or (not query.columns and not query.is_timeseries):
+        query.personal_sort = None
+        return None
     if getattr(query, "_personal_sort_prepared", False):
         return getattr(query, "_personal_sort_order", None)
-    form = processor._query_context.form_data or {}
-    if not isinstance(form, dict):
-        form = {}
+    raw_form = processor._query_context.form_data
+    form = raw_form if isinstance(raw_form, dict) else {}
     payload = form.get("personal_sort", getattr(query, "personal_sort", None))
     if payload is None:
         query.personal_sort = None
@@ -109,7 +118,8 @@ def prepare_personal_sort(
         len(dimensions) != len(source.columns)
         or source.is_timeseries
         or source.time_offsets
-        or len(processor._query_context.queries) > 1
+        or viz == "mixed_timeseries"
+        or _has_multiple_periods(processor, source)
         or viz == "pivot_table_v2"
     )
     query.personal_sort = dict(sort)
