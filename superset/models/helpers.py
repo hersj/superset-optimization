@@ -66,6 +66,7 @@ from sqlalchemy_utils import UUIDType
 from superset import db, is_feature_enabled
 from superset.advanced_data_type.types import AdvancedDataTypeResponse
 from superset.common.db_query_status import QueryStatus
+from superset.common.personal_sort_query import remap_personal_sort_cohort
 from superset.common.personal_sort_sql import (
     apply_sort_predicate,
     custom_sort_expression,
@@ -1567,6 +1568,15 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                             f"{query_object_clone.to_dttm}"
                         )
 
+            remap_personal_sort_cohort(
+                query_object_clone,
+                query_object,
+                temporal_col,
+                time_grain,
+                relative_offset=None if is_date_range_offset else offset,
+                calendar_years=is_date_range_offset,
+            )
+
             # Continue with the rest of the method (caching, execution, etc.)
             cached_time_offset_key = (
                 offset if offset == original_offset else f"{offset}_{original_offset}"
@@ -1600,7 +1610,8 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
             # to the subquery so we prevent data inconsistency due to missing records
             # in the dataframes when performing the join
             if query_object.row_limit or query_object.row_offset:
-                query_object_clone_dct["row_limit"] = app.config["ROW_LIMIT"]
+                if not (query_object.personal_sort or {}).get("record_limit"):
+                    query_object_clone_dct["row_limit"] = app.config["ROW_LIMIT"]
                 query_object_clone_dct["row_offset"] = 0
 
             # Call the unified query method on the datasource

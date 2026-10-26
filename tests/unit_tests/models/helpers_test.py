@@ -2280,6 +2280,8 @@ def test_personal_date_cohort_custom_pivot_queries_bind_distinct_period_buckets(
     assert str(comparison.personal_sort["cohort_values"][0][0]).startswith("2026-05-01")
     assert str(current.personal_sort["cohort_values"][0][0]).startswith("2026-11-01")
     assert str(order["values"][0][0]).startswith("2026-11-01")
+
+
 @pytest.mark.parametrize("grain", ["P1D", "P1M"])
 def test_personal_date_cohort_real_base_axis_compiles_postgres(database, grain):
     from datetime import date

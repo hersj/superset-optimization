@@ -582,3 +582,99 @@ def test_temporal_tuple_cohort_compiles_with_untyped_axis_and_null_rows(
         if null_first
         else [[date(2026, 10, 7), "A"], [None, "B"]]
     )
+
+
+def test_server_pagination_offsets_candidate_limit_is_page_size():
+    query = QueryObject(
+        columns=["sku"],
+        metrics=["sales"],
+        row_limit=2,
+        row_offset=4,
+        time_offsets=["1 month ago"],
+    )
+    calls = []
+
+    def execute(candidate, force_cached):
+        calls.append(candidate)
+        return {
+            "df": pd.DataFrame([{"sku": "e", "sales": 5}, {"sku": "f", "sales": 6}])
+        }
+
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(
+            form_data={
+                **FORM,
+                "row_limit": 5000,
+                "server_pagination": True,
+                "personal_sort": spec(),
+            },
+            queries=[query],
+        ),
+        _personal_sort_candidates={},
+        get_df_payload=execute,
+    )
+    app = Flask(__name__)
+    app.config["SQL_MAX_ROW"] = 100
+    with app.app_context():
+        prepare_personal_sort(processor, query, False)
+    assert calls[0].row_limit == 2
+    assert calls[0].row_offset == 4
+    assert query.personal_sort["cohort_values"] == [["e"], ["f"]]
+
+
+@pytest.mark.parametrize(
+    "relative, expected", [("1 month ago", "2026-10-01"), (None, "2026-05-01")]
+)
+def test_history_cohort_maps_raw_bucket_without_mutating_display_order(
+    relative, expected
+):
+    from datetime import datetime
+
+    from superset.common.personal_sort_query import remap_personal_sort_cohort
+
+    value = pd.Timestamp("2026-11-01 00:00:00+08:00")
+    independent = pd.Timestamp("2026-01-01 00:00:00+08:00")
+    source = QueryObject(
+        columns=["day", "other_date"],
+        metrics=["sales"],
+        from_dttm=datetime(2026, 10, 1),
+        to_dttm=datetime(2026, 12, 1),
+    )
+    target = copy(source)
+    target.from_dttm, target.to_dttm = (
+        (datetime(2026, 9, 1), datetime(2026, 11, 1))
+        if relative
+        else (datetime(2026, 4, 15), datetime(2026, 5, 20))
+    )
+    original = {
+        "cohort_columns": ["day", "other_date"],
+        "cohort_values": [[value, independent]],
+    }
+    source.personal_sort = target.personal_sort = original
+    remap_personal_sort_cohort(target, source, "day", "P1M", relative_offset=relative)
+    mapped = target.personal_sort["cohort_values"][0]
+    assert str(mapped[0]).startswith(expected)
+    assert mapped[0].utcoffset() == value.utcoffset()
+    assert mapped[1] == independent
+    assert original["cohort_values"][0][0] is value
+
+
+def test_short_comparison_period_has_no_cohort_for_missing_bucket():
+    from datetime import datetime
+
+    from superset.common.personal_sort_query import remap_personal_sort_cohort
+
+    source = QueryObject(
+        columns=["day"],
+        metrics=["sales"],
+        from_dttm=datetime(2026, 10, 1),
+        to_dttm=datetime(2027, 1, 1),
+    )
+    target = copy(source)
+    target.from_dttm, target.to_dttm = datetime(2026, 4, 1), datetime(2026, 5, 1)
+    target.personal_sort = {
+        "cohort_columns": ["day"],
+        "cohort_values": [[pd.Timestamp("2026-12-01")]],
+    }
+    remap_personal_sort_cohort(target, source, "day", "P1M")
+    assert target.personal_sort["cohort_values"] == []

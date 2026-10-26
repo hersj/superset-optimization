@@ -23,8 +23,10 @@ parent. Only their grouping changes; the main query retains every pivot column.
 from __future__ import annotations
 
 from copy import copy, deepcopy
+from datetime import date, datetime, timedelta
 from typing import Any
 
+import pandas as pd
 from flask import current_app
 
 from superset.common.personal_sort import (
@@ -34,9 +36,13 @@ from superset.common.personal_sort import (
     get_sort_options,
     validate_chart_sort,
 )
+from superset.common.utils.time_range_utils import get_since_until_from_query_object
+from superset.constants import TimeGrain
 from superset.exceptions import QueryObjectValidationError
 from superset.utils import json
-from superset.utils.core import apply_max_row_limit
+from superset.utils.core import apply_max_row_limit, get_x_axis_label
+from superset.utils.date_parser import normalize_time_delta
+from superset.utils.selected_time_ranges import selected_period_starts
 
 
 def _ranking_dimensions(form: dict[str, Any], source: Any) -> list[Any]:
@@ -98,6 +104,153 @@ def _candidate_row_limit(form_limit: Any, query_limit: int | None) -> int:
             "Personal sort row limit must be a positive integer"
         )
     return apply_max_row_limit(limit)
+
+
+def _sort_period_bounds(query: Any) -> tuple[datetime | None, datetime | None]:
+    if query.from_dttm is not None and query.to_dttm is not None:
+        return query.from_dttm, query.to_dttm
+    return get_since_until_from_query_object(query)
+
+
+def _sort_grain(grain: str | None) -> str:
+    return {
+        TimeGrain.WEEK_STARTING_SUNDAY: "P1W_SUN",
+        TimeGrain.WEEK_ENDING_SATURDAY: "P1W_SUN",
+        TimeGrain.WEEK_STARTING_MONDAY: "P1W",
+        TimeGrain.WEEK_ENDING_SUNDAY: "P1W",
+    }.get(grain, grain or "P1D")
+
+
+def _sort_bucket(stamp: pd.Timestamp, grain: str) -> datetime:
+    value = stamp.to_pydatetime()
+    return selected_period_starts([(value, value + timedelta(microseconds=1))], grain)[
+        0
+    ]
+
+
+def _mapped_sort_date(
+    value: Any,
+    grain: str,
+    source_bounds: Any,
+    target_bounds: Any,
+    relative_offset: str | None,
+    calendar_years: bool,
+) -> Any:
+    stamp = pd.Timestamp(value)
+    local = stamp.tz_localize(None) if stamp.tzinfo else stamp
+    grain = _sort_grain(grain)
+    if relative_offset:
+        shifted = local + pd.DateOffset(**normalize_time_delta(relative_offset))
+        if grain in {"P1M", "P3M", "P1Y", "P1W", "P1W_SUN"}:
+            clock = local - pd.Timestamp(_sort_bucket(local, grain))
+            mapped = pd.Timestamp(_sort_bucket(shifted, grain)) + clock
+        else:
+            mapped = shifted
+    else:
+        bucket = _sort_bucket(local, grain)
+        clock = local - pd.Timestamp(bucket)
+        source_from, source_to = source_bounds
+        target_from, target_to = target_bounds
+        if (
+            calendar_years
+            and grain == "P1D"
+            and (source_from.month, source_from.day)
+            == (target_from.month, target_from.day)
+            and source_from.year != target_from.year
+        ):
+            try:
+                mapped = local.replace(
+                    year=local.year + target_from.year - source_from.year
+                )
+            except ValueError:
+                return None
+            if not target_from <= mapped < target_to:
+                return None
+        else:
+            current = selected_period_starts([source_bounds], grain)
+            history = selected_period_starts([target_bounds], grain)
+            if bucket not in current or current.index(bucket) >= len(history):
+                return None
+            mapped = pd.Timestamp(history[current.index(bucket)]) + clock
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return mapped.date()
+    return mapped.tz_localize(stamp.tzinfo) if stamp.tzinfo else mapped
+
+
+def remap_personal_sort_cohort(
+    query: Any,
+    source: Any,
+    temporal_column: str | None,
+    grain: str | None,
+    relative_offset: str | None = None,
+    calendar_years: bool = False,
+) -> None:
+    """SQL binds historical raw buckets; metadata keeps current display keys.
+
+    Only the bound comparison column (or its direct BASE_AXIS projection) moves.
+    Business dimensions and independent date filters retain their original values.
+    Absolute periods reuse existing ordinal buckets; missing buckets query no rows.
+    """
+    sort = getattr(query, "personal_sort", None)
+    if not sort or not temporal_column or "cohort_values" not in sort:
+        return
+    indices = [
+        index
+        for index, col in enumerate(sort["cohort_columns"])
+        if column_label(col) == temporal_column
+        or isinstance(col, dict)
+        and col.get("sqlExpression") == temporal_column
+    ]
+    if not indices:
+        return
+    source_bounds, target_bounds = (
+        _sort_period_bounds(source),
+        _sort_period_bounds(query),
+    )
+    if not relative_offset and source_bounds == target_bounds:
+        return
+    if any(value is None for value in (*source_bounds, *target_bounds)):
+        raise QueryObjectValidationError(
+            "Personal date sorting requires enclosed comparison periods"
+        )
+    values = []
+    for row in sort["cohort_values"]:
+        mapped_row = list(row)
+        for index in indices:
+            if row[index] is None:
+                continue
+            col = sort["cohort_columns"][index]
+            col_grain = col.get("timeGrain") if isinstance(col, dict) else None
+            try:
+                mapped_row[index] = _mapped_sort_date(
+                    row[index],
+                    col_grain or grain,
+                    source_bounds,
+                    target_bounds,
+                    relative_offset,
+                    calendar_years,
+                )
+            except (ValueError, TypeError) as ex:
+                raise QueryObjectValidationError(
+                    "Unable to map personal sort dates to the comparison period"
+                ) from ex
+            if mapped_row[index] is None:
+                break
+        else:
+            values.append(mapped_row)
+    query.personal_sort = {**sort, "cohort_values": values}
+
+
+def _remap_period_sort(processor: Any, query: Any, source: Any) -> None:
+    datasource = getattr(processor, "_qc_datasource", None)
+    if datasource is None:
+        return
+    temporal_column = datasource._get_temporal_column_for_filter(
+        source, get_x_axis_label(source.columns)
+    )
+    remap_personal_sort_cohort(
+        query, source, temporal_column, datasource.get_time_grain(source)
+    )
 
 
 def prepare_personal_sort(
@@ -169,7 +322,10 @@ def prepare_personal_sort(
     source.series_columns = []
     source.series_limit_metric = None
     source.row_offset = query.row_offset
-    source.row_limit = _candidate_row_limit(form.get("row_limit"), source.row_limit)
+    source.row_limit = _candidate_row_limit(
+        None if form.get("server_pagination") else form.get("row_limit"),
+        source.row_limit,
+    )
     source.orderby = deepcopy(orderby)
     source.filter = deepcopy(source.filter)
     if "columnValues" in sort:
@@ -197,6 +353,7 @@ def prepare_personal_sort(
         }
     order = cache[key]
     query.personal_sort.update(cohort_columns=dimensions, cohort_values=order["values"])
+    _remap_period_sort(processor, query, source)
     # Retrieve all columns/periods of selected keys, never a separately truncated TopN.
     limit = current_app.config["SQL_MAX_ROW"]
     query.personal_sort["record_limit"] = limit
