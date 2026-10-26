@@ -16,7 +16,7 @@
 # under the License.
 """Compile only validated original columns and bound category values."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import numpy as np
@@ -37,6 +37,11 @@ class _CohortTemporalType(sa.types.TypeDecorator):
         super().__init__()
         self.sqltype = sqltype
         self.impl = sqltype
+
+    def coerce_compared_value(self, op: Any, value: Any) -> Any:
+        if isinstance(value, date):
+            return self
+        return self.impl.coerce_compared_value(op, value)
 
     def literal_processor(self, dialect: Any) -> Any:
         processor = self.impl.literal_processor(dialect)
