@@ -295,3 +295,21 @@ describe('plugin-chart-table', () => {
     });
   });
 });
+
+test('dashboard default ignores the legacy server-table sort while Explore retains it', () => {
+  const formData: TableChartFormData = {
+    ...basicFormData,
+    query_mode: QueryMode.Aggregate,
+    groupby: ['category'],
+    metrics: ['sales'],
+    server_pagination: true,
+    server_page_length: 25,
+    order_desc: true,
+  };
+  const ownState = { sortBy: [{ key: 'category', desc: false }] };
+  const legacy = buildQuery(formData, { ownState }).queries[0];
+  const dashboard = buildQuery({ ...formData, personal_sort: null }, { ownState }).queries[0];
+  const baseline = buildQuery(formData).queries[0];
+  expect(legacy.orderby).toEqual([['category', true]]);
+  expect(dashboard.orderby).toEqual(baseline.orderby);
+});
