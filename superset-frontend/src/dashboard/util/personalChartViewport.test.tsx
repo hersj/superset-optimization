@@ -204,6 +204,8 @@ test('signature normalization retains array order and value types', () => {
   expect(readPersonalChartViewport('u', 'd', 'c', reorderedKeys)?.currentPage).toBe(2);
   expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), customOrder: ['B', 'A'] }))).toBeUndefined();
   expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), columnValues: ['DE', 'US'] }))).toBeUndefined();
-  expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), columnValues: [1, 'DE'] }))).toBeUndefined();
+  const numericContext = JSON.stringify({ ...JSON.parse(original), columnValues: [1, 'DE'] });
+  updatePersonalChartViewport('u', 'd', 'c', numericContext, { currentPage: 4 });
+  expect(readPersonalChartViewport('u', 'd', 'c', numericContext)?.currentPage).toBe(4);
   expect(readPersonalChartViewport('u', 'd', 'c', JSON.stringify({ ...JSON.parse(original), columnValues: ['1', 'DE'] }))).toBeUndefined();
 });

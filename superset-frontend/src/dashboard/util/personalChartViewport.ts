@@ -37,6 +37,20 @@ const isPage = (value: unknown): value is number =>
 const isMarker = (value: string | null): value is string =>
   value === 'table' || value === 'pivot';
 
+// API serializers and client normalization can emit identical sorts with
+// different object key order. Keep array order and JSON value types intact.
+const normalizeSignature = (signature: string): string => {
+  try {
+    return JSON.stringify(JSON.parse(signature), (_key, value: unknown) =>
+      isObject(value)
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
+        : value,
+    ) ?? signature;
+  } catch {
+    return signature;
+  }
+};
+
 /** Local browsing state is scoped to the exact applied sort, never filter state. */
 export function readPersonalChartViewport(
   user: ScopeId,
@@ -50,7 +64,8 @@ export function readPersonalChartViewport(
     );
     if (
       !isObject(saved) ||
-      saved.signature !== signature ||
+      typeof saved.signature !== 'string' ||
+      normalizeSignature(saved.signature) !== normalizeSignature(signature) ||
       !isObject(saved.positions)
     )
       return undefined;
@@ -91,7 +106,7 @@ export function updatePersonalChartViewport(
       JSON.stringify({
         ...current,
         ...patch,
-        signature,
+        signature: normalizeSignature(signature),
         positions: { ...current?.positions, ...patch.positions },
       }),
     );
@@ -108,6 +123,7 @@ export function usePersonalChartViewport(
   signature: string,
   ready: boolean,
 ): void {
+  const normalizedSignature = normalizeSignature(signature);
   const previous = useRef<{ key: string; signature: string }>();
   const restoredNodes = useRef<{
     key: string;
@@ -117,11 +133,11 @@ export function usePersonalChartViewport(
   useEffect(() => {
     const key = storageKey(user, dashboard, chart);
     const changed =
-      previous.current?.key === key && previous.current.signature !== signature;
+      previous.current?.key === key && previous.current.signature !== normalizedSignature;
     // Before the first successful result, sort may still be hydrating. That
     // initial null -> saved sort transition is not a user's reset action.
     if (ready || previous.current?.key === key) {
-      previous.current = { key, signature };
+      previous.current = { key, signature: normalizedSignature };
     } else {
       previous.current = undefined;
     }
@@ -130,12 +146,12 @@ export function usePersonalChartViewport(
         user,
         dashboard,
         chart,
-        signature,
+        normalizedSignature,
       );
       try {
         localStorage.setItem(
           key,
-          JSON.stringify({ ...current, signature, positions: {} }),
+          JSON.stringify({ ...current, signature: normalizedSignature, positions: {} }),
         );
       } catch {
         // See updatePersonalChartViewport: persistence is best effort.
@@ -144,12 +160,12 @@ export function usePersonalChartViewport(
     const root = ref.current;
     const initialized =
       restoredNodes.current?.key === key &&
-      restoredNodes.current.signature === signature;
+      restoredNodes.current.signature === normalizedSignature;
     if (!root || (!ready && !initialized)) return undefined;
     if (!initialized) {
       restoredNodes.current = {
         key,
-        signature,
+        signature: normalizedSignature,
         nodes: new WeakSet<HTMLElement>(),
       };
     }
@@ -164,7 +180,7 @@ export function usePersonalChartViewport(
         user,
         dashboard,
         chart,
-        signature,
+        normalizedSignature,
       );
       root
         .querySelectorAll<HTMLElement>('[data-personal-sort-scroll]')
@@ -192,7 +208,7 @@ export function usePersonalChartViewport(
       if (!saveFrame)
         saveFrame = requestAnimationFrame(() => {
           saveFrame = 0;
-          updatePersonalChartViewport(user, dashboard, chart, signature, {
+          updatePersonalChartViewport(user, dashboard, chart, normalizedSignature, {
             positions: { ...pending },
           });
           Object.keys(pending).forEach(name => delete pending[name]);
@@ -208,10 +224,10 @@ export function usePersonalChartViewport(
       cancelAnimationFrame(restoreFrame);
       cancelAnimationFrame(saveFrame);
       if (Object.keys(pending).length) {
-        updatePersonalChartViewport(user, dashboard, chart, signature, {
+        updatePersonalChartViewport(user, dashboard, chart, normalizedSignature, {
           positions: pending,
         });
       }
     };
-  }, [ref, user, dashboard, chart, signature, ready]);
+  }, [ref, user, dashboard, chart, normalizedSignature, ready]);
 }
