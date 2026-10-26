@@ -1339,7 +1339,7 @@ export class TableRenderer extends Component<
             : this.state.activeSortRowDimension === i;
           const rowDirection = this.props.onPersonalSortChange
             ? this.props.personalSort?.direction
-            : this.state.rowSortingOrder[i];
+            : this.state.rowSortingOrder?.[i];
           const RowSortIcon = !isActiveRowSort
             ? FaSort
             : rowDirection === 'asc'

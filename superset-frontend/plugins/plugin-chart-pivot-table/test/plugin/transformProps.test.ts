@@ -68,6 +68,10 @@ const chartProps = new ChartProps<QueryFormData>({
 
 test('should transform chart props for viz', () => {
   expect(transformProps(chartProps)).toEqual({
+    ownState: {},
+    personalSort: null,
+    personalSortEnabled: false,
+    personalSortOrder: undefined,
     width: 800,
     height: 600,
     frozenColumnCount: 0,
