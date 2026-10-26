@@ -1017,7 +1017,7 @@ test('successful chart rendering keeps viewport restoration and scroll persisten
 });
 
 function createMonthHydrationState(loaded: boolean) {
-  const dateId = 'NATIVE_DATE_LATE_METADATA';
+  const dateId = `NATIVE_DATE_LATE_METADATA_${loaded}`;
   const formData = {
     ...chartQueries[queryId].form_data,
     datasource: '98__table',
@@ -1049,6 +1049,7 @@ function createMonthHydrationState(loaded: boolean) {
           ...formData,
           extra_form_data: { time_grain_sqla: 'P1M' },
           temporal_columns_lookup: {},
+          show_value: true,
           personal_sort: null,
         },
       },
@@ -1065,6 +1066,7 @@ function createMonthHydrationState(loaded: boolean) {
     dashboardState: {
       ...defaultState.dashboardState,
       sliceIds: [queryId],
+      dashboardChartControls: DEFAULT_DASHBOARD_CHART_CONTROLS,
       chartSorts: {},
     },
     nativeFilters: {
