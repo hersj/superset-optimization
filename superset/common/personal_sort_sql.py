@@ -33,8 +33,9 @@ class _CohortTemporalType(sa.types.TypeDecorator):
     impl = sa.DateTime
     cache_ok = True
 
-    def __init__(self, sqltype: Any) -> None:
+    def __init__(self, sqltype: Any, sqlite_bucket: bool = False) -> None:
         super().__init__()
+        self.sqlite_bucket = sqlite_bucket
         self.sqltype = sqltype
         self.impl = sqltype
 
@@ -46,6 +47,10 @@ class _CohortTemporalType(sa.types.TypeDecorator):
     def literal_processor(self, dialect: Any) -> Any:
         processor = self.impl.literal_processor(dialect)
         if processor is not None:
+            if self.sqlite_bucket and dialect.name == "sqlite":
+                # Chart SQL uses literal_binds. SQLite's DATETIME grain expression
+                # returns seconds text even when its declared source type is DATE.
+                return lambda value: f"DATETIME({processor(value)})"
             return processor
         quote = sa.String().literal_processor(dialect)
         sqltype = self.impl.compile(dialect=dialect)
@@ -114,10 +119,18 @@ def apply_sort_predicate(
         for row in sort["cohort_values"]
     ]
     cols = [
-        sa.type_coerce(col, _CohortTemporalType(sqltype))
+        sa.type_coerce(
+            col,
+            _CohortTemporalType(
+                sqltype,
+                sqlite_bucket=isinstance(original, dict)
+                and original.get("columnType") == "BASE_AXIS"
+                and bool(original.get("timeGrain")),
+            ),
+        )
         if isinstance(sqltype, (sa.Date, sa.DateTime))
         else col
-        for col, sqltype in zip(cols, sqltypes, strict=True)
+        for col, sqltype, original in zip(cols, sqltypes, columns, strict=True)
     ]
     ordinary = [tuple(row) for row in values if all(value is not None for value in row)]
     nullable = [row for row in values if any(value is None for value in row)]
