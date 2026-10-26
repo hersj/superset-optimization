@@ -18,7 +18,12 @@
  */
 import { useState } from 'react';
 import { type PersonalChartSort } from '@superset-ui/core';
-import { render, screen, userEvent } from 'spec/helpers/testing-library';
+import {
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from 'spec/helpers/testing-library';
 import ChartSortControl, { getSortCategoryValues } from './ChartSortControl';
 const formData = {
   datasource: '1__table',
@@ -97,7 +102,9 @@ test('controlled custom mode renders real drag handles and reorders immediately'
   render(<Controlled />);
   await userEvent.click(screen.getByRole('button', { name: '排序：默认' }));
   await userEvent.click(screen.getByText('自定义', { exact: true }));
-  expect(screen.getByRole('button', { name: '拖动 SKU-a' })).toBeVisible();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '拖动 SKU-a' })).toBeVisible(),
+  );
   await userEvent.click(screen.getByRole('button', { name: '上移 SKU-b' }));
   expect(screen.getByRole('button', { name: '上移 SKU-b' })).toBeDisabled();
   expect(screen.getByRole('button', { name: '下移 SKU-a' })).toBeDisabled();
