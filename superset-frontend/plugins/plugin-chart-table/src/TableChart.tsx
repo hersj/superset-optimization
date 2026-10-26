@@ -1232,7 +1232,12 @@ export default function TableChart<D extends DataRecord = DataRecord>(
             onKeyDown={(e: ReactKeyboardEvent<HTMLElement>) => {
               // programatically sort column on keypress
               if (Object.values(ACTION_KEYS).includes(e.key)) {
-                col.toggleSortBy();
+                if (personalSortEnabled) {
+                  e.preventDefault();
+                  e.currentTarget.click();
+                } else {
+                  col.toggleSortBy();
+                }
               }
             }}
             role="columnheader button"
@@ -1335,6 +1340,7 @@ export default function TableChart<D extends DataRecord = DataRecord>(
       toggleFilter,
       handleContextMenu,
       allowRearrangeColumns,
+      personalSortEnabled,
     ],
   );
 
