@@ -442,3 +442,81 @@ def test_pivot_candidate_legacy_defaults_remain_bounded(
     with app.app_context():
         prepare_personal_sort(processor, query, False)
     assert calls[0].row_limit == expected
+
+
+@pytest.mark.parametrize(
+    "column_type, value, expected",
+    [
+        (sa.Date(), pd.Timestamp("2026-10-01 00:30:00+08:00"), "2026-10-01"),
+        (
+            sa.DateTime(timezone=True),
+            pd.Timestamp("2026-10-01 00:30:00+08:00"),
+            "2026-10-01 00:30:00+08:00",
+        ),
+        (
+            sa.DateTime(),
+            pd.Timestamp("2026-10-01 00:30:00"),
+            "2026-10-01 00:30:00",
+        ),
+    ],
+)
+def test_personal_date_cohort_compiles_postgresql_literals(
+    column_type, value, expected
+):
+    from datetime import date, datetime
+
+    from sqlalchemy.dialects import postgresql
+
+    table = sa.table("events", sa.column("day", column_type))
+    sort = {"cohort_columns": ["day"], "cohort_values": [[value]]}
+    query = apply_sort_predicate(sa.select([table]), sort, dict(table.c))
+    bound_values = next(iter(query.compile().params.values()))
+    native = bound_values[0]
+    if isinstance(column_type, sa.DateTime):
+        assert type(native) is datetime
+        assert native.utcoffset() == value.utcoffset()
+    else:
+        assert type(native) is date
+        assert native.isoformat() == "2026-10-01"
+    sql = str(
+        query.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert expected in sql
+    # SQL binding normalization must not rewrite the shared display/ordering metadata.
+    assert sort["cohort_values"][0][0] is value
+
+
+def test_personal_date_cohort_executes_sqlite_multidimensional_nullable_keys():
+    from datetime import date
+
+    engine = sa.create_engine("sqlite://")
+    metadata = sa.MetaData()
+    table = sa.Table(
+        "daily", metadata, sa.Column("day", sa.Date), sa.Column("sku", sa.String)
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            table.insert(),
+            [
+                {"day": date(2026, 10, 1), "sku": "a"},
+                {"day": date(2026, 10, 1), "sku": None},
+                {"day": date(2026, 9, 30), "sku": "a"},
+                {"day": date(2026, 10, 2), "sku": "b"},
+            ],
+        )
+        value = pd.Timestamp("2026-10-01 00:30:00+08:00")
+        query = apply_sort_predicate(
+            sa.select([table]),
+            {
+                "cohort_columns": ["day", "sku"],
+                "cohort_values": [[value, "a"], [value, None]],
+            },
+            dict(table.c),
+        )
+        assert list(conn.execute(query)) == [
+            (date(2026, 10, 1), "a"),
+            (date(2026, 10, 1), None),
+        ]
