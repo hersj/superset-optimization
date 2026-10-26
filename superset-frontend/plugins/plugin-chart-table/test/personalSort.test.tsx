@@ -18,7 +18,9 @@
  */
 import { cloneDeep } from 'lodash';
 import { fireEvent, render, waitFor } from '@superset-ui/core/spec';
-import type { PersonalChartSort } from '@superset-ui/core';
+import { ComparisonType, QueryMode, type PersonalChartSort } from '@superset-ui/core';
+import { GenericDataType } from '@apache-superset/core/common';
+import buildQuery from '../src/buildQuery';
 import TableChart from '../src/TableChart';
 import transformProps from '../src/transformProps';
 import testData from './testData';
@@ -156,4 +158,73 @@ test('client table restores page and page length through automatic refresh', () 
   expect(
     setDataMask.mock.calls.some(([mask]) => mask.ownState?.currentPage === 0),
   ).toBe(false);
+});
+
+
+test.each([false, true])(
+  'time-comparison table replays the full candidate ranking before rendering, server pagination=%s',
+  serverPagination => {
+    const source = cloneDeep(testData.advanced);
+    source.rawFormData = {
+      ...source.rawFormData,
+      query_mode: QueryMode.Aggregate,
+      groupby: ['name'],
+      percent_metrics: [],
+      server_pagination: serverPagination,
+      server_page_length: 25,
+      time_compare: ['1 day ago'],
+      comparison_type: ComparisonType.Values,
+      personal_sort: { ...metricSort, direction: 'asc' },
+    };
+    source.ownState = { currentPage: 1, pageSize: 25 };
+    const query = buildQuery(source.rawFormData, { ownState: source.ownState }).queries[0];
+    expect(query.time_offsets).toEqual(['1 day ago']);
+    expect(query.personal_sort).toEqual({ ...metricSort, direction: 'asc' });
+    expect(query.row_offset).toBe(serverPagination ? 25 : 0);
+    const rows = [
+      { name: 'ACA', sum__num: 9, 'sum__num__1 day ago': 900 },
+      { name: 'TL', sum__num: 74, 'sum__num__1 day ago': 1 },
+      { name: '售后A60黑', sum__num: 5, 'sum__num__1 day ago': 500 },
+      { name: '售后Q50黑', sum__num: 157, 'sum__num__1 day ago': 2 },
+      { name: '售后A60三色', sum__num: 38, 'sum__num__1 day ago': 380 },
+      { name: '售后Q50三色', sum__num: 10, 'sum__num__1 day ago': 3 },
+    ];
+    const expected = ['售后A60黑', 'ACA', '售后Q50三色', '售后A60三色', 'TL', '售后Q50黑'];
+    source.queriesData = [
+      { ...source.queriesData[0], data: rows,
+        colnames: ['name', 'sum__num', 'sum__num__1 day ago'],
+        coltypes: [GenericDataType.String, GenericDataType.Numeric, GenericDataType.Numeric],
+        personal_sort_order: { columns: ['name'], values: expected.map(name => [name]) },
+      },
+      { ...source.queriesData[0], data: [{ rowcount: 60 }], colnames: ['rowcount'], coltypes: [GenericDataType.Numeric] },
+    ];
+    const transformed = transformProps(source);
+    expect(transformed.data.map(row => row.name)).toEqual(expected);
+    expect(transformed.data.map(row => row['Main sum__num'])).toEqual([5, 9, 10, 38, 74, 157]);
+    expect(transformed.data.map(row => row['# sum__num'])).toEqual([500, 900, 3, 380, 1, 2]);
+    expect(source.queriesData[0].data).toEqual(rows);
+    const { container, rerender } = render(<TableChart {...transformed} sticky={false} />);
+    const names = () => [...container.querySelectorAll('tbody td[aria-labelledby="header-name"]')].map(cell => cell.textContent);
+    expect(names()).toEqual(expected);
+    rerender(<TableChart {...transformProps(cloneDeep(source))} sticky={false} />);
+    expect(names()).toEqual(expected);
+  },
+);
+
+test('table candidate ranking uses every raw dimension, keeps null distinct and leaves unmatched history stable', () => {
+  const source = cloneDeep(testData.advanced);
+  source.rawFormData.personal_sort = metricSort;
+  const rows = [
+    { name: 'A', shop: 'null', sum__num: 1 },
+    { name: 'A', shop: null, sum__num: 2 },
+    { name: 'A', shop: 'US', sum__num: 3 },
+    { name: 'history-only', shop: 'US', sum__num: null },
+  ];
+  source.queriesData[0].data = rows;
+  source.queriesData[0].personal_sort_order = {
+    columns: ['name', 'shop'], values: [['A', 'US'], ['A', null], ['A', 'null']],
+  };
+  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([3, 2, 1, null]);
+  source.rawFormData.personal_sort = null;
+  expect(transformProps(source).data.map(row => row.sum__num)).toEqual([1, 2, 3, null]);
 });
