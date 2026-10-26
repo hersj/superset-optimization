@@ -2139,7 +2139,8 @@ def personal_history_case(database):
     with database.get_sqla_engine() as engine:
         engine.execute(
             text(
-                "CREATE TABLE cohort_history (event_date DATE, order_date DATE, department TEXT, country TEXT, shop TEXT, profit FLOAT)"
+                "CREATE TABLE cohort_history (event_date DATE, order_date DATE, "
+                "department TEXT, country TEXT, shop TEXT, profit FLOAT)"
             )
         )
         engine.execute(
