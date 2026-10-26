@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { getChartPersonalSort } from '../utils/personalSort';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ScatterSeriesOption } from 'echarts/charts';
 import { extent } from 'd3-array';
@@ -95,6 +96,7 @@ export function formatTooltip(
 }
 
 export default function transformProps(chartProps: EchartsBubbleChartProps) {
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
   const { height, width, hooks, queriesData, formData, inContextMenu, theme } =
     chartProps;
 
@@ -232,7 +234,7 @@ export default function transformProps(chartProps: EchartsBubbleChartProps) {
     legend: {
       ...getLegendProps(legendType, legendOrientation, showLegend, theme),
       data: Array.from(legends).sort((a: string, b: string) => {
-        if (!legendSort) return 0;
+        if (personalSort || !legendSort) return 0;
         return legendSort === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
       }),
     },

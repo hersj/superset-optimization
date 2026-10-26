@@ -17,6 +17,7 @@
  * under the License.
  */
 /* eslint-disable camelcase */
+import { chronologicalRows, getChartPersonalSort, getPersonalCategoryValues, getPersonalSeriesOrder, orderRowsByDimension } from '../utils/personalSort';
 import { escape, invert } from 'lodash';
 import { alignPeriodAxis } from '../utils/periodAxis';
 import { t } from '@apache-superset/core/translation';
@@ -299,6 +300,7 @@ export default function transformProps(
   }
   const xAxisDataType = dataTypes?.[xAxisLabel] ?? dataTypes?.[xAxisOrig];
   const xAxisType = getAxisType(stack, xAxisForceCategorical, xAxisDataType);
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
   const array = ensureIsArray(
     chartProps.rawFormData?.extra_form_data?.time_compare ??
       chartProps.rawFormData?.time_compare,
@@ -307,13 +309,19 @@ export default function transformProps(
   const customPeriod = array.includes(selectedPeriod?.comparisonTimeRange ?? '')
     ? selectedPeriod
     : undefined;
-  const unfilteredData = maskCustomPeriodCurrentData(
+  let unfilteredData = maskCustomPeriodCurrentData(
     rebaseForecastDatum(data, verboseMap),
     xAxisLabel,
     xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
     timeGrainSqla,
     String(chartProps.rawFormData.comparison_type ?? 'values'),
   );
+  const personalCategoryValues = personalSort && xAxisDataType !== GenericDataType.Temporal
+    ? getPersonalCategoryValues(queriesData, [unfilteredData], xAxisLabel, personalSort, getXAxisLabel(chartProps.rawFormData))
+    : undefined;
+  if (personalSort) unfilteredData = xAxisDataType === GenericDataType.Temporal
+    ? chronologicalRows(unfilteredData, xAxisLabel)
+    : orderRowsByDimension(unfilteredData, xAxisLabel, personalCategoryValues);
   const isHorizontal = orientation === OrientationType.Horizontal;
   const isSkuAxis =
     seriesType === EchartsTimeseriesSeriesType.Bar &&
@@ -456,8 +464,9 @@ export default function transformProps(
       isHorizontal,
       sortSeriesType,
       sortSeriesAscending,
-      xAxisSortSeries: isMultiSeries ? xAxisSort : undefined,
-      xAxisSortSeriesAscending: isMultiSeries ? xAxisSortAsc : undefined,
+      xAxisSortSeries: !personalSort && isMultiSeries ? xAxisSort : undefined,
+      xAxisSortSeriesAscending: !personalSort && isMultiSeries ? xAxisSortAsc : undefined,
+      personalSeriesOrder: personalSort ? getPersonalSeriesOrder(queriesData, labelMap, groupBy) : undefined,
       xAxisType,
       timeCompare: array,
       legendState: stackLegendState,
@@ -1104,6 +1113,10 @@ export default function transformProps(
         (yAxis as any).data = categoryData;
       }
     }
+  }
+
+  if (personalCategoryValues) {
+    (isHorizontal ? yAxis : xAxis).data = personalCategoryValues;
   }
 
   if (skuSelection) {

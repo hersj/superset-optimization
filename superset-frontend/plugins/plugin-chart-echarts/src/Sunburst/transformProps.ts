@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { getChartPersonalSort } from '../utils/personalSort';
 import { t } from '@apache-superset/core/translation';
 import {
   CategoricalColorNamespace,
@@ -158,6 +159,7 @@ export function formatTooltip({
 export default function transformProps(
   chartProps: EchartsSunburstChartProps,
 ): SunburstTransformedProps {
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
   const {
     formData,
     height,
@@ -378,6 +380,7 @@ export default function transformProps(
         },
         radius: [radius * 0.3, radius],
         data: traverse(treeData, []),
+        ...(personalSort && { sort: null }),
       },
     ],
     graphic: showTotal

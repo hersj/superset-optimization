@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { getChartPersonalSort } from '../utils/personalSort';
 import { t } from '@apache-superset/core/translation';
 import {
   CategoricalColorNamespace,
@@ -123,6 +124,7 @@ function getTotalValuePadding({
 export default function transformProps(
   chartProps: EchartsPieChartProps,
 ): PieChartTransformedProps {
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
   const {
     formData,
     height,
@@ -448,7 +450,7 @@ export default function transformProps(
       data: transformedData
         .map(datum => datum.name)
         .sort((a: string, b: string) => {
-          if (!legendSort) return 0;
+          if (personalSort || !legendSort) return 0;
           return legendSort === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
         }),
     },

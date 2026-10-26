@@ -655,6 +655,7 @@ export function extractSeries(
     sortSeriesAscending?: boolean;
     xAxisSortSeries?: SortSeriesType;
     xAxisSortSeriesAscending?: boolean;
+    personalSeriesOrder?: (name: string) => number | undefined;
     xAxisType?: AxisType;
     timeCompare?: string[];
     legendState?: LegendState;
@@ -672,6 +673,7 @@ export function extractSeries(
     sortSeriesAscending,
     xAxisSortSeries,
     xAxisSortSeriesAscending,
+    personalSeriesOrder,
     xAxisType,
     timeCompare = [],
     legendState,
@@ -691,6 +693,8 @@ export function extractSeries(
     sortSeriesType,
     sortSeriesAscending,
   );
+  if (personalSeriesOrder) sortedSeries.sort((left, right) =>
+    (personalSeriesOrder(left) ?? Infinity) - (personalSeriesOrder(right) ?? Infinity));
   const sortedRows =
     isDefined(xAxisSortSeries) && isDefined(xAxisSortSeriesAscending)
       ? sortRows(

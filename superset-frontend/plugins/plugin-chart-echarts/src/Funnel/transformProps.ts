@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { getChartPersonalSort } from '../utils/personalSort';
 import {
   CategoricalColorNamespace,
   DataRecord,
@@ -87,6 +88,7 @@ export function parseParams({
 export default function transformProps(
   chartProps: EchartsFunnelChartProps,
 ): FunnelChartTransformedProps {
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
   const {
     formData,
     height,
@@ -249,7 +251,7 @@ export default function transformProps(
       animation: true,
       minSize: '0%',
       maxSize: '100%',
-      sort,
+      sort: personalSort ? 'none' : sort,
       orient,
       gap,
       funnelAlign: 'center',
@@ -300,7 +302,7 @@ export default function transformProps(
     legend: {
       ...getLegendProps(legendType, legendOrientation, showLegend, theme),
       data: keys.sort((a: string, b: string) => {
-        if (!legendSort) return 0;
+        if (personalSort || !legendSort) return 0;
         return legendSort === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
       }),
     },

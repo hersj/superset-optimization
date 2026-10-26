@@ -17,6 +17,7 @@
  * under the License.
  */
 /* eslint-disable camelcase */
+import { chronologicalRows, getChartPersonalSort, getPersonalCategoryValues, getPersonalSeriesOrder, orderRowsByDimension } from '../utils/personalSort';
 import { invert } from 'lodash';
 import {
   AnnotationLayer,
@@ -294,7 +295,7 @@ export default function transformProps(
     (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
     (chartProps as any).rawFormData?.time_grain_sqla ||
     _timeGrainSqla;
-  const rebasedDataA = maskCustomPeriodCurrentData(
+  let rebasedDataA = maskCustomPeriodCurrentData(
     rebaseForecastDatum(data1, verboseMap),
     xAxisLabel,
     xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
@@ -305,13 +306,21 @@ export default function transformProps(
     getMetricDisplayName(metrics[0], verboseMap) || '';
   const MetricDisplayNameB: string =
     getMetricDisplayName(metricsB[0], verboseMap) || '';
-  const rebasedDataB = maskCustomPeriodCurrentData(
+  let rebasedDataB = maskCustomPeriodCurrentData(
     rebaseForecastDatum(data2, verboseMap),
     xAxisLabel,
     xAxisDataType === GenericDataType.Temporal ? customPeriod : undefined,
     timeGrainSqla,
     String(chartProps.rawFormData.comparison_type_b ?? 'values'),
   );
+  const personalSort = getChartPersonalSort(chartProps.rawFormData);
+  const personalCategoryValues = personalSort && xAxisDataType !== GenericDataType.Temporal
+    ? getPersonalCategoryValues(queriesData, [rebasedDataA, rebasedDataB], xAxisLabel, personalSort, getXAxisLabel(chartProps.rawFormData))
+    : undefined;
+  if (personalSort) {
+    rebasedDataA = xAxisDataType === GenericDataType.Temporal ? chronologicalRows(rebasedDataA, xAxisLabel) : orderRowsByDimension(rebasedDataA, xAxisLabel, personalCategoryValues);
+    rebasedDataB = xAxisDataType === GenericDataType.Temporal ? chronologicalRows(rebasedDataB, xAxisLabel) : orderRowsByDimension(rebasedDataB, xAxisLabel, personalCategoryValues);
+  }
   const hasTimeCompare = allTimeCompare.length > 0;
   const displayNameForSeries = (entryName: string, primary: boolean) => {
     const grouped = primary ? groupby.length > 0 : groupbyB.length > 0;
@@ -464,6 +473,7 @@ export default function transformProps(
     xAxis: xAxisLabel,
     sortSeriesType,
     sortSeriesAscending,
+    personalSeriesOrder: personalSort ? getPersonalSeriesOrder(queriesData, labelMap ?? {}, groupby) : undefined,
     stack,
     totalStackedValues,
     xAxisType,
@@ -485,6 +495,7 @@ export default function transformProps(
     xAxis: xAxisLabel,
     sortSeriesType: sortSeriesTypeB,
     sortSeriesAscending: sortSeriesAscendingB,
+    personalSeriesOrder: personalSort ? getPersonalSeriesOrder(queriesData, labelMapB ?? {}, groupbyB) : undefined,
     stack: Boolean(stackB),
     totalStackedValues: totalStackedValuesB,
     xAxisType,
@@ -891,6 +902,7 @@ export default function transformProps(
     },
     xAxis: {
       type: xAxisType,
+      ...(personalCategoryValues && { data: personalCategoryValues }),
       name: xAxisTitle,
       nameGap: convertInteger(xAxisTitleMargin),
       nameLocation: 'middle',

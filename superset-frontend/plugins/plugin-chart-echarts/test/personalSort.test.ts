@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/** Regression coverage for the real period-stack and paint-order pipelines. */
+/** Personal ranking must survive renderer defaults without changing series identity. */
 import type { EChartsCoreOption } from 'echarts/core';
 import type { SeriesOption } from 'echarts';
 import { ChartProps, ChartDataResponseResult, DataRecord, GenericDataType } from '@superset-ui/core';
@@ -122,4 +122,16 @@ test('personal pie ranking and its legend follow the same query order', () => {
   });
   const output = pie(input as EchartsPieChartProps).echartOptions;
   expect(output.legend).toEqual(expect.objectContaining({ data: ['B', 'A'] }));
+});
+
+
+test('authoritative current-period metadata wins over row order and unrelated metrics', () => {
+  const input = standard({}, [
+    { category: 'B', sales: 100, profit: 1 },
+    { category: 'A', sales: 20, profit: 10 },
+  ]);
+  input.queriesData[0].personal_sort_order = { columns: ['category'], values: [['A'], ['B']] };
+  const output = timeseries(input).echartOptions;
+  expect(seriesData(output, 'sales')).toEqual([['A', 20], ['B', 100]]);
+  expect(output.xAxis).toEqual(expect.objectContaining({ data: ['A', 'B'] }));
 });
