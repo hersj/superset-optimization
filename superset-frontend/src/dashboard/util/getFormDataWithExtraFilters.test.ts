@@ -20,6 +20,7 @@ import getFormDataWithExtraFilters, {
   CachedFormDataWithExtraControls,
   GetFormDataWithExtraFiltersArguments,
 } from 'src/dashboard/util/charts/getFormDataWithExtraFilters';
+import buildPivotQuery from '../../../plugins/plugin-chart-pivot-table/src/plugin/buildQuery';
 import { sliceId as chartId } from 'spec/fixtures/mockChartQueries';
 
 // eslint-disable-next-line no-restricted-globals -- TODO: Migrate from describe blocks
@@ -390,4 +391,76 @@ describe('getFormDataWithExtraFilters', () => {
     expect((result as any).time_grain_sqla).toEqual('PT1H');
     expect(result.extra_form_data).toBeDefined();
   });
+});
+
+test('late temporal metadata rebuilds the cached month form into a BASE_AXIS query', () => {
+  const id = 7550901;
+  const dateId = 'NATIVE_DATE_HYDRATION';
+  const form = {
+    datasource: '98__table',
+    viz_type: 'pivot_table_v2',
+    groupbyRows: ['earliest_ship_date', 'department_label'],
+    groupbyColumns: [],
+    metrics: [
+      { expressionType: 'SQL', sqlExpression: 'SUM(profit)', label: 'profit' },
+    ],
+    time_grain_sqla: 'P1D',
+    row_limit: 2000,
+    temporal_columns_lookup: {},
+  };
+  const args = {
+    chartConfiguration: {},
+    chart: { id, form_data: form },
+    sliceId: id,
+    filters: {},
+    nativeFilters: {
+      [dateId]: {
+        id: dateId,
+        filterType: 'filter_custom_time',
+        chartsInScope: [id],
+      },
+    },
+    allSliceIds: [id],
+    dataMask: {
+      [dateId]: {
+        id: dateId,
+        filterState: { grain: 'month', value: 'this_month' },
+        extraFormData: {
+          time_grain_sqla: 'P1M',
+          filters: [
+            {
+              col: 'earliest_ship_date',
+              op: 'TEMPORAL_RANGE',
+              val: '2026-10-01 : 2026-11-01',
+            },
+          ],
+        },
+      },
+    },
+    extraControls: {},
+  } as unknown as GetFormDataWithExtraFiltersArguments;
+  const cold = getFormDataWithExtraFilters(args);
+  expect(cold.extra_form_data?.time_grain_sqla).toBe('P1M');
+  expect(buildPivotQuery(cold as any).queries[0].columns?.[0]).toBe(
+    'earliest_ship_date',
+  );
+  const warm = getFormDataWithExtraFilters({
+    ...args,
+    chart: {
+      id,
+      form_data: {
+        ...form,
+        temporal_columns_lookup: { earliest_ship_date: true },
+      },
+    },
+  } as GetFormDataWithExtraFiltersArguments);
+  expect(warm.temporal_columns_lookup).toEqual({ earliest_ship_date: true });
+  expect(warm.extra_form_data?.time_grain_sqla).toBe('P1M');
+  expect(buildPivotQuery(warm as any).queries[0].columns?.[0]).toEqual(
+    expect.objectContaining({
+      label: 'earliest_ship_date',
+      columnType: 'BASE_AXIS',
+      timeGrain: 'P1M',
+    }),
+  );
 });

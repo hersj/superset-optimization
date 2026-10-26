@@ -36,6 +36,7 @@ import {
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
 import { setPivotTemplateLibrary } from '../../../actions/personalChartLayout';
+import { setDatasource } from '../../../actions/datasources';
 import { setChartRowLimit } from '../../../actions/chartRowLimits';
 import { setDashboardChartControls } from '../../../actions/dashboardState';
 import { DEFAULT_DASHBOARD_CHART_CONTROLS } from '../../../util/charts/getDashboardChartControls';
@@ -1013,4 +1014,140 @@ test('successful chart rendering keeps viewport restoration and scroll persisten
       ?.currentPage,
   ).toBe(3);
   second.unmount();
+});
+
+function createMonthHydrationState(loaded: boolean) {
+  const dateId = 'NATIVE_DATE_LATE_METADATA';
+  const formData = {
+    ...chartQueries[queryId].form_data,
+    datasource: '98__table',
+    viz_type: VizType.PivotTable,
+    groupbyRows: ['earliest_ship_date', 'department_label'],
+    groupbyColumns: [],
+    metrics: ['profit'],
+    time_grain_sqla: 'P1D',
+    row_limit: 2000,
+  };
+  return {
+    ...defaultState,
+    datasources: loaded
+      ? {
+          '98__table': {
+            uid: '98__table',
+            columns: [{ column_name: 'earliest_ship_date', is_dttm: true }],
+          },
+        }
+      : {},
+    charts: {
+      ...chartQueries,
+      [queryId]: {
+        ...chartQueries[queryId],
+        chartStatus: 'rendered',
+        triggerQuery: false,
+        form_data: formData,
+        latestQueryFormData: {
+          ...formData,
+          extra_form_data: { time_grain_sqla: 'P1M' },
+          temporal_columns_lookup: {},
+          personal_sort: null,
+        },
+      },
+    },
+    sliceEntities: {
+      ...defaultState.sliceEntities,
+      slices: {
+        [queryId]: {
+          ...defaultState.sliceEntities.slices[queryId],
+          viz_type: VizType.PivotTable,
+        },
+      },
+    },
+    dashboardState: {
+      ...defaultState.dashboardState,
+      sliceIds: [queryId],
+      chartSorts: {},
+    },
+    nativeFilters: {
+      filters: {
+        [dateId]: {
+          id: dateId,
+          filterType: 'filter_custom_time',
+          chartsInScope: [queryId],
+        },
+      },
+    },
+    dataMask: {
+      [dateId]: {
+        id: dateId,
+        filterState: { grain: 'month', value: 'this_month' },
+        ownState: { activeGrain: 'month' },
+        extraFormData: {
+          time_grain_sqla: 'P1M',
+          filters: [
+            {
+              col: 'earliest_ship_date',
+              op: 'TEMPORAL_RANGE',
+              val: '2026-10-01 : 2026-11-01',
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
+test('requeries an already rendered month chart when temporal metadata arrives late', async () => {
+  const store = createStore(createMonthHydrationState(false), reducerIndex);
+  const spy = jest.spyOn(store, 'dispatch');
+  render(<Chart {...props} />, { store, useRouter: true });
+  expect(
+    (capturedChartContainerProps.formData as any).temporal_columns_lookup,
+  ).toEqual({});
+  spy.mockClear();
+  await act(async () => {
+    store.dispatch(
+      setDatasource(
+        {
+          uid: '98__table',
+          columns: [{ column_name: 'earliest_ship_date', is_dttm: true }],
+        } as any,
+        '98__table',
+      ),
+    );
+  });
+  await waitFor(() =>
+    expect(
+      (capturedChartContainerProps.formData as any).temporal_columns_lookup,
+    ).toEqual({ earliest_ship_date: true }),
+  );
+  expect(
+    (capturedChartContainerProps.formData as any).extra_form_data
+      .time_grain_sqla,
+  ).toBe('P1M');
+  await waitFor(() =>
+    expect(spy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    }),
+  );
+});
+
+test('corrects a rendered query made before temporal metadata without changing its sort', async () => {
+  const store = createStore(createMonthHydrationState(true), reducerIndex);
+  const spy = jest.spyOn(store, 'dispatch');
+  render(<Chart {...props} />, { store, useRouter: true });
+  expect(
+    (capturedChartContainerProps.formData as any).temporal_columns_lookup,
+  ).toEqual({ earliest_ship_date: true });
+  expect(
+    (capturedChartContainerProps.formData as any).personal_sort,
+  ).toBeNull();
+  await waitFor(() =>
+    expect(spy).toHaveBeenCalledWith({
+      type: 'TRIGGER_QUERY',
+      value: true,
+      key: queryId,
+    }),
+  );
 });
