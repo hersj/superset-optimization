@@ -78,6 +78,18 @@ def _native_cohort_value(value: Any, sqltype: Any) -> Any:
     return value
 
 
+def _cohort_column_type(sqltype: Any, values: list[Any]) -> Any:
+    if not isinstance(sqltype, sa.types.NullType):
+        return sqltype
+    for value in values:
+        value = _native_cohort_value(value, sqltype)
+        if isinstance(value, datetime):
+            return sa.DateTime(timezone=value.utcoffset() is not None)
+        if isinstance(value, date):
+            return sa.Date()
+    return sqltype
+
+
 def apply_sort_predicate(
     query: Any, sort: dict[str, Any], expressions: dict[str, Any]
 ) -> Any:
@@ -90,18 +102,22 @@ def apply_sort_predicate(
         raise QueryObjectValidationError(
             "Personal sort grouping is missing from the query"
         ) from ex
+    sqltypes = [
+        _cohort_column_type(col.type, [row[index] for row in sort["cohort_values"]])
+        for index, col in enumerate(cols)
+    ]
     values = [
         [
-            _native_cohort_value(value, col.type)
-            for col, value in zip(cols, row, strict=True)
+            _native_cohort_value(value, sqltype)
+            for sqltype, value in zip(sqltypes, row, strict=True)
         ]
         for row in sort["cohort_values"]
     ]
     cols = [
-        sa.type_coerce(col, _CohortTemporalType(col.type))
-        if isinstance(col.type, (sa.Date, sa.DateTime))
+        sa.type_coerce(col, _CohortTemporalType(sqltype))
+        if isinstance(sqltype, (sa.Date, sa.DateTime))
         else col
-        for col in cols
+        for col, sqltype in zip(cols, sqltypes, strict=True)
     ]
     ordinary = [tuple(row) for row in values if all(value is not None for value in row)]
     nullable = [row for row in values if any(value is None for value in row)]
