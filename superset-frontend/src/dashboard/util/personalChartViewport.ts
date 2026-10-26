@@ -39,29 +39,14 @@ const isMarker = (value: string | null): value is string =>
 
 /** Local browsing state is scoped to the exact applied sort, never filter state. */
 export function readPersonalChartViewport(
-  user: ScopeId,
-  dashboard: ScopeId,
-  chart: ScopeId,
-  signature: string,
+  user: ScopeId, dashboard: ScopeId, chart: ScopeId, signature: string,
 ): PersonalChartViewport | undefined {
   try {
-    const saved: unknown = JSON.parse(
-      localStorage.getItem(storageKey(user, dashboard, chart)) ?? 'null',
-    );
-    if (
-      !isObject(saved) ||
-      saved.signature !== signature ||
-      !isObject(saved.positions)
-    )
-      return undefined;
+    const saved: unknown = JSON.parse(localStorage.getItem(storageKey(user, dashboard, chart)) ?? 'null');
+    if (!isObject(saved) || saved.signature !== signature || !isObject(saved.positions)) return undefined;
     const positions: Record<string, Position> = {};
     Object.entries(saved.positions).forEach(([marker, position]) => {
-      if (
-        isMarker(marker) &&
-        isObject(position) &&
-        isOffset(position.top) &&
-        isOffset(position.left)
-      ) {
+      if (isMarker(marker) && isObject(position) && isOffset(position.top) && isOffset(position.left)) {
         positions[marker] = { top: position.top, left: position.left };
       }
     });
@@ -76,43 +61,37 @@ export function readPersonalChartViewport(
 }
 
 export function updatePersonalChartViewport(
-  user: ScopeId,
-  dashboard: ScopeId,
-  chart: ScopeId,
-  signature: string,
+  user: ScopeId, dashboard: ScopeId, chart: ScopeId, signature: string,
   patch: Partial<PersonalChartViewport>,
 ): void {
   // Read at write time: page events and scroll events must not overwrite each
   // other's independently updated fields with a stale React render snapshot.
   const current = readPersonalChartViewport(user, dashboard, chart, signature);
   try {
-    localStorage.setItem(
-      storageKey(user, dashboard, chart),
-      JSON.stringify({
-        ...current,
-        ...patch,
-        signature,
-        positions: { ...current?.positions, ...patch.positions },
-      }),
-    );
+    localStorage.setItem(storageKey(user, dashboard, chart), JSON.stringify({
+      ...current,
+      ...patch,
+      signature,
+      positions: { ...current?.positions, ...patch.positions },
+    }));
   } catch {
     // Storage denial or quota must not prevent chart interactions.
   }
 }
 
 export function usePersonalChartViewport(
-  ref: RefObject<HTMLElement>,
-  user: ScopeId,
-  dashboard: ScopeId,
-  chart: ScopeId,
-  signature: string,
-  ready: boolean,
+  ref: RefObject<HTMLElement>, user: ScopeId, dashboard: ScopeId, chart: ScopeId,
+  signature: string, ready: boolean,
 ): void {
   const previous = useRef<{ key: string; signature: string }>();
+  const restoredNodes = useRef<{
+    key: string;
+    signature: string;
+    nodes: WeakSet<HTMLElement>;
+  }>();
   useEffect(() => {
     const key = storageKey(user, dashboard, chart);
-    const changed =
-      previous.current?.key === key && previous.current.signature !== signature;
+    const changed = previous.current?.key === key && previous.current.signature !== signature;
     // Before the first successful result, sort may still be hydrating. That
     // initial null -> saved sort transition is not a user's reset action.
     if (ready || previous.current?.key === key) {
@@ -121,51 +100,41 @@ export function usePersonalChartViewport(
       previous.current = undefined;
     }
     if (changed) {
-      const current = readPersonalChartViewport(
-        user,
-        dashboard,
-        chart,
-        signature,
-      );
+      const current = readPersonalChartViewport(user, dashboard, chart, signature);
       try {
-        localStorage.setItem(
-          key,
-          JSON.stringify({ ...current, signature, positions: {} }),
-        );
+        localStorage.setItem(key, JSON.stringify({ ...current, signature, positions: {} }));
       } catch {
         // See updatePersonalChartViewport: persistence is best effort.
       }
     }
     const root = ref.current;
-    if (!root || !ready) return undefined;
-    const restored = new WeakSet<HTMLElement>();
+    const initialized = restoredNodes.current?.key === key &&
+      restoredNodes.current.signature === signature;
+    if (!root || (!ready && !initialized)) return undefined;
+    if (!initialized) {
+      restoredNodes.current = { key, signature, nodes: new WeakSet<HTMLElement>() };
+    }
+    const restored = restoredNodes.current!.nodes;
     const pending: Record<string, Position> = {};
     let restoreFrame = 0;
     let saveFrame = 0;
     const restore = () => {
       restoreFrame = 0;
-      const saved = readPersonalChartViewport(
-        user,
-        dashboard,
-        chart,
-        signature,
-      );
-      root
-        .querySelectorAll<HTMLElement>('[data-personal-sort-scroll]')
-        .forEach(node => {
-          const marker = node.getAttribute('data-personal-sort-scroll');
-          if (!isMarker(marker) || restored.has(node)) return;
-          const target = saved?.positions[marker] ?? { top: 0, left: 0 };
-          node.scrollTop = target.top;
-          node.scrollLeft = target.left;
-          // A still-empty measuring container can clamp to zero. Wait for a DOM
-          // mutation instead of persisting that transient zero over saved state.
-          if (node.scrollTop === target.top && node.scrollLeft === target.left)
-            restored.add(node);
-        });
+      if (!ready) return;
+      const saved = readPersonalChartViewport(user, dashboard, chart, signature);
+      root.querySelectorAll<HTMLElement>('[data-personal-sort-scroll]').forEach(node => {
+        const marker = node.getAttribute('data-personal-sort-scroll');
+        if (!isMarker(marker) || restored.has(node)) return;
+        const target = saved?.positions[marker] ?? { top: 0, left: 0 };
+        node.scrollTop = target.top;
+        node.scrollLeft = target.left;
+        // A still-empty measuring container can clamp to zero. Wait for a DOM
+        // mutation instead of persisting that transient zero over saved state.
+        if (node.scrollTop === target.top && node.scrollLeft === target.left) restored.add(node);
+      });
     };
     const scheduleRestore = () => {
-      if (!restoreFrame) restoreFrame = requestAnimationFrame(restore);
+      if (ready && !restoreFrame) restoreFrame = requestAnimationFrame(restore);
     };
     const onScroll = (event: Event) => {
       const node = event.target;
@@ -173,14 +142,11 @@ export function usePersonalChartViewport(
       const marker = node.getAttribute('data-personal-sort-scroll');
       if (!isMarker(marker)) return;
       pending[marker] = { top: node.scrollTop, left: node.scrollLeft };
-      if (!saveFrame)
-        saveFrame = requestAnimationFrame(() => {
-          saveFrame = 0;
-          updatePersonalChartViewport(user, dashboard, chart, signature, {
-            positions: { ...pending },
-          });
-          Object.keys(pending).forEach(name => delete pending[name]);
-        });
+      if (!saveFrame) saveFrame = requestAnimationFrame(() => {
+        saveFrame = 0;
+        updatePersonalChartViewport(user, dashboard, chart, signature, { positions: { ...pending } });
+        Object.keys(pending).forEach(name => delete pending[name]);
+      });
     };
     const observer = new MutationObserver(scheduleRestore);
     observer.observe(root, { childList: true, subtree: true });
@@ -192,9 +158,7 @@ export function usePersonalChartViewport(
       cancelAnimationFrame(restoreFrame);
       cancelAnimationFrame(saveFrame);
       if (Object.keys(pending).length) {
-        updatePersonalChartViewport(user, dashboard, chart, signature, {
-          positions: pending,
-        });
+        updatePersonalChartViewport(user, dashboard, chart, signature, { positions: pending });
       }
     };
   }, [ref, user, dashboard, chart, signature, ready]);
