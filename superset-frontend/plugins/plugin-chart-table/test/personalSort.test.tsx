@@ -73,6 +73,10 @@ test.each([false, true])(
         }),
       }),
     );
+    setDataMask.mockClear();
+    fireEvent.keyDown(header, { key: 'Enter' });
+    expect(setDataMask).toHaveBeenCalledTimes(1);
+    expect(setDataMask.mock.calls[0][0].ownState.personalSort.field).toBe('sum__num');
   },
 );
 
