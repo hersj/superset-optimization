@@ -77,3 +77,12 @@ test('viewport restores refreshed DOM only after success and saves real browsing
   expect(getByTestId('body').scrollTop).toBe(0);
   expect(readPersonalChartViewport('u', 'd', 'c', 'changed')?.currentPage).toBeUndefined();
 });
+
+
+test('initial sort hydration preserves the saved viewport', async () => {
+  updatePersonalChartViewport('u', 'd', 'c', 'saved-sort', { positions: { table: { top: 75, left: 10 } } });
+  const { getByTestId, rerender } = render(<Viewport ready={false} signature="null" />);
+  rerender(<Viewport signature="saved-sort" />);
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(getByTestId('body').scrollTop).toBe(75);
+});

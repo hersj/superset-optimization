@@ -87,7 +87,13 @@ export function usePersonalChartViewport(
   useEffect(() => {
     const key = storageKey(user, dashboard, chart);
     const changed = previous.current?.key === key && previous.current.signature !== signature;
-    previous.current = { key, signature };
+    // Before the first successful result, sort may still be hydrating. That
+    // initial null -> saved sort transition is not a user's reset action.
+    if (ready || previous.current?.key === key) {
+      previous.current = { key, signature };
+    } else {
+      previous.current = undefined;
+    }
     if (changed) {
       const current = readPersonalChartViewport(user, dashboard, chart, signature);
       try {
