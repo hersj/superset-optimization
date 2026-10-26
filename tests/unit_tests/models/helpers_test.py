@@ -2036,7 +2036,10 @@ def test_extras_having_is_parenthesized(
         )
 
 
-def test_personal_pivot_sort_executes_original_ratio_and_keeps_other_columns(database):
+@pytest.mark.parametrize("form_limit", [1, "1"])
+def test_personal_pivot_sort_executes_original_ratio_and_keeps_other_columns(
+    database, form_limit
+):
     from types import SimpleNamespace
 
     from flask import current_app
@@ -2085,7 +2088,7 @@ def test_personal_pivot_sort_executes_original_ratio_and_keeps_other_columns(dat
         "metrics": [ratio],
         "groupbyRows": ["sku"],
         "groupbyColumns": ["country"],
-        "row_limit": 1,
+        "row_limit": form_limit,
         "personal_sort": {
             "mode": "metric",
             "field": "margin-id",

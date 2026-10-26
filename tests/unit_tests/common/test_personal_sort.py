@@ -144,13 +144,16 @@ def test_cohort_tuple_predicate_does_not_leak_cross_product_or_null():
         assert list(conn.execute(empty)) == []
 
 
-def test_pivot_column_context_only_filters_candidate_and_shared_period_keys():
+@pytest.mark.parametrize("form_limit, expected_limit", [(2, 2), ("2000", 100)])
+def test_pivot_column_context_only_filters_candidate_and_shared_period_keys(
+    form_limit, expected_limit
+):
     form = {
         "viz_type": "pivot_table_v2",
         "groupbyRows": ["department", "sku"],
         "groupbyColumns": ["country"],
         "metrics": ["sales"],
-        "row_limit": 2,
+        "row_limit": form_limit,
         "personal_sort": spec(columnValues=["US"]),
     }
     current = QueryObject(
@@ -186,6 +189,7 @@ def test_pivot_column_context_only_filters_candidate_and_shared_period_keys():
         order = prepare_personal_sort(processor, current, True)
         assert prepare_personal_sort(processor, history, True) == order
     assert len(calls) == 1
+    assert calls[0].row_limit == expected_limit
     assert calls[0].columns == ["department", "sku"]
     assert calls[0].filter[-1] == {"col": "country", "op": "==", "val": "US"}
     assert len(current.filter) == 1
@@ -363,3 +367,37 @@ def test_mixed_only_offers_shared_original_categories():
         "B:sales",
         "pf",
     ]
+
+
+@pytest.mark.parametrize(
+    "invalid_limit", [True, False, "bad", "", "0", "-1", "1.5", 0, -1, 1.5]
+)
+def test_pivot_candidate_rejects_invalid_limits_before_query(invalid_limit):
+    form = {
+        "viz_type": "pivot_table_v2",
+        "groupbyRows": ["sku"],
+        "groupbyColumns": ["country"],
+        "metrics": ["sales"],
+        "row_limit": invalid_limit,
+        "personal_sort": spec(),
+    }
+    query = QueryObject(columns=["sku", "country"], metrics=["sales"], row_limit=2)
+    calls = []
+
+    def execute(candidate, force_cached):
+        calls.append(candidate)
+        return {"df": pd.DataFrame([{"sku": "a", "sales": 1}])}
+
+    processor = SimpleNamespace(
+        _query_context=SimpleNamespace(form_data=form, queries=[query]),
+        _personal_sort_candidates={},
+        get_df_payload=execute,
+    )
+    app = Flask(__name__)
+    app.config["SQL_MAX_ROW"] = 100
+    with (
+        app.app_context(),
+        pytest.raises(QueryObjectValidationError, match="positive integer"),
+    ):
+        prepare_personal_sort(processor, query, False)
+    assert calls == []
