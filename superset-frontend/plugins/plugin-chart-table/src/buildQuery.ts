@@ -327,7 +327,11 @@ const buildQuery: BuildQuery<TableChartFormData> = (
 
     // getting sort by in case of server pagination from own state
     let sortByFromOwnState: QueryFormOrderBy[] | undefined;
-    if (Array.isArray(ownState?.sortBy) && ownState?.sortBy.length > 0) {
+    if (
+      !Object.prototype.hasOwnProperty.call(formData, 'personal_sort') &&
+      Array.isArray(ownState?.sortBy) &&
+      ownState.sortBy.length > 0
+    ) {
       const sortByItem = ownState?.sortBy[0];
       sortByFromOwnState = [[sortByItem?.key, !sortByItem?.desc]];
     }
