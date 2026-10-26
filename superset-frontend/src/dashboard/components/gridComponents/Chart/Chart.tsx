@@ -29,11 +29,16 @@ import type {
   QueryFormMetric,
   PersonalChartSort,
   QueryFormData,
+  QueryFormColumn,
   DataRecord,
 } from '@superset-ui/core';
 import { styled } from '@apache-superset/core/theme';
 import { t } from '@apache-superset/core/translation';
-import { normalizePersonalSort } from '@superset-ui/core';
+import {
+  ensureIsArray,
+  getColumnLabel,
+  normalizePersonalSort,
+} from '@superset-ui/core';
 import {
   setChartSort,
   writePendingChartSort,
@@ -168,7 +173,7 @@ const EMPTY_OBJECT: Record<string, never> = {};
 
 /**
  * 功能审计（可重写规格）：判断看板开关是否已经反映到最近一次图表查询
- * - 功能目的与触发方式：比较当前派生 formData 与图表最近一次查询使用的三个显示相关字段，补足首次 hydrate 或图表配置晚到时遗漏的重新查询。
+ * - 功能目的与触发方式：比较当前派生 formData 与图表最近查询的显示、粒度及日期列识别字段，补足首次 hydrate 或图表配置晚到时遗漏的重新查询。
  * - 输入契约：formData 与 latestQueryFormData 可为空；time_compare 可为字符串、字符串数组、空数组或未定义；show_value/show_valueB 可为布尔值或未定义。
  * - 输出契约：返回稳定字符串；相同的有效时间对比和数字显示设置必须得到相同结果。
  * - 处理流程：优先读取 extra_form_data.time_compare，再读取顶层 time_compare；把单值归一为数组，并与两个数字显示字段组合。
@@ -190,8 +195,30 @@ const getDashboardChartControlQuerySignature = (
       ? []
       : [timeCompare];
 
+  const temporalLookup = formData?.temporal_columns_lookup as
+    | Record<string, boolean>
+    | undefined;
+  const dimensions = new Set(
+    [
+      formData?.x_axis,
+      formData?.granularity_sqla,
+      ...ensureIsArray(formData?.groupby),
+      ...ensureIsArray(formData?.groupbyRows),
+      ...ensureIsArray(formData?.groupbyColumns),
+    ]
+      .filter(Boolean)
+      .map(column => getColumnLabel(column as QueryFormColumn)),
+  );
+  // Date-column discovery changes BASE_AXIS SQL even when NativeDate's grain
+  // and value are already restored. Re-query once when relevant metadata arrives.
+  const temporalDimensions = Object.keys(temporalLookup ?? {})
+    .filter(column => temporalLookup?.[column] && dimensions.has(column))
+    .sort();
+
   return JSON.stringify({
     timeCompare: normalizedTimeCompare,
+    timeGrain: extraFormData?.time_grain_sqla || formData?.time_grain_sqla,
+    temporalDimensions,
     showValue: formData?.show_value,
     showValueB: formData?.show_valueB,
   });
@@ -810,6 +837,8 @@ const Chart = (props: ChartProps) => {
       'show_valueB',
       'row_limit',
       'personal_sort',
+      'time_grain_sqla',
+      'temporal_columns_lookup',
     ].some(field =>
       Object.prototype.hasOwnProperty.call(latestQueryFormData || {}, field),
     ) ||

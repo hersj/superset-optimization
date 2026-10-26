@@ -450,6 +450,11 @@ export default function getFormDataWithExtraFilters({
     { ignoreUndefined: true },
   );
   if (
+    areObjectsEqual(
+      cachedFormData?.temporal_columns_lookup,
+      chart.form_data?.temporal_columns_lookup,
+      { ignoreUndefined: true },
+    ) &&
     areObjectsEqual(cachedFormData?.personal_sort, personalSort ?? null) &&
     cachedFormData?.personalRowLimit === rowLimit &&
     cachedFiltersByChart[sliceId] === filters &&
