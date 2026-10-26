@@ -1038,6 +1038,15 @@ export class TableRenderer extends Component<
         const onArrowClick = needToggle ? this.toggleColKey(flatColKey) : null;
         const getSortIcon = (key: number) => {
           const { activeSortColumn, sortingOrder } = this.state;
+          if (this.props.onPersonalSortChange) {
+            const spec = this.props.personalSort;
+            const metricAxis = this.props.freezeMetricAxis || t('Metric');
+            const label = colKey[colAttrs.indexOf(metricAxis)];
+            const context = colKey.filter((_, index) => colAttrs[index] !== metricAxis && colAttrs[index] !== PERIOD_KEY);
+            const active = spec?.mode === 'metric' && spec.field === (this.props.freezeMetricIds?.[label] || label) && JSON.stringify(spec.columnValues || []) === JSON.stringify(context);
+            const Icon = active ? (spec.direction === 'asc' ? FaSortAsc : FaSortDesc) : FaSort;
+            return <Icon onClick={() => this.sortData(key, visibleColKeys, pivotData, maxRowIndex)} />;
+          }
 
           if (activeSortColumn !== key) {
             return (
@@ -1216,12 +1225,16 @@ export class TableRenderer extends Component<
             subArrow = i + 1 < maxRowVisible! ? arrowExpanded : arrowCollapsed;
           }
           // 仅开放第一层行维度排序，避免对子维度单独排序后破坏父子分组关系。
-          const isSortableTopLevelDimension = i === 0;
+          const isSortableTopLevelDimension = this.props.onPersonalSortChange
+            ? r !== this.props.freezeMetricAxis && r !== PERIOD_KEY
+            : i === 0;
           const rowDimensionLabel = String(namesMapping[r] || r);
-          const isActiveRowSort = this.state.activeSortRowDimension === i;
+          const personalRowSort = this.props.onPersonalSortChange && this.props.personalSort?.mode !== 'metric' && this.props.personalSort?.field === r;
+          const isActiveRowSort = this.props.onPersonalSortChange ? personalRowSort : this.state.activeSortRowDimension === i;
+          const rowDirection = this.props.onPersonalSortChange ? this.props.personalSort?.direction : this.state.rowSortingOrder[i];
           const RowSortIcon = !isActiveRowSort
             ? FaSort
-            : this.state.rowSortingOrder[i] === 'asc'
+            : rowDirection === 'asc'
               ? FaSortAsc
               : FaSortDesc;
           return (
@@ -1250,7 +1263,7 @@ export class TableRenderer extends Component<
                   aria-label={
                     isActiveRowSort
                       ? `Sorted by ${rowDimensionLabel} ${
-                          this.state.rowSortingOrder[i] === 'asc'
+                          rowDirection === 'asc'
                             ? 'ascending'
                             : 'descending'
                         }`

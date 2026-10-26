@@ -178,3 +178,35 @@ test('pivot header emits stable metric identity and raw column context', async (
     }),
   );
 });
+
+test('pivot replays the complete server candidate order rather than recomputing visible rates', () => {
+  const { container } = render(
+    <PivotTableChart
+      {...props}
+      personalSortOrder={{ columns: ['shop'], values: [['A'], ['B']] }}
+    />,
+  );
+  expect(rowLabels(container)).toEqual(['A', 'B']);
+});
+
+test('pivot custom sort preserves child groups and does not emit on refresh', () => {
+  const setDataMask = jest.fn();
+  const configured = {
+    ...props,
+    groupbyRows: ['shop', 'sku'],
+    personalSortEnabled: true,
+    setDataMask,
+    personalSort: { mode: 'custom', field: 'sku', direction: 'asc', customOrder: ['Z', 'X'] } as PersonalChartSort,
+    data: [
+      { shop: 'A', sku: 'X', sales: 10 },
+      { shop: 'B', sku: 'X', sales: 20 },
+      { shop: 'A', sku: 'Z', sales: 30 },
+      { shop: 'B', sku: 'Z', sales: 40 },
+    ],
+  };
+  const { container, rerender } = render(<PivotTableChart {...configured} />);
+  expect(rowLabels(container)).toEqual(['A', 'Z', 'X', 'B', 'Z', 'X']);
+  rerender(<PivotTableChart {...configured} data={[...configured.data]} />);
+  expect(rowLabels(container)).toEqual(['A', 'Z', 'X', 'B', 'Z', 'X']);
+  expect(setDataMask).not.toHaveBeenCalled();
+});
