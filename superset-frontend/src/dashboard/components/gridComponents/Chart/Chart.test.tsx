@@ -27,6 +27,8 @@ import {
 } from 'spec/helpers/testing-library';
 import { FeatureFlag, SupersetClient, VizType } from '@superset-ui/core';
 import * as redux from 'redux';
+import { chartRenderingSucceeded } from 'src/components/Chart/chartAction';
+import { readPersonalChartViewport, updatePersonalChartViewport } from '../../../util/personalChartViewport';
 
 import * as exploreUtils from 'src/explore/exploreUtils';
 import * as chartStateConverter from '../../../util/chartStateConverter';
@@ -51,7 +53,7 @@ let capturedChartContainerProps: Record<string, unknown> = {};
 jest.mock('src/components/Chart/ChartContainer', () => {
   const MockChartContainer = (props: Record<string, unknown>) => {
     capturedChartContainerProps = props;
-    return <div data-test="chart-container" />;
+    return <div data-test="chart-container" data-personal-sort-scroll="table" />;
   };
   return { __esModule: true, default: MockChartContainer };
 });
@@ -942,4 +944,42 @@ test('table sort events reset the page once and cannot replay stale selection af
   ).toBeUndefined();
   await waitFor(() => expect(save).toHaveBeenCalled());
   save.mockRestore();
+});
+
+
+test('successful chart rendering keeps viewport restoration and scroll persistence active through rendered status', async () => {
+  const userId = 314159;
+  const signature = JSON.stringify({ mode: 'metric', field: 'sales', direction: 'asc' });
+  updatePersonalChartViewport(userId, props.dashboardId, queryId, signature, {
+    positions: { table: { top: 195, left: 25 } }, currentPage: 3, pageSize: 200,
+  });
+  const store = createStore({
+    ...defaultState,
+    user: { userId },
+    dashboardState: { ...defaultState.dashboardState, chartSorts: { [queryId]: JSON.parse(signature) } },
+    charts: {
+      ...chartQueries,
+      [queryId]: { ...chartQueries[queryId], chartStatus: 'success' },
+    },
+    dataMask: { [queryId]: { ownState: { currentPage: 3, pageSize: 200 } } },
+  }, reducerIndex);
+  const first = render(<Chart {...props} />, { store, useRouter: true });
+  // Rendering finishes synchronously before the pending restore animation frame.
+  act(() => { store.dispatch(chartRenderingSucceeded(queryId)); });
+  expect(store.getState().charts[queryId].chartStatus).toBe('rendered');
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(first.getByTestId('chart-container').scrollTop).toBe(195);
+  expect(first.getByTestId('chart-container').scrollLeft).toBe(25);
+  first.getByTestId('chart-container').scrollTop = 230;
+  fireEvent.scroll(first.getByTestId('chart-container'));
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(readPersonalChartViewport(userId, props.dashboardId, queryId, signature)).toEqual({
+    positions: { table: { top: 230, left: 25 } }, currentPage: 3, pageSize: 200,
+  });
+  first.unmount();
+  const second = render(<Chart {...props} />, { store, useRouter: true });
+  await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+  expect(second.getByTestId('chart-container').scrollTop).toBe(230);
+  expect(readPersonalChartViewport(userId, props.dashboardId, queryId, signature)?.currentPage).toBe(3);
+  second.unmount();
 });
