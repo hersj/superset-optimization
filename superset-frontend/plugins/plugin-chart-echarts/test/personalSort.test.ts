@@ -19,8 +19,7 @@
 /** Regression coverage for the real period-stack and paint-order pipelines. */
 import type { EChartsCoreOption } from 'echarts/core';
 import type { SeriesOption } from 'echarts';
-import { ChartProps, ChartDataResponseResult, DataRecord } from '@superset-ui/core';
-import { GenericDataType } from '@superset-ui/core/common';
+import { ChartProps, ChartDataResponseResult, DataRecord, GenericDataType } from '@superset-ui/core';
 import { supersetTheme } from '@apache-superset/core/theme';
 import timeseries from '../src/Timeseries/transformProps';
 import mixed from '../src/MixedTimeseries/transformProps';
@@ -57,7 +56,7 @@ function standard(form: Record<string, unknown> = {}, data: DataRecord[] = [
     defaultFormData: DEFAULT_FORM_DATA, defaultVizType: 'echarts_timeseries_bar',
     formData: { x_axis: 'category', metrics: ['sales', 'profit'], seriesType: 'bar',
       orientation: 'vertical', stack: false, personal_sort: personalSort,
-      x_axis_sort: 'sum', x_axis_sort_asc: false, time_compare: ['1 day ago'], ...form },
+      xAxisSort: 'sum', xAxisSortAsc: false, time_compare: ['1 day ago'], ...form },
     queriesData: [query(data, temporal)],
   });
 }
@@ -91,7 +90,7 @@ test('personal sort never makes a temporal line travel backwards in time', () =>
 test('Mixed query B owns one shared categorical order for both queries and histories', () => {
   const input = createEchartsTimeseriesTestChartProps<EchartsMixedTimeseriesFormData, EchartsMixedTimeseriesProps>({
     defaultFormData: MIXED_DEFAULTS, defaultVizType: 'mixed_timeseries',
-    formData: { x_axis: 'category', metrics: ['sales'], metricsB: ['profit'],
+    formData: { x_axis: 'category', metrics: ['sales'], metricsB: ['profit'], metrics_b: ['profit'],
       seriesType: 'bar', seriesTypeB: 'line', groupby: [], groupbyB: [],
       personal_sort: { ...personalSort, field: 'B:profit' } },
     queriesData: [query([{ category: 'A', sales: 100 }, { category: 'B', sales: 20 }]),
@@ -106,7 +105,7 @@ test('Mixed query B owns one shared categorical order for both queries and histo
 test('personal funnel sorting disables renderer and legend reordering', () => {
   const input = new ChartProps({ width: 600, height: 300, theme: supersetTheme,
     formData: { datasource: '3__table', groupby: ['category'], metric: 'sales',
-      sort: 'descending', legend_sort: 'asc',
+      sort: 'descending', legendSort: 'asc',
       personal_sort: { mode: 'custom', field: 'category', direction: 'asc', customOrder: ['B', 'A'] } },
     queriesData: [query([{ category: 'B', sales: 10 }, { category: 'A', sales: 100 }])],
   });
@@ -118,7 +117,7 @@ test('personal funnel sorting disables renderer and legend reordering', () => {
 test('personal pie ranking and its legend follow the same query order', () => {
   const input = new ChartProps({ width: 600, height: 300, theme: supersetTheme,
     formData: { datasource: '3__table', groupby: ['category'], metric: 'sales',
-      legend_sort: 'asc', personal_sort: personalSort },
+      legendSort: 'asc', personal_sort: personalSort },
     queriesData: [query([{ category: 'B', sales: 100 }, { category: 'A', sales: 20 }])],
   });
   const output = pie(input as EchartsPieChartProps).echartOptions;
