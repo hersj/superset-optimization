@@ -2280,3 +2280,49 @@ def test_personal_date_cohort_custom_pivot_queries_bind_distinct_period_buckets(
     assert str(comparison.personal_sort["cohort_values"][0][0]).startswith("2026-05-01")
     assert str(current.personal_sort["cohort_values"][0][0]).startswith("2026-11-01")
     assert str(order["values"][0][0]).startswith("2026-11-01")
+@pytest.mark.parametrize("grain", ["P1D", "P1M"])
+def test_personal_date_cohort_real_base_axis_compiles_postgres(database, grain):
+    from datetime import date
+
+    from sqlalchemy.dialects import postgresql
+
+    from superset.connectors.sqla.models import SqlaTable, TableColumn
+
+    table = SqlaTable(
+        database=database,
+        table_name="cohort_axis",
+        columns=[
+            TableColumn(column_name="earliest_ship_date", type="DATE", is_dttm=True),
+            TableColumn(column_name="department", type="TEXT"),
+            TableColumn(column_name="profit", type="FLOAT"),
+        ],
+    )
+    axis = {
+        "label": "earliest_ship_date",
+        "timeGrain": grain,
+        "columnType": "BASE_AXIS",
+        "sqlExpression": "earliest_ship_date",
+        "expressionType": "SQL",
+    }
+    result = table.get_sqla_query(
+        columns=[axis, "department"],
+        metrics=[
+            {"expressionType": "SQL", "sqlExpression": "SUM(profit)", "label": "profit"}
+        ],
+        extras={},
+        is_timeseries=False,
+        personal_sort={
+            "mode": "metric",
+            "field": "profit",
+            "direction": "asc",
+            "cohort_columns": [axis, "department"],
+            "cohort_values": [[date(2026, 10, 7), "A"], [date(2026, 10, 8), "B"]],
+        },
+    )
+    sql = str(
+        result.sqla_query.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "2026-10-07" in sql
+    assert "2026-10-08" in sql

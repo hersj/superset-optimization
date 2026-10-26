@@ -550,3 +550,35 @@ def test_date_string_cohort_keeps_existing_sqlalchemy_coercion():
     with engine.begin() as conn:
         conn.execute(table.insert(), [{"day": date(2026, 10, 1)}])
         assert list(conn.execute(query)) == [(date(2026, 10, 1),)]
+
+
+@pytest.mark.parametrize("column_type", [sa.Date(), sa.types.NullType()])
+@pytest.mark.parametrize("null_first", [False, True])
+def test_temporal_tuple_cohort_compiles_with_untyped_axis_and_null_rows(
+    column_type, null_first
+):
+    from datetime import date
+
+    from sqlalchemy.dialects import postgresql
+
+    table = sa.table("daily", sa.column("day", column_type), sa.column("dept"))
+    rows = [[date(2026, 10, 7), "A"], [None, "B"]]
+    if null_first:
+        rows.reverse()
+    query = apply_sort_predicate(
+        sa.select([table]),
+        {"cohort_columns": ["day", "dept"], "cohort_values": rows},
+        dict(table.c),
+    )
+    sql = str(
+        query.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "2026-10-07" in sql
+    assert "IS NULL" in sql
+    assert rows == (
+        [[None, "B"], [date(2026, 10, 7), "A"]]
+        if null_first
+        else [[date(2026, 10, 7), "A"], [None, "B"]]
+    )
