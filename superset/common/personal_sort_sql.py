@@ -35,6 +35,7 @@ class _CohortTemporalType(sa.types.TypeDecorator):
 
     def __init__(self, sqltype: Any) -> None:
         super().__init__()
+        self.sqltype = sqltype
         self.impl = sqltype
 
     def literal_processor(self, dialect: Any) -> Any:
