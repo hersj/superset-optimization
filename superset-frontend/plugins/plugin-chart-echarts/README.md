@@ -70,3 +70,13 @@ The matrix uses one existing aggregated query, including configured comparisons.
   }]}
 />
 ```
+
+### Optional bar row filtering
+
+For ECharts Timeseries Bar, saved `form_data.hide_zero_rows: true` hides a
+category only when the metric values in the current and all compared periods
+are zero, null, or undefined. Use `form_data.hide_null_rows: true` instead for
+ratios: it hides only rows with no non-null metric value in any period and
+preserves valid 0%. These become `hideZeroRows` and `hideNullRows` in chart props.
+Filtering runs after backend comparison data is merged and does not change SQL
+or query results. With neither flag set, rendering is unchanged.

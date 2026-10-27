@@ -215,6 +215,8 @@ export default function transformProps(
     contributionMode,
     forecastEnabled,
     groupby,
+    hideZeroRows,
+    hideNullRows,
     legendOrientation,
     legendType,
     legendMargin,
@@ -323,7 +325,32 @@ export default function transformProps(
     timeGrainSqla,
     String(chartProps.rawFormData.comparison_type ?? 'values'),
   );
-  const personalCategoryValues =
+  const hideEmptyRows =
+    seriesType === EchartsTimeseriesSeriesType.Bar &&
+    (hideZeroRows || hideNullRows);
+  const inverted = invert(verboseMap);
+  if (hideEmptyRows) {
+    const rowMetricLabels = ensureIsArray(metrics).map(getMetricLabel);
+    const metricKeys = Object.keys(unfilteredData[0] || {}).filter(
+      key =>
+        key !== xAxisLabel &&
+        (rowMetricLabels.includes(
+          getOriginalSeries(inverted[key] || key, array),
+        ) ||
+          array.includes(key)),
+    );
+    unfilteredData = unfilteredData.filter(row =>
+      metricKeys.some(key => {
+        const value = row[key];
+        return (
+          value !== null &&
+          value !== undefined &&
+          (!hideZeroRows || value !== 0)
+        );
+      }),
+    );
+  }
+  let personalCategoryValues =
     personalSort && xAxisDataType !== GenericDataType.Temporal
       ? getPersonalCategoryValues(
           queriesData,
@@ -333,6 +360,14 @@ export default function transformProps(
           getXAxisLabel(chartProps.rawFormData),
         )
       : undefined;
+  if (hideEmptyRows && personalCategoryValues) {
+    const visibleCategories = new Set(
+      unfilteredData.map(row => row[xAxisLabel]),
+    );
+    personalCategoryValues = personalCategoryValues.filter(value =>
+      visibleCategories.has(value),
+    );
+  }
   if (personalSort)
     unfilteredData =
       xAxisDataType === GenericDataType.Temporal
@@ -414,7 +449,6 @@ export default function transformProps(
       ) ?? originalName.split(',')[0].trim()
     );
   };
-  const inverted = invert(verboseMap);
   const stackLegendState =
     !colorByPrimaryAxis && (array.length || groupBy.length)
       ? resolveLegendState(
@@ -1508,7 +1542,7 @@ export default function transformProps(
       array,
     );
     mergedEchartOptions = layout.echartOptions;
-    minCategoryHeight = layout.minCategoryHeight;
+    ({ minCategoryHeight } = layout);
   } else if (!isHorizontal) {
     mergedEchartOptions = applyAutomaticBarSizing(mergedEchartOptions, width);
   }

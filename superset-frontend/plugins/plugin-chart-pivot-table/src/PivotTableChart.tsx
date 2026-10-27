@@ -139,10 +139,15 @@ const createCurrencyAwareFormatter = (
   currencyConfig: Currency | undefined,
   d3Format: string,
   fallbackCurrency?: string,
+  nullValue?: string,
 ): ((value: number, aggregator?: CurrencyTrackingAggregator) => string) => {
   const isAutoMode = currencyConfig?.symbol === 'AUTO';
 
   return (value: number, aggregator?: CurrencyTrackingAggregator): string => {
+    if ((value === null || value === undefined) && nullValue !== undefined) {
+      return nullValue;
+    }
+
     // If not AUTO mode, use base formatter directly
     if (!isAutoMode) {
       return baseFormatter(value);
@@ -291,6 +296,7 @@ export default function PivotTableChart(props: PivotTableProps) {
     timeGrainSqla,
     allowRenderHtml,
     pivotNumberFormatRules,
+    pivotNullValue,
     dimensionLabelOverrides = {},
     frozenColumnCount = 0,
     frozenColumnKey,
@@ -323,8 +329,15 @@ export default function PivotTableChart(props: PivotTableProps) {
         currencyFormat,
         valueFormat,
         detectedCurrency ?? undefined,
+        pivotNullValue,
       ),
-    [baseFormatter, currencyFormat, valueFormat, detectedCurrency],
+    [
+      baseFormatter,
+      currencyFormat,
+      valueFormat,
+      detectedCurrency,
+      pivotNullValue,
+    ],
   );
   const customFormatsArray = useMemo(
     () =>
@@ -385,13 +398,19 @@ export default function PivotTableChart(props: PivotTableProps) {
                     currency as Currency | undefined,
                     d3Format as string,
                     detectedCurrency ?? undefined,
+                    pivotNullValue,
                   ),
                 ];
               }),
             ),
           }
         : undefined,
-    [customFormatsArray, hasCustomMetricFormatters, detectedCurrency],
+    [
+      customFormatsArray,
+      hasCustomMetricFormatters,
+      detectedCurrency,
+      pivotNullValue,
+    ],
   );
 
   const metricNames = useMemo(

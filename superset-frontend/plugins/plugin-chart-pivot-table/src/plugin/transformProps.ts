@@ -287,6 +287,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     currencyFormat,
     allowRenderHtml,
     pivotNumberFormatRules = [],
+    pivotNullValue,
   } = formData;
   const { selectedFilters } = filterState;
   const period = getCustomPeriodComparison(rawFormData);
@@ -538,6 +539,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     timeGrainSqla,
     allowRenderHtml,
     pivotNumberFormatRules,
+    pivotNullValue,
     dimensionLabelOverrides,
   };
 }
