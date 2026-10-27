@@ -58,6 +58,8 @@ export type EchartsTimeseriesFormData = QueryFormData & {
   timeShiftColor?: boolean;
   contributionMode?: ContributionType;
   forecastEnabled: boolean;
+  hideZeroRows?: boolean;
+  hideNullRows?: boolean;
   forecastPeriods: number;
   forecastInterval: number;
   forecastSeasonalityDaily: null;

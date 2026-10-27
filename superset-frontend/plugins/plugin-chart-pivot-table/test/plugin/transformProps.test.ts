@@ -97,6 +97,7 @@ test('should transform chart props for viz', () => {
     onContextMenu: undefined,
     timeGrainSqla: undefined,
     pivotNumberFormatRules: [],
+    pivotNullValue: undefined,
     dimensionLabelOverrides: {},
     columnFormats: {},
     currencyFormats: {},
@@ -105,6 +106,16 @@ test('should transform chart props for viz', () => {
     currencyCodeColumn: undefined,
     detectedCurrency: undefined,
   });
+});
+
+test('should pass the opt-in pivot NULL label from saved form data', () => {
+  const configured = new ChartProps<QueryFormData>({
+    ...chartProps,
+    formData: { ...formData, pivot_null_value: '—' },
+  });
+
+  expect(transformProps(configured).pivotNullValue).toBe('—');
+  expect(transformProps(chartProps).pivotNullValue).toBeUndefined();
 });
 
 test('should pass pivot number format rules through for chart-level formatting', () => {
@@ -573,9 +584,9 @@ test('passes chart-level dimension label overrides to the Pivot Table', () => {
     theme: supersetTheme,
   });
 
-  expect((transformProps(labelChartProps) as any).dimensionLabelOverrides).toEqual(
-    {
-      earliest_ship_date: '发货日期',
-    },
-  );
+  expect(
+    (transformProps(labelChartProps) as any).dimensionLabelOverrides,
+  ).toEqual({
+    earliest_ship_date: '发货日期',
+  });
 });

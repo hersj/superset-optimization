@@ -202,6 +202,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     currencyFormat,
     allowRenderHtml,
     pivotNumberFormatRules = [],
+    pivotNullValue,
   } = formData;
   const { selectedFilters } = filterState;
   const columnConfig =
@@ -224,9 +225,8 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       .dimensionLabelConfig ||
     (rawFormData as { dimension_label_config?: DimensionLabelConfig })
       .dimension_label_config;
-  const dimensionLabelOverrides = getDimensionLabelOverrides(
-    dimensionLabelConfig,
-  );
+  const dimensionLabelOverrides =
+    getDimensionLabelOverrides(dimensionLabelConfig);
   const granularity = extractTimegrain(rawFormData);
 
   const dateFormatters = colnames
@@ -303,6 +303,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     timeGrainSqla,
     allowRenderHtml,
     pivotNumberFormatRules,
+    pivotNullValue,
     dimensionLabelOverrides,
   };
 }

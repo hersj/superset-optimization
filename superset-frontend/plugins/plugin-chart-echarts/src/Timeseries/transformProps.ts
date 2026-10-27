@@ -159,6 +159,8 @@ export default function transformProps(
     contributionMode,
     forecastEnabled,
     groupby,
+    hideZeroRows,
+    hideNullRows,
     legendOrientation,
     legendType,
     legendMargin,
@@ -213,12 +215,13 @@ export default function transformProps(
     stackDimension,
   }: EchartsTimeseriesFormData = { ...DEFAULT_FORM_DATA, ...formData };
 
-  const timeGrainSqla = (formData as any).extra_form_data?.time_grain_sqla
-    || (chartProps as any).ownState?.time_grain_sqla
-    || (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla
-    || (chartProps as any).rawFormData?.time_grain_sqla
-    || (formData as any).time_grain_sqla
-    || _timeGrainSqla;
+  const timeGrainSqla =
+    (formData as any).extra_form_data?.time_grain_sqla ||
+    (chartProps as any).ownState?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.extra_form_data?.time_grain_sqla ||
+    (chartProps as any).rawFormData?.time_grain_sqla ||
+    (formData as any).time_grain_sqla ||
+    _timeGrainSqla;
 
   const refs: Refs = {};
   const groupBy = ensureIsArray(groupby);
@@ -235,13 +238,39 @@ export default function transformProps(
     return { ...acc, [entry[0]]: entry[1] };
   }, {});
   const colorScale = CategoricalColorNamespace.getScale(colorScheme as string);
-  const rebasedData = rebaseForecastDatum(data, verboseMap);
+  let rebasedData = rebaseForecastDatum(data, verboseMap);
+  const array = ensureIsArray(chartProps.rawFormData?.time_compare);
+  const inverted = invert(verboseMap);
   let xAxisLabel = getXAxisLabel(chartProps.rawFormData) as string;
   if (
     isPhysicalColumn(chartProps.rawFormData?.x_axis) &&
     isDefined(verboseMap[xAxisLabel])
   ) {
     xAxisLabel = verboseMap[xAxisLabel];
+  }
+  if (
+    seriesType === EchartsTimeseriesSeriesType.Bar &&
+    (hideZeroRows || hideNullRows)
+  ) {
+    const metricLabels = metrics.map(getMetricLabel);
+    const metricKeys = Object.keys(rebasedData[0] || {}).filter(
+      key =>
+        key !== xAxisLabel &&
+        (metricLabels.includes(
+          getOriginalSeries(inverted[key] || key, array),
+        ) ||
+          array.includes(key)),
+    );
+    rebasedData = rebasedData.filter(row =>
+      metricKeys.some(key => {
+        const value = row[key];
+        return (
+          value !== null &&
+          value !== undefined &&
+          (!hideZeroRows || value !== 0)
+        );
+      }),
+    );
   }
   const isHorizontal = orientation === OrientationType.Horizontal;
   const { totalStackedValues, thresholdValues } = extractDataTotalValues(
@@ -317,9 +346,6 @@ export default function transformProps(
     data,
     currencyCodeColumn,
   );
-
-  const array = ensureIsArray(chartProps.rawFormData?.time_compare);
-  const inverted = invert(verboseMap);
 
   const offsetLineWidths: { [key: string]: number } = {};
 
@@ -1028,7 +1054,10 @@ export default function transformProps(
 
   // If visualMap is configured, remove static itemStyle.color from series so
   // visualMap can control per-bar colors (static color overrides visualMap).
-  if ((mergedEchartOptions as any).visualMap && Array.isArray((mergedEchartOptions as any).series)) {
+  if (
+    (mergedEchartOptions as any).visualMap &&
+    Array.isArray((mergedEchartOptions as any).series)
+  ) {
     mergedEchartOptions = {
       ...mergedEchartOptions,
       series: ((mergedEchartOptions as any).series as any[]).map(s => {
