@@ -54,6 +54,12 @@ for more details.
 />
 ```
 
+Set the optional saved `form_data.pivot_null_value` to `"—"` to display null and
+undefined metric values as an em dash. It becomes `pivotNullValue` in chart props.
+Omitting it preserves the existing display. This only changes formatting; numeric
+values, per-metric aggregation, number format rules, and currency formats remain
+unchanged.
+
 ### File structure generated
 
 ```

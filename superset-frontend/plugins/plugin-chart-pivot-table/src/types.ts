@@ -93,6 +93,7 @@ interface PivotTableCustomizeProps {
   granularity_sqla?: string;
   allowRenderHtml?: boolean;
   pivotNumberFormatRules?: PivotNumberFormatRule[];
+  pivotNullValue?: string;
   dimensionLabelOverrides?: Record<string, string>;
 }
 
