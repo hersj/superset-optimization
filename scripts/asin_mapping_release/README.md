@@ -21,7 +21,8 @@ under the License.
 
 This entrypoint builds the committed one-line `get_time_filter` fix on each
 service's verified current image. It preserves the existing selected-time-range
-backend and all frontend overlays. Web and worker have separate base images;
+backend and all frontend overlays. Only the build step uses root to patch the
+root-owned template; the resulting image restores the base image runtime user. Web and worker have separate base images;
 beat does not compile chart templates and is unchanged.
 
 After this branch is merged and the server checkout has fetched `origin/master`,
@@ -46,7 +47,7 @@ python scripts/asin_mapping_release/deploy.py "$revision" "$worker_digest" --rel
 ```
 
 The existing complete Compose chain is read from the current Web container.
-Only the named service is recreated; environment, command and mounts must match.
+Only the named service is recreated; environment, runtime user, command and mounts must match.
 The script checks the old PID exited, verifies the new image and PID, and checks
 all other containers remain unchanged. The worker must finish its active tasks
 before its switch. Do not treat a successful switch as business acceptance:

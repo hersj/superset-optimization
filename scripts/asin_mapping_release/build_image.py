@@ -72,7 +72,9 @@ container, tag, digest = base
 assert json.loads(run(["docker", "inspect", container]))[0]["Image"] == digest, (
     "Active base changed; refresh before building"
 )
-assert json.loads(run(["docker", "image", "inspect", tag]))[0]["Id"] == digest
+base_image = json.loads(run(["docker", "image", "inspect", tag]))[0]
+assert base_image["Id"] == digest
+runtime_user = base_image["Config"].get("User") or "root"
 image = "superset-" + a.service + ":asin-mapping-template-" + a.revision[:10]
 subprocess.run(
     [
@@ -87,13 +89,17 @@ subprocess.run(
         "BASE_DIGEST=" + digest,
         "--build-arg",
         "RELEASE_REVISION=" + a.revision,
+        "--build-arg",
+        "RUNTIME_USER=" + runtime_user,
         "-t",
         image,
         str(context),
     ],
     check=True,
 )
-imageid = json.loads(run(["docker", "image", "inspect", image]))[0]["Id"]
+candidate_image = json.loads(run(["docker", "image", "inspect", image]))[0]
+imageid = candidate_image["Id"]
+assert (candidate_image["Config"].get("User") or "root") == runtime_user
 job = (
     "import pathlib,hashlib,json; "
     "print(json.dumps({'jinja_sha256':hashlib.sha256("
@@ -122,6 +128,7 @@ receipt = {
     "image": image,
     "digest": imageid,
     "base_image": digest,
+    "runtime_user": runtime_user,
     "revision": a.revision,
     "template_source_commit": manifest["source_commit"],
     "verification": checked,
