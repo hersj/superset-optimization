@@ -1,0 +1,7 @@
+{
+  "source_commit": "a1e34d6f236d08c8a34de6287c840e10975458da",
+  "expected_before_sha256": "c42da9ed5dbe0587eedc2f6eab3546b2e2efa3a9842231131b92b622f2d7226b",
+  "expected_after_sha256": "880813c25bfba5341a46f65f9860a369572bc5bb71242a289a11c52bee4449c5",
+  "before": "if flt[\"operator\"] == FilterOperator.TEMPORAL_RANGE",
+  "after": "if flt.get(\"operator\") == FilterOperator.TEMPORAL_RANGE"
+}

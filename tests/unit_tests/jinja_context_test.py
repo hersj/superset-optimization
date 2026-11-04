@@ -1343,6 +1343,37 @@ def test_metric_macro_embedded_user_skips_base_filter(mocker: MockerFixture) -> 
             [],
         ),
         (
+            "SQL filters without an operator do not hide the temporal filter",
+            ["dt"],
+            {"remove_filter": True},
+            "postgresql://mydb",
+            [
+                {
+                    "adhoc_filters": [
+                        {
+                            "expressionType": "SQL",
+                            "clause": "WHERE",
+                            "sqlExpression": "amount > 0",
+                        },
+                        {
+                            "expressionType": "SIMPLE",
+                            "clause": "WHERE",
+                            "operator": "TEMPORAL_RANGE",
+                            "subject": "dt",
+                            "comparator": "Last week",
+                        },
+                    ],
+                }
+            ],
+            TimeFilter(
+                from_expr="TO_DATE('2024-08-27', 'YYYY-MM-DD')",
+                to_expr="TO_DATE('2024-09-03', 'YYYY-MM-DD')",
+                time_range="Last week",
+            ),
+            ["dt"],
+            ["dt"],
+        ),
+        (
             "Missing time range and filter with default value will return a result with the defaults",  # noqa: E501
             [],
             {"default": "Last week", "target_type": "TIMESTAMP"},
