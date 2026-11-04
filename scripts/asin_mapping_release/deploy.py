@@ -99,9 +99,13 @@ configured_env = {
 # 镜像自身环境由固定基线继承，Compose 明确覆盖的环境必须保持一致。
 different = [k for k, v in configured_env.items() if current_env.get(k) != v]
 assert not different, "Environment mismatch keys: " + ",".join(different)
-merged_env = (
-    dict(v.split("=", 1) for v in inspect(image)["Config"]["Env"]) | configured_env
+candidate_config = inspect(image)["Config"]
+current_user = web["Config"].get("User") or "root"
+configured_user = str(
+    configured_service.get("user") or candidate_config.get("User") or "root"
 )
+assert configured_user == current_user, "Runtime user must remain unchanged"
+merged_env = dict(v.split("=", 1) for v in candidate_config["Env"]) | configured_env
 assert merged_env == current_env, "Full environment must remain unchanged"
 assert configured_service["command"] == web["Config"]["Cmd"], (
     "Service command must remain unchanged"
@@ -145,6 +149,7 @@ assert (
             "command": cmd,
             "environment_keys_verified": sorted(configured_env),
             "mounts_verified": True,
+            "runtime_user_verified": current_user,
             "base_image": BASE,
             "target_image": TARGET,
             "revision": revision,
@@ -188,6 +193,7 @@ after = {
 for n in names:
     if n != container:
         assert before[n] == after[n], "Unexpected service change: " + n
+assert (inspect(container)["Config"].get("User") or "root") == current_user
 assert after[container]["Image"] == TARGET
 assert before[container]["Pid"] != after[container]["Pid"]
 assert not Path("/proc/" + str(before[container]["Pid"])).exists(), (

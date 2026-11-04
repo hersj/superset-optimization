@@ -50,6 +50,7 @@ class MappingReleaseTest(unittest.TestCase):
         environment = ["SELLERFOX_ORIGINAL_CONFIG_PATH=/config", "EXAMPLE=fixture"]
         config = {
             "Env": environment,
+            "User": "superset" if kind == "web" else "",
             "Cmd": ["bootstrap", kind],
             "Labels": {"com.docker.compose.project.config_files": "/base.yml"},
         }
@@ -79,6 +80,7 @@ class MappingReleaseTest(unittest.TestCase):
             "Id": TARGET,
             "Config": {
                 "Env": environment,
+                "User": "root" if mismatch == "user" else config["User"],
                 "Labels": {"org.opencontainers.image.revision": REVISION},
             },
         }
@@ -162,6 +164,9 @@ class MappingReleaseTest(unittest.TestCase):
     def test_reject_changed_environment_without_mutation(self) -> None:
         self.exercise("worker", "environment")
 
+    def test_reject_runtime_user_change_without_mutation(self) -> None:
+        self.exercise("web", "user")
+
     def test_build_keeps_service_base_and_disables_network(self) -> None:
         manifest = json.loads(
             (RELEASE / "build-context/patch-manifest.json").read_text()
@@ -169,7 +174,10 @@ class MappingReleaseTest(unittest.TestCase):
         for kind, digest in BASES.items():
 
             def output(
-                command: list[str], expected_digest: str = digest, **_kwargs: object
+                command: list[str],
+                expected_digest: str = digest,
+                expected_user: str = "superset" if kind == "web" else "",
+                **_kwargs: object,
             ) -> str:
                 if command[0] == "git":
                     return REVISION if "rev-parse" in command else manifest["after"]
@@ -184,7 +192,10 @@ class MappingReleaseTest(unittest.TestCase):
                         {
                             "Id": TARGET
                             if ":asin-mapping-template-" in command[-1]
-                            else expected_digest
+                            else expected_digest,
+                            "Config": {"User": expected_user or "root"}
+                            if ":asin-mapping-template-" in command[-1]
+                            else {"User": expected_user},
                         }
                     ]
                 )
@@ -210,10 +221,16 @@ class MappingReleaseTest(unittest.TestCase):
                 build = commands.call_args_list[-1].args[0]
                 self.assertEqual(build[:4], ["docker", "build", "--network", "none"])
                 self.assertIn("BASE_DIGEST=" + digest, build)
+                self.assertIn(
+                    "RUNTIME_USER=" + ("superset" if kind == "web" else "root"), build
+                )
                 receipt = json.loads(
                     (Path(directory) / ("image-" + kind + "-receipt.json")).read_text()
                 )
                 self.assertEqual(receipt["base_image"], digest)
+                self.assertEqual(
+                    receipt["runtime_user"], "superset" if kind == "web" else "root"
+                )
                 self.assertFalse(receipt["switched"])
                 service = "superset" if kind == "web" else "superset-worker"
                 self.assertIn(
