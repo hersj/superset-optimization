@@ -487,7 +487,7 @@ class ExtraCache:
                 (
                     flt
                     for flt in form_data.get("adhoc_filters", [])
-                    if flt["operator"] == FilterOperator.TEMPORAL_RANGE
+                    if flt.get("operator") == FilterOperator.TEMPORAL_RANGE
                     and flt["subject"] == column
                 ),
                 None,
