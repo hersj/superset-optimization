@@ -1,269 +1,42 @@
-# LLM Context Guide for Apache Superset
+# Apache Superset
 
-Apache Superset is a data visualization platform with Flask/Python backend and React/TypeScript frontend.
+Flask/Python 后端，React/TypeScript 前端。本文件适用于仓库及其工作树；本机已加载的通用规则作为补充，不要求其他环境存在 `~/.codex/AGENTS.md`。
 
-## ⚠️ CRITICAL: Always Run Pre-commit Before Pushing
+## 最小实现与任务范围
 
-**ALWAYS run `pre-commit run --all-files` before pushing commits.** CI will fail if pre-commit checks don't pass. This is non-negotiable.
+- 极低概率或仅理论上的边界/并发问题默认不加防御、不打断任务；确需增加时说明触发条件、概率依据和代价，获用户确认后再加，不编造概率。
+- 外部输入只在信任边界校验一次，内部按类型和契约流转，不重复判断同一保证；保留每次请求的鉴权/授权和写入一致性约束。
+- 单次逻辑就近内联，不提前拆无意义的 helper 或抽象；复用现有能力，不为未来预留接口、存储或配置。
+- 非必要不用 `try/catch` 或 `try/except`，不吞错、不重复包装；能由一个清晰函数完成的逻辑不硬拆。
+- 问答只读取足够证据；实施任务按已有授权连续完成修改、验证和交付。确认/核验默认由 Agent 查证，不重复索要授权；仅关键输入无法查明、授权不足或必须扩大范围时询问。
+- 保留已有工作，仅暂存本任务文件；只在新改动或具体疑点出现时重跑受影响检查。历史模板与本节冲突时以本节为准，当前用户明确要求除外。
 
-```bash
-# Stage your changes first
-git add .
+## 按需定位
 
-# Run pre-commit on all files
-pre-commit run --all-files
+- 后端 API/schema/commands/models 在 `superset/`；前端在 `superset-frontend/src/`，共享 UI 在 `superset-frontend/packages/superset-ui-core/`。
+- Python 配置查 `pyproject.toml`、`requirements/`，前端命令查 `superset-frontend/package.json`。测试在 `tests/` 及相邻前端测试文件；按变化更新 `docs/` 中受影响的用户说明，破坏性变化更新 `UPDATING.md`，API 文档来自 docstring/schema。
+- 仅 JS → TS 迁移任务读取 `.claude/projects/js-to-ts/AGENT.md`，普通修复不附带迁移。
 
-# If there are auto-fixes, stage them and commit
-git add .
-git commit --amend  # or new commit
-```
+## 实现约定
 
-Common pre-commit failures:
-- **Formatting** - black, prettier, eslint will auto-fix
-- **Type errors** - mypy failures need manual fixes
-- **Linting** - ruff, pylint issues need manual fixes
+- 新前端代码用 TypeScript、函数组件和 hooks，复用已有类型，避免 `any`；组件用 `@superset-ui/core/components` 包装与 antd tokens，优先现有样式能力。已有全局状态沿用 Redux，局部状态用 hooks。
+- Python 新代码沿用类型提示、SQLAlchemy 模型注解及项目 docstring 约定，避免重复代码已表达的说明；布尔 SQL 条件用 `~Model.field`，避免 `== False` 的 lint 错误。
+- 新增模型或公开 API 契约遵循 UUID 约定；修复现有接口不触发 ID 迁移，已有 integer ID 兼容变更仅在明确授权的 schema/API 范围内进行。
+- 保留 Flask-AppBuilder RBAC、feature flags 和 SQL RLS 边界；外部输入使用已有入口 schema 校验，内部沿用已确认的类型契约，不逐层重复校验。
+- 新代码文件保留 ASF license header；LLM 指令文件按 `.rat-excludes` 处理。注释描述稳定契约，避免易过期的时间措辞。
 
-## ⚠️ CRITICAL: Ongoing Refactors (What NOT to Do)
+## 验证
 
-**These migrations are actively happening - avoid deprecated patterns:**
+- 选择覆盖本次故障的最小测试层级；前端用 Jest + React Testing Library，新增 E2E 优先 Playwright，不新增 Enzyme/Cypress 用例或附带迁移。简单用例用 `test()`，不为模板增加嵌套。
+- 从根目录运行 `pre-commit run --files <本任务文件...>` 中适用的 hooks，检查自动修正差异；Python 类型检查使用已配置 mypy hook。纯文档只检查内容、引用、差异及适用格式，不触发业务测试或服务启动。
+- 前端在 `superset-frontend/` 按当前 scripts 运行指定测试，如 `npm run test -- <测试路径>`；后端在根目录用 `pytest <测试路径>`。E2E 命令、目录和依赖以当前 checkout 为准；涉及外部副作用时按通用规则核实隔离。
+- Python 集成测试复用 `tests/integration_tests/base_tests.py` 的 `SupersetTestCase`、config/feature flag 装饰器及登录、dashboard/slice helpers；同步调用用同步 mock，字段变化更新 API 断言。
+- 前端复用 `superset-frontend/spec/helpers/testing-library.tsx` 的 provider 渲染和已有 wrapper/选择组件 helpers。环境缺失先查现有依赖和配置，完成可运行检查后报告具体阻塞。
+- 仅集成测试、浏览器验收或部署需要实例时核对已确认的服务地址，不默认 `localhost:8088` 存在；健康检查不是业务验收。
 
-### Frontend Modernization
-- **NO `any` types** - Use proper TypeScript types
-- **NO JavaScript files** - Convert to TypeScript (.ts/.tsx)
-- **Use @superset-ui/core** - Don't import Ant Design directly, prefer Ant Design component wrappers from @superset-ui/core/components
-- **Use antd theming tokens** - Prefer antd tokens over legacy theming tokens
-- **Avoid custom css and styles** - Follow antd best practices and avoid styling and custom CSS whenever possible
+## 专项与交付
 
-### Testing Strategy Migration
-- **Prefer unit tests** over integration tests
-- **Prefer integration tests** over end-to-end tests
-- **Use Playwright for E2E tests** - Migrating from Cypress
-- **Cypress is deprecated** - Will be removed once migration is completed
-- **Use Jest + React Testing Library** for component testing
-- **Use `test()` instead of `describe()`** - Follow [avoid nesting when testing](https://kentcdodds.com/blog/avoid-nesting-when-youre-testing) principles
-
-### Backend Type Safety
-- **Add type hints** - All new Python code needs proper typing
-- **MyPy compliance** - Run `pre-commit run mypy` to validate
-- **SQLAlchemy typing** - Use proper model annotations
-
-### UUID Migration
-- **Prefer UUIDs over auto-incrementing IDs** - New models should use UUID primary keys
-- **External API exposure** - Use UUIDs in public APIs instead of internal integer IDs
-- **Existing models** - Add UUID fields alongside integer IDs for gradual migration
-
-## Key Directories
-
-```
-superset/
-├── superset/                    # Python backend (Flask, SQLAlchemy)
-│   ├── views/api/              # REST API endpoints
-│   ├── models/                 # Database models
-│   └── connectors/             # Database connections
-├── superset-frontend/src/       # React TypeScript frontend
-│   ├── components/             # Reusable components
-│   ├── explore/                # Chart builder
-│   ├── dashboard/              # Dashboard interface
-│   └── SqlLab/                 # SQL editor
-├── superset-frontend/packages/
-│   └── superset-ui-core/       # UI component library (USE THIS)
-├── tests/                      # Python/integration tests
-├── docs/                       # Documentation (UPDATE FOR CHANGES)
-└── UPDATING.md                 # Breaking changes log
-```
-
-## Code Standards
-
-### TypeScript Frontend
-- **Avoid `any` types** - Use proper TypeScript, reuse existing types
-- **Functional components** with hooks
-- **@superset-ui/core** for UI components (not direct antd)
-- **Jest** for testing (NO Enzyme)
-- **Redux** for global state where it exists, hooks for local
-
-### Python Backend  
-- **Type hints required** for all new code
-- **MyPy compliant** - run `pre-commit run mypy`
-- **SQLAlchemy models** with proper typing
-- **pytest** for testing
-
-### Apache License Headers
-- **New files require ASF license headers** - When creating new code files, include the standard Apache Software Foundation license header
-- **LLM instruction files are excluded** - Files like AGENTS.md, CLAUDE.md, etc. are in `.rat-excludes` to avoid header token overhead
-
-### Code Comments
-- **Avoid time-specific language** - Don't use words like "now", "currently", "today" in code comments as they become outdated
-- **Write timeless comments** - Comments should remain accurate regardless of when they're read
-
-## Documentation Requirements
-
-- **docs/**: Update for any user-facing changes
-- **UPDATING.md**: Add breaking changes here
-- **Docstrings**: Required for new functions/classes
-
-## Developer Portal: Storybook-to-MDX Documentation
-
-The Developer Portal auto-generates MDX documentation from Storybook stories. **Stories are the single source of truth.**
-
-### Core Philosophy
-- **Fix issues in the STORY, not the generator** - When something doesn't render correctly, update the story file first
-- **Generator should be lightweight** - It extracts and passes through data; avoid special cases
-- **Stories define everything** - Props, controls, galleries, examples all come from story metadata
-
-### Story Requirements for Docs Generation
-- Use `export default { title: '...' }` (inline), not `const meta = ...; export default meta;`
-- Name interactive stories `Interactive${ComponentName}` (e.g., `InteractiveButton`)
-- Define `args` for default prop values
-- Define `argTypes` at the story level (not meta level) with control types and descriptions
-- Use `parameters.docs.gallery` for size×style variant grids
-- Use `parameters.docs.sampleChildren` for components that need children
-- Use `parameters.docs.liveExample` for custom live code blocks
-- Use `parameters.docs.staticProps` for complex object props that can't be parsed inline
-
-### Generator Location
-- Script: `docs/scripts/generate-superset-components.mjs`
-- Wrapper: `docs/src/components/StorybookWrapper.jsx`
-- Output: `docs/developer_portal/components/`
-
-## Architecture Patterns
-
-### Security & Features
-- **RBAC**: Role-based access via Flask-AppBuilder
-- **Feature flags**: Control feature rollouts
-- **Row-level security**: SQL-based data access control
-
-## Test Utilities
-
-### Python Test Helpers
-- **`SupersetTestCase`** - Base class in `tests/integration_tests/base_tests.py`
-- **`@with_config`** - Config mocking decorator
-- **`@with_feature_flags`** - Feature flag testing
-- **`login_as()`, `login_as_admin()`** - Authentication helpers
-- **`create_dashboard()`, `create_slice()`** - Data setup utilities
-
-### TypeScript Test Helpers
-- **`superset-frontend/spec/helpers/testing-library.tsx`** - Custom render() with providers
-- **`createWrapper()`** - Redux/Router/Theme wrapper
-- **`selectOption()`** - Select component helper
-- **React Testing Library** - NO Enzyme (removed)
-
-### Test Database Patterns
-- **Mock patterns**: Use `MagicMock()` for config objects, avoid `AsyncMock` for synchronous code
-- **API tests**: Update expected columns when adding new model fields
-
-### Running Tests
-```bash
-# Frontend
-npm run test                           # All tests
-npm run test -- filename.test.tsx     # Single file
-
-# E2E Tests (Playwright - NEW)
-npm run playwright:test                # All Playwright tests
-npm run playwright:ui                  # Interactive UI mode
-npm run playwright:headed              # See browser during tests
-npx playwright test tests/auth/login.spec.ts  # Single file
-npm run playwright:debug tests/auth/login.spec.ts  # Debug specific file
-
-# E2E Tests (Cypress - DEPRECATED)
-cd superset-frontend/cypress-base
-npm run cypress-run-chrome             # All Cypress tests (headless)
-npm run cypress-debug                  # Interactive Cypress UI
-
-# Backend  
-pytest                                 # All tests
-pytest tests/unit_tests/specific_test.py  # Single file
-pytest tests/unit_tests/               # Directory
-
-# If pytest fails with database/setup issues, ask the user to run test environment setup
-```
-
-## Environment Validation
-
-**Quick Setup Check (run this first):**
-
-```bash
-# Verify Superset is running
-curl -f http://localhost:8088/health || echo "❌ Setup required - see https://superset.apache.org/docs/contributing/development#working-with-llms"
-```
-
-**If health checks fail:**
-"It appears you aren't set up properly. Please refer to the [Working with LLMs](https://superset.apache.org/docs/contributing/development#working-with-llms) section in the development docs for setup instructions."
-
-**Key Project Files:**
-- `superset-frontend/package.json` - Frontend build scripts (`npm run dev` on port 9000, `npm run test`, `npm run lint`)
-- `pyproject.toml` - Python tooling (ruff, mypy configs)
-- `requirements/` folder - Python dependencies (base.txt, development.txt)
-
-## SQLAlchemy Query Best Practices  
-- **Use negation operator**: `~Model.field` instead of `== False` to avoid ruff E712 errors
-- **Example**: `~Model.is_active` instead of `Model.is_active == False`
-
-## Pull Request Guidelines
-
-**When creating pull requests:**
-
-1. **Read the current PR template**: Always check `.github/PULL_REQUEST_TEMPLATE.md` for the latest format
-2. **Use the template sections**: Include all sections from the template (SUMMARY, BEFORE/AFTER, TESTING INSTRUCTIONS, ADDITIONAL INFORMATION)
-3. **Follow PR title conventions**: Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-   - Format: `type(scope): description`
-   - Example: `fix(dashboard): load charts correctly`
-   - Types: `fix`, `feat`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
-
-**Important**: Always reference the actual template file at `.github/PULL_REQUEST_TEMPLATE.md` instead of using cached content, as the template may be updated over time.
-
-## Pre-commit Validation
-
-**Use pre-commit hooks for quality validation:**
-
-```bash
-# Install hooks
-pre-commit install
-
-# IMPORTANT: Stage your changes first!
-git add .                        # Pre-commit only checks staged files
-
-# Quick validation (faster than --all-files)
-pre-commit run                   # Staged files only
-pre-commit run mypy              # Python type checking
-pre-commit run prettier          # Code formatting
-pre-commit run eslint            # Frontend linting
-```
-
-**Important pre-commit usage notes:**
-- **Stage files first**: Run `git add .` before `pre-commit run` to check only changed files (much faster)
-- **Virtual environment**: Activate your Python virtual environment before running pre-commit
-  ```bash
-  # Common virtual environment locations (yours may differ):
-  source .venv/bin/activate      # if using .venv
-  source venv/bin/activate       # if using venv
-  source ~/venvs/superset/bin/activate  # if using a central location
-  ```
-  If you get a "command not found" error, ask the user which virtual environment to activate
-- **Auto-fixes**: Some hooks auto-fix issues (e.g., trailing whitespace). Re-run after fixes are applied
-
-## Common File Patterns
-
-### API Structure
-- **`/api.py`** - REST endpoints with decorators and OpenAPI docstrings
-- **`/schemas.py`** - Marshmallow validation schemas for OpenAPI spec
-- **`/commands/`** - Business logic classes with @transaction() decorators
-- **`/models/`** - SQLAlchemy database models
-- **OpenAPI docs**: Auto-generated at `/swagger/v1` from docstrings and schemas
-
-### Migration Files
-- **Location**: `superset/migrations/versions/`
-- **Naming**: `YYYY-MM-DD_HH-MM_hash_description.py`
-- **Utilities**: Use helpers from `superset.migrations.shared.utils` for database compatibility
-- **Pattern**: Import utilities instead of raw SQLAlchemy operations
-
-## Platform-Specific Instructions
-
-- **[CLAUDE.md](CLAUDE.md)** - For Claude/Anthropic tools
-- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - For GitHub Copilot  
-- **[GEMINI.md](GEMINI.md)** - For Google Gemini tools
-- **[GPT.md](GPT.md)** - For OpenAI/ChatGPT tools
-- **[.cursor/rules/dev-standard.mdc](.cursor/rules/dev-standard.mdc)** - For Cursor editor
-
----
-
-**LLM Note**: This codebase is actively modernizing toward full TypeScript and type safety. Always run `pre-commit run` to validate changes. Follow the ongoing refactors section to avoid deprecated patterns.
+- schema 迁移放 `superset/migrations/versions/`，沿用 `YYYY-MM-DD_HH-MM_hash_description.py` 和 `superset.migrations.shared.utils`；明确范围、兼容和回滚，生产执行须有明确授权，先核对范围、预计行数及恢复方式；按已授权范围分批验证执行，不逐批确认。
+- Storybook → MDX：stories 是内容来源，内容问题修 story、生成器缺陷修生成器，不加个别组件特判。metadata 用内联 `export default { title: '...' }`，交互 story 用 `Interactive${ComponentName}`，默认 props 放 `args`，控制类型及描述放 story 级 `argTypes`。
+- 按需使用 `parameters.docs.gallery`、`sampleChildren`、`liveExample`、`staticProps`；入口 `docs/scripts/generate-superset-components.mjs`，包装器 `docs/src/components/StorybookWrapper.jsx`，产物 `docs/developer_docs/components/`，修改时核对来源和生成结果。
+- 创建 PR 读取当前 `.github/PULL_REQUEST_TEMPLATE.md`，标题用 `type(scope): description`，说明行为变化、实际验证和未完成项；部署才补充目标环境、运行版本及真实业务验收。
