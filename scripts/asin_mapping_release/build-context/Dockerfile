@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-ARG BASE_IMAGE=superset-web:dashboard-perf-4bcedffa41
+ARG BASE_IMAGE=superset-web:bounded-v3-400ac78fb0
 FROM ${BASE_IMAGE}
 ARG RELEASE_REVISION
 ARG BASE_DIGEST
@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.authors="hersj (Codex assisted)"
 LABEL org.opencontainers.image.description="Bound heavy V3 time filters without replacing frontend resources"
 LABEL org.opencontainers.image.base.digest="${BASE_DIGEST}"
 LABEL org.opencontainers.image.overlay.kind="bounded-v3-time-filter"
-LABEL org.opencontainers.image.template.source.revision="d7b004c2991be634e94915fa933f0198a90073ac"
+LABEL org.opencontainers.image.template.source.revision="d6260097d686e9ed99365b84ba25aac90ac2c1b1"
 USER root
 COPY apply_compat.py patch-manifest.json bounded-v3-dataset.sql /app/.mapping-template-build/
 RUN python /app/.mapping-template-build/apply_compat.py \

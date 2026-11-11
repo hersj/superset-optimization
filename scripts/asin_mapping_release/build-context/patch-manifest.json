@@ -1,31 +1,19 @@
 {
-  "expected_before_sha256": "880813c25bfba5341a46f65f9860a369572bc5bb71242a289a11c52bee4449c5",
-  "expected_after_sha256": "0fd4e5f33f254dab70ae02ff67b8c1f0a606a9a5eea463e538ab03aeffd4e596",
+  "expected_before_sha256": "0fd4e5f33f254dab70ae02ff67b8c1f0a606a9a5eea463e538ab03aeffd4e596",
+  "expected_after_sha256": "0fa43d0272f2fa014ac37d36da2e56f61f49895d69760944c474204819ad4727",
   "patches": [
     {
-      "before": "        form_data, _ = get_form_data()\n        convert_legacy_filters_into_adhoc(form_data)\n        merge_extra_filters(form_data)\n        time_range = form_data.get(\"time_range\")",
-      "after": "        form_data, _unused = get_form_data()\n        convert_legacy_filters_into_adhoc(form_data)\n        merge_extra_filters(form_data)\n        time_range = form_data.get(\"time_range\")"
+      "before": "from superset.exceptions import (\n",
+      "after": "from superset.exceptions import (\n    QueryObjectValidationError,\n"
     },
     {
-      "before": "        as_predicate: bool = False,\n",
-      "after": "        as_predicate: bool = False,\n        require_bounded: bool = False,\n"
+      "before": "                raise SupersetTemplateException(\n                    _(\"Please select both a start date and an end date.\")\n                )",
+      "after": "                raise QueryObjectValidationError(\n                    _(\"Please select both a start date and an end date.\")\n                )"
     },
     {
-      "before": "                    and flt[\"subject\"] == column\n",
-      "after": "                    and flt[\"subject\"] == column\n                    and (not require_bounded or flt[\"comparator\"] != NO_TIME_RANGE)\n"
-    },
-    {
-      "before": "            if flt:\n                if column not in self.applied_filters:\n",
-      "after": "            if require_bounded and any(start is None or end is None for start, end in ranges):\n                raise SupersetTemplateException(\n                    _(\"Please select both a start date and an end date.\")\n                )\n            if flt:\n                if column not in self.applied_filters:\n"
-    },
-    {
-      "before": "        from_expr, to_expr = get_since_until_from_time_range(time_range)\n",
-      "after": "        from_expr, to_expr = get_since_until_from_time_range(time_range)\n        if require_bounded and (from_expr is None or to_expr is None):\n            raise SupersetTemplateException(\n                _(\"Please select both a start date and an end date.\")\n            )\n"
-    },
-    {
-      "before": "                    for flt in form_data.get(\"adhoc_filters\", [])\n                    if flt.get(\"operator\") == FilterOperator.TEMPORAL_RANGE",
-      "after": "                    for flt in sorted(\n                        form_data.get(\"adhoc_filters\", []),\n                        key=lambda candidate: candidate.get(\"comparator\") == NO_TIME_RANGE,\n                    )\n                    if flt.get(\"operator\") == FilterOperator.TEMPORAL_RANGE"
+      "before": "            raise SupersetTemplateException(\n                _(\"Please select both a start date and an end date.\")\n            )",
+      "after": "            raise QueryObjectValidationError(\n                _(\"Please select both a start date and an end date.\")\n            )"
     }
   ],
-  "source_commit": "d7b004c2991be634e94915fa933f0198a90073ac"
+  "source_commit": "d6260097d686e9ed99365b84ba25aac90ac2c1b1"
 }
