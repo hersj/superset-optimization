@@ -15,7 +15,7 @@
 -- specific language governing permissions and limitations
 -- under the License.
 {% set needs_bounds = 'cpc_cost_diff' in (metrics | default([], true) | tojson) %}
-{% set selected_time = get_time_filter('biz_day', remove_filter=True, as_predicate=True, require_bounded=needs_bounds) %}
+{% set selected_time = get_time_filter('biz_day', remove_filter=needs_bounds, as_predicate=True, require_bounded=needs_bounds) %}
 WITH main AS NOT MATERIALIZED (
  SELECT * FROM public.profit_dws_daily_v3_usd WHERE {{ selected_time }}
 ), fees AS NOT MATERIALIZED (
