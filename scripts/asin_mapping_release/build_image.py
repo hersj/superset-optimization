@@ -59,8 +59,8 @@ assert "require_bounded: bool = False" in source
 base = {
     "web": (
         "superset_app",
-        "superset-web:mixed-axis-render-fix-b8e67e90a5",
-        "sha256:6514043cc6a877c3678088b25d771f16b3497ba01be044ef15c950d8c6de6a3f",
+        "superset-web:dashboard-perf-4bcedffa41",
+        "sha256:d23d460ca231f9c28bddc6c0e1ba6d14b617f488a1b075c7f82105712cbb695b",
     ),
     "worker": (
         "superset_worker",

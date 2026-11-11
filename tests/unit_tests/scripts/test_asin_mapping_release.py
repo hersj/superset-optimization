@@ -36,7 +36,7 @@ RELEASE = ROOT / "scripts/asin_mapping_release"
 REVISION = "a" * 40
 TARGET = "sha256:" + "b" * 64
 BASES = {
-    "web": "sha256:6514043cc6a877c3678088b25d771f16b3497ba01be044ef15c950d8c6de6a3f",
+    "web": "sha256:d23d460ca231f9c28bddc6c0e1ba6d14b617f488a1b075c7f82105712cbb695b",
     "worker": "sha256:e7da21ccd1e272e53b7620dbfce0e32153b4211c4dd1fa37a5c687e751534f40",
 }
 
