@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.authors="hersj (Codex assisted)"
 LABEL org.opencontainers.image.description="Bound heavy V3 time filters without replacing frontend resources"
 LABEL org.opencontainers.image.base.digest="${BASE_DIGEST}"
 LABEL org.opencontainers.image.overlay.kind="bounded-v3-time-filter"
-LABEL org.opencontainers.image.template.source.revision="ab41affc2d6859d84e9ade0151915b4f13ce5727"
+LABEL org.opencontainers.image.template.source.revision="d7b004c2991be634e94915fa933f0198a90073ac"
 USER root
 COPY apply_compat.py patch-manifest.json bounded-v3-dataset.sql /app/.mapping-template-build/
 RUN python /app/.mapping-template-build/apply_compat.py \
