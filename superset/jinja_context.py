@@ -489,7 +489,12 @@ class ExtraCache:
             flt: AdhocFilterClause | None = next(
                 (
                     flt
-                    for flt in form_data.get("adhoc_filters", [])
+                    for flt in sorted(
+                        form_data.get("adhoc_filters", []),
+                        key=lambda candidate: (
+                            candidate.get("comparator") == NO_TIME_RANGE
+                        ),
+                    )
                     if flt.get("operator") == FilterOperator.TEMPORAL_RANGE
                     and flt["subject"] == column
                     and (not require_bounded or flt["comparator"] != NO_TIME_RANGE)

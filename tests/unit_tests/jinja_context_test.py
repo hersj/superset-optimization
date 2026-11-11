@@ -1768,7 +1768,8 @@ def test_required_time_filter_rejects_unbounded_requests(value):
             cache.get_time_filter("biz_day", require_bounded=True)
 
 
-def test_required_time_filter_ignores_saved_no_filter_placeholder():
+@pytest.mark.parametrize("required", [False, True])
+def test_required_time_filter_ignores_saved_no_filter_placeholder(required):
     database = Database(database_name="isolated", sqlalchemy_uri="sqlite://")
     table = SqlaTable(
         table_name="daily",
@@ -1781,7 +1782,7 @@ def test_required_time_filter_ignores_saved_no_filter_placeholder():
     ]
     with current_app.test_request_context(json={"queries": [{"filters": filters}]}):
         result = ExtraCache(database=database, table=table).get_time_filter(
-            "biz_day", require_bounded=True
+            "biz_day", require_bounded=required
         )
         assert result.from_expr is not None
         assert result.to_expr is not None
