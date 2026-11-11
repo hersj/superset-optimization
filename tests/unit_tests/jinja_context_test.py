@@ -1745,3 +1745,44 @@ def test_undefined_template_variable_not_function(mocker: MockerFixture) -> None
 )
 def test_extra_cache_regex(sql: str, expected: bool) -> None:
     assert bool(ExtraCache.regex.search(sql)) is expected
+
+
+@pytest.mark.parametrize("value", [None, "No filter", " : 2026-11-01", "2026-10-01 : "])
+def test_required_time_filter_rejects_unbounded_requests(value):
+    database = Database(database_name="isolated", sqlalchemy_uri="sqlite://")
+    table = SqlaTable(
+        table_name="daily",
+        database=database,
+        columns=[TableColumn(column_name="biz_day", type="DATETIME", is_dttm=True)],
+    )
+    filters = (
+        []
+        if value is None
+        else [{"col": "biz_day", "op": "TEMPORAL_RANGE", "val": value}]
+    )
+    with current_app.test_request_context(json={"queries": [{"filters": filters}]}):
+        cache = ExtraCache(database=database, table=table)
+        with pytest.raises(
+            SupersetTemplateException, match="start date and an end date"
+        ):
+            cache.get_time_filter("biz_day", require_bounded=True)
+
+
+def test_required_time_filter_ignores_saved_no_filter_placeholder():
+    database = Database(database_name="isolated", sqlalchemy_uri="sqlite://")
+    table = SqlaTable(
+        table_name="daily",
+        database=database,
+        columns=[TableColumn(column_name="biz_day", type="DATETIME", is_dttm=True)],
+    )
+    filters = [
+        {"col": "biz_day", "op": "TEMPORAL_RANGE", "val": value}
+        for value in ["No filter", "2026-10-01 : 2026-11-01"]
+    ]
+    with current_app.test_request_context(json={"queries": [{"filters": filters}]}):
+        result = ExtraCache(database=database, table=table).get_time_filter(
+            "biz_day", require_bounded=True
+        )
+        assert result.from_expr is not None
+        assert result.to_expr is not None
+        assert result.time_range == "2026-10-01 : 2026-11-01"
