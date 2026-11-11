@@ -26,8 +26,9 @@ manifest = json.loads(
 p = Path("/app/superset/jinja_context.py")
 s = p.read_text()
 assert hashlib.sha256(s.encode()).hexdigest() == manifest["expected_before_sha256"]
-assert s.count(manifest["before"]) == 1
-s = s.replace(manifest["before"], manifest["after"])
+for change in manifest["patches"]:
+    assert s.count(change["before"]) == 1
+    s = s.replace(change["before"], change["after"])
 assert hashlib.sha256(s.encode()).hexdigest() == manifest["expected_after_sha256"]
 compile(s, str(p), "exec")
 p.write_text(s)

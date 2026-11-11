@@ -15,18 +15,20 @@
 # limitations under the License.
 #
 
-ARG BASE_IMAGE=superset-web:pivot-template-sync-44fffd41c3
+ARG BASE_IMAGE=superset-web:mixed-axis-render-fix-b8e67e90a5
 FROM ${BASE_IMAGE}
 ARG RELEASE_REVISION
 ARG BASE_DIGEST
 ARG RUNTIME_USER=root
 LABEL org.opencontainers.image.revision="${RELEASE_REVISION}"
 LABEL org.opencontainers.image.authors="hersj (Codex assisted)"
-LABEL org.opencontainers.image.description="Handle SQL filters when resolving ASIN mapping time ranges"
+LABEL org.opencontainers.image.description="Bound heavy V3 time filters without replacing frontend resources"
 LABEL org.opencontainers.image.base.digest="${BASE_DIGEST}"
-LABEL org.opencontainers.image.overlay.kind="asin-mapping-template-compat"
-LABEL org.opencontainers.image.template.source.revision="a1e34d6f236d08c8a34de6287c840e10975458da"
+LABEL org.opencontainers.image.overlay.kind="bounded-v3-time-filter"
+LABEL org.opencontainers.image.template.source.revision="ab41affc2d6859d84e9ade0151915b4f13ce5727"
 USER root
-COPY apply_compat.py patch-manifest.json /app/.mapping-template-build/
-RUN python /app/.mapping-template-build/apply_compat.py && rm -r /app/.mapping-template-build
+COPY apply_compat.py patch-manifest.json bounded-v3-dataset.sql /app/.mapping-template-build/
+RUN python /app/.mapping-template-build/apply_compat.py \
+ && mv /app/.mapping-template-build/bounded-v3-dataset.sql /app/.bounded-v3-dataset.sql \
+ && rm -r /app/.mapping-template-build
 USER ${RUNTIME_USER}

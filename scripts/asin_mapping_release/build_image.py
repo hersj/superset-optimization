@@ -48,24 +48,24 @@ subprocess.run(
         a.repo,
         "merge-base",
         "--is-ancestor",
-        "a1e34d6f236d08c8a34de6287c840e10975458da",
+        "ab41affc2d6859d84e9ade0151915b4f13ce5727",
         a.revision,
     ],
     check=True,
 )
 assert run(["git", "-C", a.repo, "rev-parse", "origin/master"]) == a.revision
 source = run(["git", "-C", a.repo, "show", a.revision + ":superset/jinja_context.py"])
-assert 'if flt.get("operator") == FilterOperator.TEMPORAL_RANGE' in source
+assert "require_bounded: bool = False" in source
 base = {
     "web": (
         "superset_app",
-        "superset-web:pivot-template-sync-44fffd41c3",
-        "sha256:8e88825cc2875a3dc62a3b88db155aace485f3ab5f54711c52de22a99c5ff217",
+        "superset-web:mixed-axis-render-fix-b8e67e90a5",
+        "sha256:ab15015f9a45f0823ac7e86d8707c63893abfba33253dcbb1404b1970cffbd1a",
     ),
     "worker": (
         "superset_worker",
-        "superset-web:selected-time-calendar-6395153dc8",
-        "sha256:d814f90b59fb9b77408ffe99460516192f1276f275947a259f842e780e6e1ea5",
+        "superset-worker:asin-mapping-template-81a4f1361b",
+        "sha256:e7da21ccd1e272e53b7620dbfce0e32153b4211c4dd1fa37a5c687e751534f40",
     ),
 }[a.service]
 container, tag, digest = base
@@ -75,7 +75,7 @@ assert json.loads(run(["docker", "inspect", container]))[0]["Image"] == digest, 
 base_image = json.loads(run(["docker", "image", "inspect", tag]))[0]
 assert base_image["Id"] == digest
 runtime_user = base_image["Config"].get("User") or "root"
-image = "superset-" + a.service + ":asin-mapping-template-" + a.revision[:10]
+image = "superset-" + a.service + ":bounded-v3-" + a.revision[:10]
 subprocess.run(
     [
         "docker",
