@@ -48,7 +48,7 @@ subprocess.run(
         a.repo,
         "merge-base",
         "--is-ancestor",
-        "ab41affc2d6859d84e9ade0151915b4f13ce5727",
+        "d7b004c2991be634e94915fa933f0198a90073ac",
         a.revision,
     ],
     check=True,
