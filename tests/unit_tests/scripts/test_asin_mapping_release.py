@@ -36,8 +36,8 @@ RELEASE = ROOT / "scripts/asin_mapping_release"
 REVISION = "a" * 40
 TARGET = "sha256:" + "b" * 64
 BASES = {
-    "web": "sha256:d23d460ca231f9c28bddc6c0e1ba6d14b617f488a1b075c7f82105712cbb695b",
-    "worker": "sha256:e7da21ccd1e272e53b7620dbfce0e32153b4211c4dd1fa37a5c687e751534f40",
+    "web": "sha256:2c14b5b0e6dfff91f1dd9fa5ab3ffca77742a178267b0e72652ba56f94b94222",
+    "worker": "sha256:df5a7616241a41f96e610f756481213242aeb86b379724078a7d50aaad149d6b",
 }
 
 
@@ -177,6 +177,10 @@ class MappingReleaseTest(unittest.TestCase):
                 command: list[str],
                 expected_digest: str = digest,
                 expected_user: str = "superset" if kind == "web" else "",
+                expected_image: str = "superset-"
+                + kind
+                + ":bounded-v3-"
+                + REVISION[:10],
                 **_kwargs: object,
             ) -> str:
                 if command[0] == "git":
@@ -195,10 +199,10 @@ class MappingReleaseTest(unittest.TestCase):
                     [
                         {
                             "Id": TARGET
-                            if ":bounded-v3-" in command[-1]
+                            if command[-1] == expected_image
                             else expected_digest,
                             "Config": {"User": expected_user or "root"}
-                            if ":bounded-v3-" in command[-1]
+                            if command[-1] == expected_image
                             else {"User": expected_user},
                         }
                     ]
@@ -356,4 +360,19 @@ def test_only_fee_metric_requests_require_bounded_dates():
         (
             Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
         ).from_string(template).render(metrics=metrics, get_time_filter=time_filter)
-        assert received == [(required, required)]
+        assert received == ([(True, True)] if required else [])
+
+
+def test_non_fee_lookups_keep_the_join_outside_their_query_plan():
+    from jinja2 import Environment
+
+    template = (RELEASE / "build-context/bounded-v3-dataset.sql").read_text()
+    query = (
+        Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
+        .from_string(template)
+        .render(metrics=[{"sqlExpression": "MAX(biz_day)"}])
+    )
+    assert "LEFT JOIN" not in query
+    assert "WITH main" not in query
+    assert "FROM public.profit_dws_daily_v3_usd main" in query
+    assert "AS cpc_cost_diff" in query

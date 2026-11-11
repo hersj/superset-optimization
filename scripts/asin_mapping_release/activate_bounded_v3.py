@@ -17,6 +17,7 @@
 """Activate the bounded one-to-one V3 dataset without changing chart identity."""
 
 import argparse
+import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -62,8 +63,13 @@ with app.app_context():
         if dataset.sql == target and column.expression is None:
             print(json.dumps({"dataset": dataset.id, "already_applied": True}))
         else:
-            assert dataset.sql is None, "Dataset changed since diagnosis"
-            assert "profit_dws_daily_v3_fee_detail_usd" in (column.expression or "")
+            if dataset.sql is None:
+                assert "profit_dws_daily_v3_fee_detail_usd" in (column.expression or "")
+            else:
+                assert hashlib.sha256(dataset.sql.encode()).hexdigest() == (
+                    "b6bd672d4c280a8054674142dccd9912c8c7b38b6fb23219c2b90c57a1000dbb"
+                ), "Dataset changed since the preceding release"
+                assert column.expression is None
             if args.apply:
                 args.backup.parent.mkdir(parents=True, exist_ok=True)
                 if args.backup.exists():

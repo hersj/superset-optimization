@@ -48,7 +48,7 @@ subprocess.run(
         a.repo,
         "merge-base",
         "--is-ancestor",
-        "d7b004c2991be634e94915fa933f0198a90073ac",
+        "d6260097d686e9ed99365b84ba25aac90ac2c1b1",
         a.revision,
     ],
     check=True,
@@ -59,13 +59,13 @@ assert "require_bounded: bool = False" in source
 base = {
     "web": (
         "superset_app",
-        "superset-web:dashboard-perf-4bcedffa41",
-        "sha256:d23d460ca231f9c28bddc6c0e1ba6d14b617f488a1b075c7f82105712cbb695b",
+        "superset-web:bounded-v3-400ac78fb0",
+        "sha256:2c14b5b0e6dfff91f1dd9fa5ab3ffca77742a178267b0e72652ba56f94b94222",
     ),
     "worker": (
         "superset_worker",
-        "superset-worker:asin-mapping-template-81a4f1361b",
-        "sha256:e7da21ccd1e272e53b7620dbfce0e32153b4211c4dd1fa37a5c687e751534f40",
+        "superset-worker:bounded-v3-400ac78fb0",
+        "sha256:df5a7616241a41f96e610f756481213242aeb86b379724078a7d50aaad149d6b",
     ),
 }[a.service]
 container, tag, digest = base
