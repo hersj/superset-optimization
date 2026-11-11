@@ -15,6 +15,7 @@
 -- specific language governing permissions and limitations
 -- under the License.
 {% set needs_bounds = 'cpc_cost_diff' in (metrics | default([], true) | tojson) %}
+{% if needs_bounds %}
 {% set selected_time = get_time_filter('biz_day', remove_filter=needs_bounds, as_predicate=True, require_bounded=needs_bounds) %}
 WITH main AS NOT MATERIALIZED (
  SELECT * FROM public.profit_dws_daily_v3_usd WHERE {{ selected_time }}
@@ -26,3 +27,13 @@ SELECT main.*,fees.cpc_cost_diff
 FROM main LEFT JOIN fees
  ON (fees.biz_day,fees.shop_id,fees.commodity_sku,fees.asin,fees.source_run_id)
   = (main.biz_day,main.shop_id,main.commodity_sku,main.asin,main.source_run_id)
+{% else %}
+-- Keep date and option lookups on the physical-table query plan.
+SELECT main.*,
+ (SELECT fees.cpc_cost_diff
+  FROM public.profit_dws_daily_v3_fee_detail_usd fees
+  WHERE (fees.biz_day,fees.shop_id,fees.commodity_sku,fees.asin,fees.source_run_id)
+       =(main.biz_day,main.shop_id,main.commodity_sku,main.asin,main.source_run_id)
+ ) AS cpc_cost_diff
+FROM public.profit_dws_daily_v3_usd main
+{% endif %}

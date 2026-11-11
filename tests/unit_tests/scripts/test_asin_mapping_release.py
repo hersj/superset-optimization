@@ -360,4 +360,21 @@ def test_only_fee_metric_requests_require_bounded_dates():
         (
             Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
         ).from_string(template).render(metrics=metrics, get_time_filter=time_filter)
-        assert received == [(required, required)]
+        assert received == ([(True, True)] if required else [])
+
+
+def test_non_fee_lookups_keep_the_join_outside_their_query_plan():
+    from jinja2 import Environment
+
+    template = (RELEASE / "build-context/bounded-v3-dataset.sql").read_text()
+    query = (
+        Environment(autoescape=False)
+        .from_string(template)
+        .render(  # noqa: S701
+            metrics=[{"sqlExpression": "MAX(biz_day)"}]
+        )
+    )
+    assert "LEFT JOIN" not in query
+    assert "WITH main" not in query
+    assert "FROM public.profit_dws_daily_v3_usd main" in query
+    assert "AS cpc_cost_diff" in query

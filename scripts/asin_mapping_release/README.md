@@ -64,7 +64,9 @@ Dataset 184 is activated separately after both images are verified. The SQL keep
 its identity and metrics, restricts both inputs to the selected dates, and joins
 fee details on all five existing keys. Missing or open dates are rejected only
 for advertising-difference metrics; date-option lookups remain available.
-The fee table primary key guarantees at most one matching detail row.
+The fee table primary key guarantees at most one matching detail row. Requests
+without a fee metric retain the original lazy calculated column, so calendar
+MAX lookups can still use the physical-table backward index scan.
 
 Run the committed activation script through the Web container stdin, first
 without `--apply`, then with it. Set `backup` to a persistent path under
