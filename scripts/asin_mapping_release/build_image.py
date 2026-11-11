@@ -60,7 +60,7 @@ base = {
     "web": (
         "superset_app",
         "superset-web:mixed-axis-render-fix-b8e67e90a5",
-        "sha256:ab15015f9a45f0823ac7e86d8707c63893abfba33253dcbb1404b1970cffbd1a",
+        "sha256:6514043cc6a877c3678088b25d771f16b3497ba01be044ef15c950d8c6de6a3f",
     ),
     "worker": (
         "superset_worker",
