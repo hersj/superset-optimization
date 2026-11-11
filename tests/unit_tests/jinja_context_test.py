@@ -37,7 +37,7 @@ from superset.connectors.sqla.models import (
     SqlMetric,
     TableColumn,
 )
-from superset.exceptions import SupersetTemplateException
+from superset.exceptions import QueryObjectValidationError, SupersetTemplateException
 from superset.jinja_context import (
     dataset_macro,
     ExtraCache,
