@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-BASE = "sha256:6514043cc6a877c3678088b25d771f16b3497ba01be044ef15c950d8c6de6a3f"
+BASE = "sha256:d23d460ca231f9c28bddc6c0e1ba6d14b617f488a1b075c7f82105712cbb695b"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("revision")
 parser.add_argument("target")
@@ -41,7 +41,7 @@ container, service, base_tag, BASE = {
     "web": (
         "superset_app",
         "superset",
-        "superset-web:mixed-axis-render-fix-b8e67e90a5",
+        "superset-web:dashboard-perf-4bcedffa41",
         BASE,
     ),
     "worker": (

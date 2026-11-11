@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-ARG BASE_IMAGE=superset-web:mixed-axis-render-fix-b8e67e90a5
+ARG BASE_IMAGE=superset-web:dashboard-perf-4bcedffa41
 FROM ${BASE_IMAGE}
 ARG RELEASE_REVISION
 ARG BASE_DIGEST
