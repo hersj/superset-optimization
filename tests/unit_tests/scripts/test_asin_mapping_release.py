@@ -368,11 +368,9 @@ def test_non_fee_lookups_keep_the_join_outside_their_query_plan():
 
     template = (RELEASE / "build-context/bounded-v3-dataset.sql").read_text()
     query = (
-        Environment(autoescape=False)
+        Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
         .from_string(template)
-        .render(  # noqa: S701
-            metrics=[{"sqlExpression": "MAX(biz_day)"}]
-        )
+        .render(metrics=[{"sqlExpression": "MAX(biz_day)"}])
     )
     assert "LEFT JOIN" not in query
     assert "WITH main" not in query
