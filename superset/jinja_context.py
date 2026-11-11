@@ -41,6 +41,7 @@ from superset.common.utils.time_range_utils import get_since_until_from_time_ran
 from superset.constants import LRU_CACHE_MAX_SIZE, NO_TIME_RANGE
 from superset.errors import ErrorLevel, SupersetError, SupersetErrorType
 from superset.exceptions import (
+    QueryObjectValidationError,
     SupersetSyntaxErrorException,
     SupersetTemplateException,
 )
@@ -517,7 +518,7 @@ class ExtraCache:
             time_range = default
         from_expr, to_expr = get_since_until_from_time_range(time_range)
         if require_bounded and (from_expr is None or to_expr is None):
-            raise SupersetTemplateException(
+            raise QueryObjectValidationError(
                 _("Please select both a start date and an end date.")
             )
 

@@ -1763,7 +1763,7 @@ def test_required_time_filter_rejects_unbounded_requests(value):
     with current_app.test_request_context(json={"queries": [{"filters": filters}]}):
         cache = ExtraCache(database=database, table=table)
         with pytest.raises(
-            SupersetTemplateException, match="start date and an end date"
+            QueryObjectValidationError, match="start date and an end date"
         ):
             cache.get_time_filter("biz_day", require_bounded=True)
 
