@@ -350,10 +350,10 @@ def test_only_fee_metric_requests_require_bounded_dates():
         received = []
 
         def time_filter(*args, received=received, **kwargs):
-            received.append(kwargs["require_bounded"])
+            received.append((kwargs["require_bounded"], kwargs["remove_filter"]))
             return "false"
 
         (
             Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
         ).from_string(template).render(metrics=metrics, get_time_filter=time_filter)
-        assert received == [required]
+        assert received == [(required, required)]
