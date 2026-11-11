@@ -1,7 +1,27 @@
 {
-  "source_commit": "a1e34d6f236d08c8a34de6287c840e10975458da",
-  "expected_before_sha256": "c42da9ed5dbe0587eedc2f6eab3546b2e2efa3a9842231131b92b622f2d7226b",
-  "expected_after_sha256": "880813c25bfba5341a46f65f9860a369572bc5bb71242a289a11c52bee4449c5",
-  "before": "if flt[\"operator\"] == FilterOperator.TEMPORAL_RANGE",
-  "after": "if flt.get(\"operator\") == FilterOperator.TEMPORAL_RANGE"
+  "expected_before_sha256": "880813c25bfba5341a46f65f9860a369572bc5bb71242a289a11c52bee4449c5",
+  "expected_after_sha256": "d6a456d0e65e99ae680a4e89518380b798c15c1b44203430aaef9a0a395839d8",
+  "patches": [
+    {
+      "before": "        form_data, _ = get_form_data()\n        convert_legacy_filters_into_adhoc(form_data)\n        merge_extra_filters(form_data)\n        time_range = form_data.get(\"time_range\")",
+      "after": "        form_data, _unused = get_form_data()\n        convert_legacy_filters_into_adhoc(form_data)\n        merge_extra_filters(form_data)\n        time_range = form_data.get(\"time_range\")"
+    },
+    {
+      "before": "        as_predicate: bool = False,\n",
+      "after": "        as_predicate: bool = False,\n        require_bounded: bool = False,\n"
+    },
+    {
+      "before": "                    and flt[\"subject\"] == column\n",
+      "after": "                    and flt[\"subject\"] == column\n                    and (not require_bounded or flt[\"comparator\"] != NO_TIME_RANGE)\n"
+    },
+    {
+      "before": "            if flt:\n                if column not in self.applied_filters:\n",
+      "after": "            if require_bounded and any(start is None or end is None for start, end in ranges):\n                raise SupersetTemplateException(\n                    _(\"Please select both a start date and an end date.\")\n                )\n            if flt:\n                if column not in self.applied_filters:\n"
+    },
+    {
+      "before": "        from_expr, to_expr = get_since_until_from_time_range(time_range)\n",
+      "after": "        from_expr, to_expr = get_since_until_from_time_range(time_range)\n        if require_bounded and (from_expr is None or to_expr is None):\n            raise SupersetTemplateException(\n                _(\"Please select both a start date and an end date.\")\n            )\n"
+    }
+  ],
+  "source_commit": "ab41affc2d6859d84e9ade0151915b4f13ce5727"
 }

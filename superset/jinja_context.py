@@ -447,13 +447,14 @@ class ExtraCache:
         return filters
 
     # pylint: disable=too-many-arguments
-    def get_time_filter(
+    def get_time_filter(  # noqa: C901
         self,
         column: str | None = None,
         default: str | None = None,
         target_type: str | None = None,
         strftime: str | None = None,
         remove_filter: bool = False,
+        require_bounded: bool = False,
     ) -> TimeFilter:
         """Get the time filter with appropriate formatting,
         either for a specific column, or whichever time range is being emitted
@@ -473,12 +474,14 @@ class ExtraCache:
         :param remove_filter: When set to true, mark the filter as processed,
             removing it from the outer query. Useful when a filter should
             only apply to the inner query.
+        :param require_bounded: Reject missing or open-ended ranges before running
+            a query. Ignore saved ``No filter`` placeholders when selecting a filter.
         :return: The corresponding time filter.
         """
         # pylint: disable=import-outside-toplevel
         from superset.views.utils import get_form_data
 
-        form_data, _ = get_form_data()
+        form_data, _unused = get_form_data()
         convert_legacy_filters_into_adhoc(form_data)
         merge_extra_filters(form_data)
         time_range = form_data.get("time_range")
@@ -489,6 +492,7 @@ class ExtraCache:
                     for flt in form_data.get("adhoc_filters", [])
                     if flt.get("operator") == FilterOperator.TEMPORAL_RANGE
                     and flt["subject"] == column
+                    and (not require_bounded or flt["comparator"] != NO_TIME_RANGE)
                 ),
                 None,
             )
@@ -507,6 +511,10 @@ class ExtraCache:
         if time_range == NO_TIME_RANGE and default:
             time_range = default
         from_expr, to_expr = get_since_until_from_time_range(time_range)
+        if require_bounded and (from_expr is None or to_expr is None):
+            raise SupersetTemplateException(
+                _("Please select both a start date and an end date.")
+            )
 
         def _format_dttm(dttm: datetime | None) -> str | None:
             if strftime and dttm:

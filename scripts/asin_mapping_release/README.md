@@ -17,9 +17,9 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# ASIN mapping template compatibility release
+# Bounded V3 query compatibility release
 
-This entrypoint builds the committed one-line `get_time_filter` fix on each
+This entrypoint builds the committed `get_time_filter(require_bounded=True)` fix on each
 service's verified current image. It preserves the existing selected-time-range
 backend and all frontend overlays. Only the build step uses root to patch the
 root-owned template; the resulting image restores the base image runtime user. Web and worker have separate base images;
@@ -27,7 +27,7 @@ beat does not compile chart templates and is unchanged.
 
 After this branch is merged and the server checkout has fetched `origin/master`,
 set `revision` to that merged SHA and `release` to
-`/superset/releases/asin-mapping-template-<first 10 characters of SHA>`.
+`/superset/releases/bounded-v3-<first 10 characters of SHA>`.
 Run from the merged server checkout:
 
 ```sh
@@ -59,3 +59,23 @@ The rollback command list and override are saved under
 Use the same Compose environment established by `deploy.py`; no credentials are
 saved in these receipts. Rollback changes the service image only. The separately
 captured private BI metadata preimage and inverse SQL handle configuration rollback.
+
+Dataset 184 is activated separately after both images are verified. The SQL keeps
+its identity and metrics, restricts both inputs to the selected dates, and joins
+fee details on all five existing keys. Missing or open dates are rejected only
+for advertising-difference metrics; date-option lookups remain available.
+The fee table primary key guarantees at most one matching detail row.
+
+Run the committed activation script through the Web container stdin, first
+without `--apply`, then with it. Set `backup` to a persistent path under
+`/app/superset_home/releases/bounded-v3-<revision>/dataset-184-before.json`:
+
+```sh
+docker exec -i superset_app python - --backup "$backup" < scripts/asin_mapping_release/activate_bounded_v3.py
+docker exec -i superset_app python - --backup "$backup" --apply < scripts/asin_mapping_release/activate_bounded_v3.py
+```
+
+For metadata rollback, use the same command with `--rollback` before reverting
+the images. The backup contains only the three affected SQL definitions. Check
+bounded chart requests, no-date rejection, native filter choices, and result
+parity before declaring acceptance.

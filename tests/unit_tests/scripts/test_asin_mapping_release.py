@@ -36,8 +36,8 @@ RELEASE = ROOT / "scripts/asin_mapping_release"
 REVISION = "a" * 40
 TARGET = "sha256:" + "b" * 64
 BASES = {
-    "web": "sha256:8e88825cc2875a3dc62a3b88db155aace485f3ab5f54711c52de22a99c5ff217",
-    "worker": "sha256:d814f90b59fb9b77408ffe99460516192f1276f275947a259f842e780e6e1ea5",
+    "web": "sha256:6514043cc6a877c3678088b25d771f16b3497ba01be044ef15c950d8c6de6a3f",
+    "worker": "sha256:e7da21ccd1e272e53b7620dbfce0e32153b4211c4dd1fa37a5c687e751534f40",
 }
 
 
@@ -46,7 +46,7 @@ class MappingReleaseTest(unittest.TestCase):
         """Simulate Docker responses without starting processes or reading secrets."""
         container = "superset_app" if kind == "web" else "superset_worker"
         service = "superset" if kind == "web" else "superset-worker"
-        image = "superset-" + kind + ":asin-mapping-template-" + REVISION[:10]
+        image = "superset-" + kind + ":bounded-v3-" + REVISION[:10]
         environment = ["SELLERFOX_ORIGINAL_CONFIG_PATH=/config", "EXAMPLE=fixture"]
         config = {
             "Env": environment,
@@ -180,7 +180,11 @@ class MappingReleaseTest(unittest.TestCase):
                 **_kwargs: object,
             ) -> str:
                 if command[0] == "git":
-                    return REVISION if "rev-parse" in command else manifest["after"]
+                    return (
+                        REVISION
+                        if "rev-parse" in command
+                        else "require_bounded: bool = False"
+                    )
                 if command[1] == "run":
                     return json.dumps(
                         {"jinja_sha256": manifest["expected_after_sha256"]}
@@ -191,10 +195,10 @@ class MappingReleaseTest(unittest.TestCase):
                     [
                         {
                             "Id": TARGET
-                            if ":asin-mapping-template-" in command[-1]
+                            if ":bounded-v3-" in command[-1]
                             else expected_digest,
                             "Config": {"User": expected_user or "root"}
-                            if ":asin-mapping-template-" in command[-1]
+                            if ":bounded-v3-" in command[-1]
                             else {"User": expected_user},
                         }
                     ]
@@ -242,8 +246,14 @@ class MappingReleaseTest(unittest.TestCase):
         manifest = json.loads(
             (RELEASE / "build-context/patch-manifest.json").read_text()
         )
-        fixture = "# runtime overlay\n" + manifest["before"] + ":\n    pass\n"
-        expected = fixture.replace(manifest["before"], manifest["after"])
+        fixture = "# runtime overlay\nvalue = 1\nother = 2\n"
+        manifest["patches"] = [
+            {"before": "value = 1", "after": "value = 3"},
+            {"before": "other = 2", "after": "other = 4"},
+        ]
+        expected = fixture.replace("value = 1", "value = 3").replace(
+            "other = 2", "other = 4"
+        )
         manifest["expected_before_sha256"] = hashlib.sha256(
             fixture.encode()
         ).hexdigest()
@@ -276,3 +286,74 @@ class MappingReleaseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_fee_join_keeps_versions_nulls_and_source_row_grain():
+    import sqlite3
+
+    from jinja2 import Environment
+
+    template = (RELEASE / "build-context/bounded-v3-dataset.sql").read_text()
+    query = (
+        Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
+        .from_string(template)
+        .render(
+            metrics=[{"column": {"column_name": "cpc_cost_diff"}, "aggregate": "SUM"}],
+            get_time_filter=lambda *args, **kwargs: (
+                "biz_day>='2026-10-01' AND biz_day<'2026-11-01'"
+            ),
+        )
+    )
+    with sqlite3.connect(":memory:") as connection:
+        connection.executescript("""
+            ATTACH DATABASE ':memory:' AS public;
+            CREATE TABLE public.profit_dws_daily_v3_usd(
+                biz_day text,shop_id text,commodity_sku text,asin text,
+                source_run_id text);
+            CREATE TABLE public.profit_dws_daily_v3_fee_detail_usd(
+                biz_day text,shop_id text,commodity_sku text,asin text,
+                source_run_id text,cpc_cost_diff numeric,
+                PRIMARY KEY(biz_day,shop_id,commodity_sku,asin));
+            INSERT INTO public.profit_dws_daily_v3_usd VALUES
+                ('2026-10-01','S1','C1','A','R1'),('2026-10-01','S2','C1','A','R1'),
+                ('2026-10-02','S1','C2','B','R1'),('2026-10-03','S1','C3','C','R1'),
+                ('2026-10-04','S1','C4','D','R1'),('2026-11-01','S1','C5','E','R1');
+            INSERT INTO public.profit_dws_daily_v3_fee_detail_usd VALUES
+                ('2026-10-01','S1','C1','A','R1',12.5),('2026-10-01','S2','C1','A','R1',-3.5),
+                ('2026-10-02','S1','C2','B','R0',99),('2026-10-03','S1','C3','C','R1',NULL),
+                ('2026-10-04','S1','C4','D','R1',0),('2026-11-01','S1','C5','E','R1',999);
+        """)
+        old = connection.execute("""
+            SELECT m.*,(SELECT f.cpc_cost_diff
+            FROM public.profit_dws_daily_v3_fee_detail_usd f
+            WHERE (f.biz_day,f.shop_id,f.commodity_sku,f.asin,f.source_run_id)=
+            (m.biz_day,m.shop_id,m.commodity_sku,m.asin,m.source_run_id))
+            FROM public.profit_dws_daily_v3_usd m
+            WHERE biz_day>='2026-10-01' AND biz_day<'2026-11-01'
+            """).fetchall()
+        actual = connection.execute(query).fetchall()
+        assert sorted(actual) == sorted(old)
+        assert len(actual) == 5
+        assert [row[-1] for row in actual] == [12.5, -3.5, None, None, 0]
+
+
+def test_only_fee_metric_requests_require_bounded_dates():
+    from jinja2 import Environment
+
+    template = (RELEASE / "build-context/bounded-v3-dataset.sql").read_text()
+    for metrics, required in [
+        ([], False),
+        (["max__biz_day"], False),
+        (["cpc_cost_diff"], True),
+        ([{"column": {"column_name": "cpc_cost_diff"}}], True),
+    ]:
+        received = []
+
+        def time_filter(*args, received=received, **kwargs):
+            received.append(kwargs["require_bounded"])
+            return "false"
+
+        (
+            Environment(autoescape=False)  # noqa: S701 - SQL template, not HTML
+        ).from_string(template).render(metrics=metrics, get_time_filter=time_filter)
+        assert received == [required]
