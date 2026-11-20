@@ -178,7 +178,8 @@ def get_user_from_request() -> User:
 
     Priority order:
     1. g.user if already set (by Preset workspace middleware)
-    2. MCP_DEV_USERNAME from configuration (for development/testing)
+    2. The verified MCP JWT subject when authentication is enabled
+    3. MCP_DEV_USERNAME in development mode
 
     Returns:
         User object with roles and groups eagerly loaded
@@ -192,29 +193,25 @@ def get_user_from_request() -> User:
     if hasattr(g, "user") and g.user:
         return g.user
 
-    # Fall back to configured username for development/single-user deployments
+    if current_app.config.get("MCP_AUTH_ENABLED", False):
+        from fastmcp.server.dependencies import get_access_token
+
+        # FastMCP has already verified the token. Only the user subject identifies
+        # a Superset account; the OAuth client ID can be shared by multiple users.
+        access_token = get_access_token()
+        subject = access_token.claims.get("sub") if access_token else None
+        if not isinstance(subject, str) or not subject:
+            raise ValueError("MCP authentication requires a verified user subject")
+        user = load_user_with_relationships(username=subject)
+        if user is None or not user.active:
+            raise ValueError("MCP authenticated user is unavailable")
+        return user
+
+    # Use the configured username only when MCP authentication is disabled.
     username = current_app.config.get("MCP_DEV_USERNAME")
 
     if not username:
-        auth_enabled = current_app.config.get("MCP_AUTH_ENABLED", False)
-        jwt_configured = bool(
-            current_app.config.get("MCP_JWKS_URI")
-            or current_app.config.get("MCP_JWT_PUBLIC_KEY")
-            or current_app.config.get("MCP_JWT_SECRET")
-        )
-        details = []
-        details.append(
-            f"g.user was not set by JWT middleware "
-            f"(MCP_AUTH_ENABLED={auth_enabled}, "
-            f"JWT keys configured={jwt_configured})"
-        )
-        details.append("MCP_DEV_USERNAME is not configured")
-        raise ValueError(
-            "No authenticated user found. Tried:\n"
-            + "\n".join(f"  - {d}" for d in details)
-            + "\n\nEither pass a valid JWT bearer token or configure "
-            "MCP_DEV_USERNAME for development."
-        )
+        raise ValueError("No authenticated user found and MCP_DEV_USERNAME is not set")
 
     # Use helper function to load user with all required relationships
     user = load_user_with_relationships(username)
