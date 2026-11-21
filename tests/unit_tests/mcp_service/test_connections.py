@@ -46,7 +46,11 @@ from superset.utils.core import RowLevelSecurityFilterType
 ENDPOINT = "/api/v1/mcp_connections/"
 
 
-@pytest.mark.parametrize("app", [{"WTF_CSRF_ENABLED": True}], indirect=True)
+@pytest.mark.parametrize(
+    "app",
+    [{"WTF_CSRF_ENABLED": True, "DATA_CACHE_CONFIG": {"CACHE_TYPE": "SimpleCache"}}],
+    indirect=True,
+)
 async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
     monkeypatch.setitem(app.config, "MCP_SELF_SERVICE_ENABLED", True)
     monkeypatch.setitem(app.config, "MCP_AUTH_ENABLED", True)
@@ -71,6 +75,8 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
             "(100, 2, 'target', '2026-10-01 12:00:00'),"
             "(16, 1, 'other', '2026-10-01 12:00:00'),"
             "(27, 1, 'target', '2026-11-01 12:00:00');"
+            "CREATE TABLE shop_grants (shop_id INTEGER);"
+            "INSERT INTO shop_grants VALUES (1);"
             "CREATE TABLE hidden (value INTEGER); INSERT INTO hidden VALUES (99);"
         )
 
@@ -149,7 +155,7 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
                     filter_type=RowLevelSecurityFilterType.REGULAR,
                     roles=[role],
                     tables=[allowed_dataset],
-                    clause="shop_id = 1",
+                    clause="shop_id IN (SELECT shop_id FROM shop_grants)",
                 )
             )
 
@@ -300,6 +306,36 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
             assert invalid["error_type"] == "DataError"
             hidden = await tool("get_chart_data", {"identifier": hidden_id, "limit": 1})
             assert hidden["error_type"] == "NotFound"
+
+            saved = json.loads(charts[0].query_context)
+            chart_data = "/api/v1/chart/data"
+            with app.app_context(), sqlite3.connect(source) as grants:
+                refreshed = browser.post(
+                    chart_data, json={**saved, "force": True}, headers=headers
+                )
+                assert refreshed.status_code == 200, refreshed.get_json()
+                warmed = browser.post(chart_data, json=saved, headers=headers)
+                assert warmed.status_code == 200, warmed.get_json()
+                cached = warmed.get_json()["result"][0]
+                assert cached["is_cached"]
+                assert {"value": 100} not in cached["data"]
+                grants.execute("INSERT INTO shop_grants VALUES (2)")
+            granted = await tool("get_chart_data", {"identifier": allowed_id})
+            assert sorted(row["value"] for row in granted["data"]) == [16, 27, 42, 100]
+
+            with app.app_context(), sqlite3.connect(source) as grants:
+                refreshed = browser.post(
+                    chart_data, json={**saved, "force": True}, headers=headers
+                )
+                assert refreshed.status_code == 200, refreshed.get_json()
+                stale = browser.post(chart_data, json=saved, headers=headers)
+                assert stale.status_code == 200, stale.get_json()
+                cached = stale.get_json()["result"][0]
+                assert cached["is_cached"]
+                assert {"value": 100} in cached["data"]
+                grants.execute("DELETE FROM shop_grants WHERE shop_id = 2")
+            revoked = await tool("get_chart_data", {"identifier": allowed_id})
+            assert sorted(row["value"] for row in revoked["data"]) == [16, 27, 42]
 
             with app.app_context():
                 assert (
