@@ -26,6 +26,7 @@ from flask_login import current_user
 from marshmallow import fields, post_load, Schema, validate, ValidationError
 from sqlalchemy import func, update
 
+from superset import security_manager
 from superset.extensions import db
 from superset.mcp_service.connections import (
     MCP_CONNECTION_PREFIX,
@@ -76,6 +77,8 @@ def require_session() -> None:
         abort(404)
     if not isinstance(current_user, User) or not current_user.is_active:
         abort(401)
+    if not security_manager.can_access("can_read", "user"):
+        abort(403)
 
 
 @mcp_connections.after_request

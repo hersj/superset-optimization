@@ -310,7 +310,9 @@ def menu_data(user: User) -> dict[str, Any]:
             ),
             "mcp_connection_url": (
                 "/mcp-connections/"
-                if isinstance(user, User) and self_service_enabled(app.config)
+                if isinstance(user, User)
+                and self_service_enabled(app.config)
+                and security_manager.can_access("can_read", "user")
                 else None
             ),
             "user_logout_url": appbuilder.get_url_for_logout,

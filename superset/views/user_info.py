@@ -18,7 +18,6 @@ from flask import abort, current_app
 from flask_appbuilder import permission_name
 from flask_appbuilder.api import expose
 from flask_appbuilder.security.decorators import has_access
-from flask_login import login_required
 
 from superset.mcp_service.connections import self_service_enabled
 from superset.superset_typing import FlaskResponse
@@ -37,7 +36,8 @@ class UserInfoView(BaseSupersetView):
         return super().render_app_template()
 
     @expose("/mcp-connections/")
-    @login_required
+    @has_access
+    @permission_name("read")
     def mcp_connections(self) -> FlaskResponse:
         if not self_service_enabled(current_app.config):
             abort(404)

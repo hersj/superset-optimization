@@ -118,13 +118,17 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
     allowed_id, hidden_id = (chart.id for chart in charts)
     for permission, view in (
         ("can_read", "Chart"),
+        ("can_read", "user"),
         ("datasource_access", allowed_dataset.perm),
     ):
         security_manager.add_permission_role(
             role, security_manager.add_permission_view_menu(permission, view)
         )
 
-    def login(user):
+    reader_id, reader_name = reader.id, reader.username
+    other_id, other_name = other.id, other.username
+
+    def login(user_id, username):
         browser = app.test_client()
         with app.app_context(), app.test_request_context():
             csrf = generate_csrf()
@@ -135,18 +139,18 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
             response = browser.post(
                 "/login/",
                 data={
-                    "username": user.username,
+                    "username": username,
                     "password": "test-login-only",
                     "csrf_token": csrf,
                 },
             )
             assert response.status_code == 302
             with browser.session_transaction() as client_session:
-                assert client_session["_user_id"] == str(user.id)
+                assert client_session["_user_id"] == str(user_id)
         return browser, {"X-CSRFToken": csrf}
 
-    browser, headers = login(reader)
-    other_browser, other_headers = login(other)
+    browser, headers = login(reader_id, reader_name)
+    other_browser, other_headers = login(other_id, other_name)
     with app.app_context():
         assert app.test_client().get(ENDPOINT).status_code == 401
     with app.app_context():
@@ -230,7 +234,7 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
 
             legacy = jwt.encode(
                 {
-                    "sub": reader.username,
+                    "sub": reader_name,
                     "iss": "mcp-test",
                     "aud": "mcp-test",
                     "exp": int(time()) + 120,
