@@ -158,8 +158,14 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
             browser.post(ENDPOINT, json={"label": "Desk", "days": 30}).status_code
             == 400
         )
+        assert (
+            browser.post(
+                ENDPOINT, json={"label": "Desk", "days": 366}, headers=headers
+            ).status_code
+            == 400
+        )
         created = browser.post(
-            ENDPOINT, json={"label": "Desk", "days": 30}, headers=headers
+            ENDPOINT, json={"label": "Desk", "days": 365}, headers=headers
         )
         assert created.status_code == 201
         assert created.headers["Cache-Control"] == "no-store"
@@ -167,9 +173,9 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
         token = body["token"]
         connection = body["result"]
         assert "token" not in browser.get(ENDPOINT).get_json()["result"][0]
-        assert db.session.get(
-            McpConnection, connection["id"]
-        ).token_digest == token_digest(token)
+        record = db.session.get(McpConnection, connection["id"])
+        assert record.token_digest == token_digest(token)
+        assert record.expires_at - record.created_at == 365 * 86400
         assert browser.get("/mcp-connections/").status_code == 200
     with app.app_context():
         assert other_browser.get(ENDPOINT).get_json()["result"] == []

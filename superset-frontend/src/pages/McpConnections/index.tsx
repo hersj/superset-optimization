@@ -326,7 +326,7 @@ export default function McpConnections() {
                   value={days}
                   onChange={event => setDays(Number(event.target.value))}
                 >
-                  {[7, 30, 90].map(value => (
+                  {[7, 30, 90, 180, 365].map(value => (
                     <option key={value} value={value}>
                       {t('%s days', value)}
                     </option>
