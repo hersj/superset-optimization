@@ -282,6 +282,7 @@ def _setup_user_context() -> User | None:
         user_groups = user.groups  # noqa: F841
 
     g.user = user
+    g.is_mcp_request = True
     return user
 
 

@@ -21,7 +21,7 @@ import re
 from typing import Any, cast, ClassVar, Sequence, TYPE_CHECKING
 
 import pandas as pd
-from flask import current_app
+from flask import current_app, g
 from flask_babel import gettext as _
 
 from superset.common.chart_data import ChartDataResultFormat
@@ -383,6 +383,9 @@ class QueryContextProcessor:
         return return_value
 
     def get_cache_timeout(self) -> int:
+        # Store assignments can change the RLS result without changing the cache key.
+        if g.get("is_mcp_request"):
+            return CACHE_DISABLED_TIMEOUT
         if cache_timeout_rv := self._query_context.get_cache_timeout():
             return cache_timeout_rv
         if (
