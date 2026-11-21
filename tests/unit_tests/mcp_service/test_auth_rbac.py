@@ -17,6 +17,7 @@
 
 """Tests for MCP RBAC permission checking (auth.py)."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,6 +26,7 @@ from flask import g
 from superset.mcp_service.auth import (
     check_tool_permission,
     CLASS_PERMISSION_ATTR,
+    get_user_from_request,
     MCPPermissionDeniedError,
     METHOD_PERMISSION_ATTR,
     PERMISSION_PREFIX,
@@ -69,6 +71,34 @@ def _make_tool_func(
     if method_perm is not None:
         setattr(func, METHOD_PERMISSION_ATTR, method_perm)
     return func
+
+
+def test_mcp_request_uses_verified_subject(app_context, app, monkeypatch) -> None:
+    monkeypatch.setitem(app.config, "MCP_AUTH_ENABLED", True)
+    monkeypatch.setitem(app.config, "MCP_DEV_USERNAME", "dev-admin")
+    viewer = SimpleNamespace(active=True)
+    token = SimpleNamespace(claims={"sub": "viewer"}, client_id="oauth-client")
+    with (
+        patch("fastmcp.server.dependencies.get_access_token", return_value=token),
+        patch(
+            "superset.mcp_service.auth.load_user_with_relationships",
+            return_value=viewer,
+        ) as load_user,
+    ):
+        assert get_user_from_request() is viewer
+        load_user.assert_called_once_with(username="viewer")
+
+
+def test_mcp_request_rejects_unverified_subject(app_context, app, monkeypatch) -> None:
+    monkeypatch.setitem(app.config, "MCP_AUTH_ENABLED", True)
+    monkeypatch.setitem(app.config, "MCP_DEV_USERNAME", "dev-admin")
+    with (
+        patch("fastmcp.server.dependencies.get_access_token", return_value=None),
+        patch("superset.mcp_service.auth.load_user_with_relationships") as load_user,
+        pytest.raises(ValueError, match="requires a verified user subject"),
+    ):
+        get_user_from_request()
+    load_user.assert_not_called()
 
 
 # -- MCPPermissionDeniedError --

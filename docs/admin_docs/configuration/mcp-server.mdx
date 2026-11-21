@@ -212,15 +212,10 @@ The MCP server validates these standard claims:
 
 #### User resolution
 
-After validating the token, the MCP server resolves a Superset username from the claims. It checks these in order, using the first non-empty value:
-
-1. `subject` -- the standard `sub` claim (via the access token object)
-2. `client_id` -- for machine-to-machine tokens
-3. `payload["sub"]` -- fallback to raw payload
-4. `payload["email"]` -- email-based lookup
-5. `payload["username"]` -- explicit username claim
-
-The resolved value must match a `username` in the Superset `ab_user` table.
+For the built-in JWT flow, the verified `sub` claim must be the exact username of an
+active Superset user. Configure the issuer to supply that username. MCP tool calls
+use the user's existing Superset roles and permissions. A token without a usable
+subject, or for an unknown or inactive user, cannot execute MCP tools.
 
 #### Scoped access
 
