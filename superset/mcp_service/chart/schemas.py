@@ -926,9 +926,10 @@ class GetChartDataRequest(QueryCacheControl):
     extra_form_data: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Extra form data to merge into the chart query, typically from "
-            "dashboard native filters. Format: "
-            '{"filters": [{"col": "country", "op": "IN", "val": ["US"]}]}'
+            "Filters for a saved chart. Use dataset columns and literal values. "
+            'Example: {"filters": [{"col": "country", "op": "IN", "val": ["US"]}], '
+            '"time_range": "2026-10-01 : 2026-11-01"}. To name the date column, '
+            "use a TEMPORAL_RANGE filter instead of time_range."
         ),
     )
     format: Literal["json", "csv", "excel"] = Field(
