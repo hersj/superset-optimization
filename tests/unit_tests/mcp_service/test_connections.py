@@ -29,7 +29,11 @@ from httpx import ASGITransport, AsyncClient
 from jinja2 import FileSystemLoader
 
 from superset import db, security_manager
-from superset.connectors.sqla.models import SqlaTable, TableColumn
+from superset.connectors.sqla.models import (
+    RowLevelSecurityFilter,
+    SqlaTable,
+    TableColumn,
+)
 from superset.mcp_service import flask_singleton
 from superset.mcp_service.app import mcp
 from superset.mcp_service.connections import McpConnection, token_digest
@@ -37,6 +41,7 @@ from superset.mcp_service.server import _create_auth_provider
 from superset.models.core import Database
 from superset.models.slice import Slice
 from superset.utils import json
+from superset.utils.core import RowLevelSecurityFilterType
 
 ENDPOINT = "/api/v1/mcp_connections/"
 
@@ -59,7 +64,13 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
     source = tmp_path / "sample.sqlite"
     with sqlite3.connect(source) as data:
         data.executescript(
-            "CREATE TABLE allowed (value INTEGER); INSERT INTO allowed VALUES (42);"
+            "CREATE TABLE allowed "
+            "(value INTEGER, shop_id INTEGER, product TEXT, month_start DATETIME);"
+            "INSERT INTO allowed VALUES "
+            "(42, 1, 'target', '2026-10-01 12:00:00'),"
+            "(100, 2, 'target', '2026-10-01 12:00:00'),"
+            "(16, 1, 'other', '2026-10-01 12:00:00'),"
+            "(27, 1, 'target', '2026-11-01 12:00:00');"
             "CREATE TABLE hidden (value INTEGER); INSERT INTO hidden VALUES (99);"
         )
 
@@ -86,10 +97,22 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
 
     charts = []
     for table_name in ("allowed", "hidden"):
+        columns = [TableColumn(column_name="value", type="INTEGER")]
+        if table_name == "allowed":
+            columns.extend(
+                [
+                    TableColumn(column_name="shop_id", type="INTEGER"),
+                    TableColumn(column_name="product", type="TEXT"),
+                    TableColumn(
+                        column_name="month_start", type="DATETIME", is_dttm=True
+                    ),
+                ]
+            )
         dataset = SqlaTable(
             table_name=table_name,
             database=database,
-            columns=[TableColumn(column_name="value", type="INTEGER")],
+            columns=columns,
+            main_dttm_col="month_start" if table_name == "allowed" else None,
         )
         db.session.add(dataset)
         db.session.flush()
@@ -102,7 +125,14 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
             query_context=json.dumps(
                 {
                     "datasource": {"id": dataset.id, "type": "table"},
-                    "queries": [{"columns": ["value"], "metrics": [], "row_limit": 1}],
+                    "queries": [
+                        {
+                            "columns": ["value"],
+                            "metrics": [],
+                            "row_limit": 20,
+                            "time_range": "No filter",
+                        }
+                    ],
                     "form_data": {"viz_type": "table"},
                     "result_format": "json",
                     "result_type": "full",
@@ -113,6 +143,15 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
         charts.append(chart)
         if table_name == "allowed":
             allowed_dataset = dataset
+            db.session.add(
+                RowLevelSecurityFilter(
+                    name="MCP test assigned shop",
+                    filter_type=RowLevelSecurityFilterType.REGULAR,
+                    roles=[role],
+                    tables=[allowed_dataset],
+                    clause="shop_id = 1",
+                )
+            )
 
     db.session.commit()
     allowed_id, hidden_id = (chart.id for chart in charts)
@@ -216,8 +255,49 @@ async def test_personal_connection_lifecycle(app, monkeypatch, tmp_path):
 
             listed = await tool("list_charts", {"select_columns": ["id"]})
             assert {item["id"] for item in listed["charts"]} == {allowed_id}
-            data = await tool("get_chart_data", {"identifier": allowed_id, "limit": 1})
-            assert data.get("data") == [{"value": 42}], data
+            data = await tool("get_chart_data", {"identifier": allowed_id})
+            assert sorted(row["value"] for row in data["data"]) == [16, 27, 42]
+
+            product = {"col": "product", "op": "IN", "val": ["target"]}
+            october = "2026-10-01 : 2026-11-01"
+            filtered = await tool(
+                "get_chart_data",
+                {
+                    "identifier": allowed_id,
+                    "extra_form_data": {"filters": [product], "time_range": october},
+                },
+            )
+            assert filtered.get("data") == [{"value": 42}], filtered
+
+            october_filter = {
+                "col": "month_start",
+                "op": "TEMPORAL_RANGE",
+                "val": october,
+            }
+            denied_shop = await tool(
+                "get_chart_data",
+                {
+                    "identifier": allowed_id,
+                    "extra_form_data": {
+                        "filters": [
+                            product,
+                            {"col": "shop_id", "op": "IN", "val": [2]},
+                            october_filter,
+                        ]
+                    },
+                },
+            )
+            assert denied_shop["error_type"] == "NoData"
+            invalid = await tool(
+                "get_chart_data",
+                {
+                    "identifier": allowed_id,
+                    "extra_form_data": {
+                        "filters": [{"col": "unknown", "op": "IN", "val": ["target"]}]
+                    },
+                },
+            )
+            assert invalid["error_type"] == "DataError"
             hidden = await tool("get_chart_data", {"identifier": hidden_id, "limit": 1})
             assert hidden["error_type"] == "NotFound"
 

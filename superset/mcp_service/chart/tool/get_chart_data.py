@@ -28,10 +28,12 @@ from flask import current_app
 from superset_core.mcp.decorators import tool
 
 if TYPE_CHECKING:
+    from superset.connectors.sqla.models import SqlaTable
     from superset.models.slice import Slice
 
 from superset.commands.exceptions import CommandException
 from superset.commands.explore.form_data.parameters import CommandParameters
+from superset.common.utils.time_range_utils import get_since_until_from_time_range
 from superset.exceptions import SupersetException
 from superset.extensions import event_logger
 from superset.mcp_service.chart.chart_utils import validate_chart_dataset
@@ -44,19 +46,103 @@ from superset.mcp_service.chart.schemas import (
 )
 from superset.mcp_service.utils.cache_utils import get_cache_status_from_result
 from superset.mcp_service.utils.schema_utils import parse_request
-from superset.utils.core import merge_extra_filters
+from superset.utils.core import FilterOperator
 
 logger = logging.getLogger(__name__)
 
 
-def _apply_extra_form_data(
-    form_data: dict[str, Any], extra_form_data: dict[str, Any] | None
-) -> None:
-    """Merge dashboard native filters into chart form_data in-place."""
-    if not extra_form_data:
+def _validate_chart_filter(filtr: Any, columns: set[str], dates: set[str]) -> None:
+    if not isinstance(filtr, dict) or filtr.keys() - {"col", "op", "val"}:
+        raise ValueError("Each filter must use col, op and val.")
+    column, operator, value = filtr.get("col"), filtr.get("op"), filtr.get("val")
+    if not isinstance(column, str) or column not in columns:
+        raise ValueError("Filter column must exist in the chart dataset.")
+    if not isinstance(operator, str) or operator not in set(FilterOperator):
+        raise ValueError("Unsupported chart filter operator.")
+    if operator == FilterOperator.TEMPORAL_RANGE:
         return
-    form_data["extra_form_data"] = extra_form_data
-    merge_extra_filters(form_data)
+    if column in dates:
+        raise ValueError("Use TEMPORAL_RANGE for date columns.")
+    if operator in (FilterOperator.IN, FilterOperator.NOT_IN):
+        valid = (
+            isinstance(value, list)
+            and bool(value)
+            and all(isinstance(item, (str, int, float, bool)) for item in value)
+        )
+    elif operator in (
+        FilterOperator.IS_NULL,
+        FilterOperator.IS_NOT_NULL,
+        FilterOperator.IS_TRUE,
+        FilterOperator.IS_FALSE,
+    ):
+        valid = value is None
+    else:
+        valid = isinstance(value, (str, int, float, bool))
+    if not valid:
+        raise ValueError("Filter value must be a literal matching its operator.")
+
+
+def _apply_saved_chart_filters(
+    query_context: dict[str, Any], dataset: "SqlaTable", extra: dict[str, Any]
+) -> None:
+    """Apply literal filters to the queries executed by the chart command."""
+    filters = extra.get("filters", [])
+    if extra.keys() - {"filters", "time_range"} or not isinstance(filters, list):
+        raise ValueError("Use a list of column filters and an optional time_range.")
+    columns = {column.column_name for column in dataset.columns}
+    dates = set(dataset.dttm_cols) & columns
+    predicates = []
+    periods = [(None, extra["time_range"])] if "time_range" in extra else []
+    for filtr in filters:
+        _validate_chart_filter(filtr, columns, dates)
+        if filtr["op"] == FilterOperator.TEMPORAL_RANGE:
+            periods.append((filtr["col"], filtr.get("val")))
+        else:
+            predicates.append(filtr)
+
+    period_column = time_range = None
+    if periods:
+        if len(periods) != 1:
+            raise ValueError("Supply only one chart time range.")
+        period_column, time_range = periods[0]
+        if not isinstance(time_range, str) or not any(
+            get_since_until_from_time_range(time_range)
+        ):
+            raise ValueError("Supply a time range with at least one date boundary.")
+
+    for query in query_context["queries"]:
+        saved = query.get("filters") or []
+        if time_range is not None:
+            saved_dates = [
+                filtr["col"]
+                for filtr in saved
+                if filtr["op"] == FilterOperator.TEMPORAL_RANGE
+            ]
+            date_column = (
+                period_column
+                or query.get("granularity")
+                or (saved_dates[0] if saved_dates else dataset.main_dttm_col)
+            )
+            if (
+                not isinstance(date_column, str)
+                or date_column not in dates
+                or query.get("granularity") not in (None, date_column)
+                or any(column != date_column for column in saved_dates)
+            ):
+                raise ValueError("Time range must use the chart's date column.")
+            # Superset may promote this filter to the query's primary time range.
+            query["time_range"] = time_range
+            saved = [
+                filtr for filtr in saved if filtr["op"] != FilterOperator.TEMPORAL_RANGE
+            ]
+            saved.append(
+                {
+                    "col": date_column,
+                    "op": FilterOperator.TEMPORAL_RANGE,
+                    "val": time_range,
+                }
+            )
+        query["filters"] = [*saved, *predicates]
 
 
 def _get_cached_form_data(form_data_key: str) -> str | None:
@@ -121,6 +207,12 @@ async def get_chart_data(  # noqa: C901
         from superset.utils import json as utils_json
 
         chart = None
+
+        if request.extra_form_data and request.form_data_key:
+            return ChartError(
+                error="Request filters require a saved chart without form_data_key.",
+                error_type="InvalidFilter",
+            )
 
         # Handle unsaved chart (form_data_key only, no identifier)
         if not request.identifier and request.form_data_key:
@@ -297,8 +389,6 @@ async def get_chart_data(  # noqa: C901
                     cached_metrics = cached_form_data_dict.get("metrics", [])
                     cached_groupby = cached_form_data_dict.get("groupby", [])
 
-                _apply_extra_form_data(cached_form_data_dict, request.extra_form_data)
-
                 cached_query: dict[str, Any] = {
                     "filters": cached_form_data_dict.get("filters", []),
                     "columns": cached_groupby,
@@ -306,7 +396,7 @@ async def get_chart_data(  # noqa: C901
                     "row_limit": row_limit,
                     "order_desc": cached_form_data_dict.get("order_desc", True),
                 }
-                # Include adhoc_filters so dashboard native filters are applied
+                # Keep the chart's own ad hoc filters.
                 cached_adhoc = cached_form_data_dict.get("adhoc_filters")
                 if cached_adhoc:
                     cached_query["adhoc_filters"] = cached_adhoc
@@ -335,6 +425,11 @@ async def get_chart_data(  # noqa: C901
                     )
 
             if query_context_json is None and not using_unsaved_state:
+                if request.extra_form_data:
+                    return ChartError(
+                        error="Re-save the chart before querying it with filters.",
+                        error_type="MissingQueryContext",
+                    )
                 # Fallback: Chart has no saved query_context
                 # This can happen with older charts that haven't been re-saved
                 await ctx.warning(
@@ -471,8 +566,6 @@ async def get_chart_data(  # noqa: C901
                         error_type="MissingQueryContext",
                     )
 
-                _apply_extra_form_data(form_data, request.extra_form_data)
-
                 fallback_query: dict[str, Any] = {
                     "filters": form_data.get("filters", []),
                     "columns": query_columns,
@@ -480,7 +573,7 @@ async def get_chart_data(  # noqa: C901
                     "row_limit": row_limit,
                     "order_desc": True,
                 }
-                # Include adhoc_filters so dashboard native filters are applied
+                # Keep the chart's own ad hoc filters.
                 fallback_adhoc = form_data.get("adhoc_filters")
                 if fallback_adhoc:
                     fallback_query["adhoc_filters"] = fallback_adhoc
@@ -503,9 +596,18 @@ async def get_chart_data(  # noqa: C901
                     for query in query_context_json.get("queries", []):
                         query["row_limit"] = request.limit
 
-                # Merge dashboard native filters into query_context's form_data
-                qc_form_data = query_context_json.setdefault("form_data", {})
-                _apply_extra_form_data(qc_form_data, request.extra_form_data)
+                if request.extra_form_data:
+                    dataset = chart.datasource
+                    if dataset is None or query_context_json["datasource"] != {
+                        "id": chart.datasource_id,
+                        "type": chart.datasource_type,
+                    }:
+                        raise ValueError(
+                            "Saved query does not match the chart dataset."
+                        )
+                    _apply_saved_chart_filters(
+                        query_context_json, dataset, request.extra_form_data
+                    )
 
                 # Create QueryContext from the saved context using the schema
                 # This is exactly how the API does it
