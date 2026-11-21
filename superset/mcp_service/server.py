@@ -297,6 +297,12 @@ def _create_auth_provider(flask_app: Any) -> Any | None:
         except Exception:
             # Do not log the exception — it may contain secrets
             logger.error("Failed to create auth provider from default factory")
+    from superset.mcp_service.connections import self_service_enabled
+
+    if self_service_enabled(flask_app.config):
+        from superset.mcp_service.connection_auth import ConnectionTokenVerifier
+
+        return ConnectionTokenVerifier(flask_app, auth_provider)
     return auth_provider
 
 

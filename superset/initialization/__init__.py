@@ -232,8 +232,10 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
 
         # Register health blueprint
         from superset.views.health import health_blueprint
+        from superset.views.mcp_connections import mcp_connections
 
         self.superset_app.register_blueprint(health_blueprint)
+        self.superset_app.register_blueprint(mcp_connections)
 
         #
         # Setup API views

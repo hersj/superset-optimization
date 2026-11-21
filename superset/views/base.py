@@ -58,6 +58,7 @@ from superset.daos.theme import ThemeDAO
 from superset.db_engine_specs import get_available_engine_specs
 from superset.db_engine_specs.gsheets import GSheetsEngineSpec
 from superset.extensions import cache_manager
+from superset.mcp_service.connections import self_service_enabled
 from superset.models.core import Theme as ThemeModel
 from superset.reports.models import ReportRecipientType
 from superset.superset_typing import FlaskResponse
@@ -306,6 +307,13 @@ def menu_data(user: User) -> dict[str, Any]:
             "user_is_anonymous": user.is_anonymous,
             "user_info_url": (
                 None if is_feature_enabled("MENU_HIDE_USER_INFO") else "/user_info/"
+            ),
+            "mcp_connection_url": (
+                "/mcp-connections/"
+                if isinstance(user, User)
+                and self_service_enabled(app.config)
+                and security_manager.can_access("can_read", "user")
+                else None
             ),
             "user_logout_url": appbuilder.get_url_for_logout,
             "user_login_url": appbuilder.get_url_for_login,

@@ -151,6 +151,11 @@ const UsersList: LazyExoticComponent<any> = lazy(
   () => import(/* webpackChunkName: "UsersList" */ 'src/pages/UsersList'),
 );
 
+const McpConnections = lazy(
+  () =>
+    import(/* webpackChunkName: "McpConnections" */ 'src/pages/McpConnections'),
+);
+
 const UserInfo = lazy(
   () => import(/* webpackChunkName: "UserInfo" */ 'src/pages/UserInfo'),
 );
@@ -322,6 +327,7 @@ export const routes: Routes = [
     Component: SqlLab,
   },
   { path: '/user_info/', Component: UserInfo },
+  { path: '/mcp-connections/', Component: McpConnections },
   {
     path: '/actionlog/list',
     Component: ActionLogList,

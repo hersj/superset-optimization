@@ -14,10 +14,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from flask import abort, current_app
 from flask_appbuilder import permission_name
 from flask_appbuilder.api import expose
 from flask_appbuilder.security.decorators import has_access
 
+from superset.mcp_service.connections import self_service_enabled
 from superset.superset_typing import FlaskResponse
 
 from .base import BaseSupersetView
@@ -31,4 +33,12 @@ class UserInfoView(BaseSupersetView):
     @has_access
     @permission_name("read")
     def list(self) -> FlaskResponse:
+        return super().render_app_template()
+
+    @expose("/mcp-connections/")
+    @has_access
+    @permission_name("read")
+    def mcp_connections(self) -> FlaskResponse:
+        if not self_service_enabled(current_app.config):
+            abort(404)
         return super().render_app_template()
