@@ -500,6 +500,18 @@ const RightMenu = ({
             ),
           });
         }
+        if (navbarRight.mcp_connection_url && !isEmbedded()) {
+          userItems.push({
+            key: 'mcp-connections',
+            label: (
+              <Typography.Link
+                href={ensureAppRoot(navbarRight.mcp_connection_url)}
+              >
+                {t('Connect AI Assistant')}
+              </Typography.Link>
+            ),
+          });
+        }
         const showLogout =
           !isEmbedded() ||
           !isFeatureEnabled(FeatureFlag.DisableEmbeddedSupersetLogout);

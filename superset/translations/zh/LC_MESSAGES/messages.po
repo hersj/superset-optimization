@@ -15927,3 +15927,114 @@ msgstr[0] "已延迟（错过 %s 次刷新）"
 msgid "%s record..."
 msgid_plural "%s records..."
 msgstr[0] "%s 条记录……"
+
+msgid "Connect AI Assistant"
+msgstr "连接 AI 助手"
+
+msgid "Personal settings"
+msgstr "个人设置"
+
+msgid "Query your Superset charts and data from your AI assistant."
+msgstr "在 AI 助手里查询你有权限的 Superset 图表和数据。"
+
+msgid "New connection"
+msgstr "新建连接"
+
+msgid "Connection name"
+msgstr "连接名称"
+
+msgid "e.g. Work computer"
+msgstr "例如 公司电脑"
+
+msgid "Expires in"
+msgstr "有效期"
+
+msgid "%s days"
+msgstr "%s 天"
+
+msgid "Create connection"
+msgstr "创建连接"
+
+msgid "Connection created."
+msgstr "连接已创建。"
+
+msgid "Copy the configuration now. The token is shown only once."
+msgstr "请复制配置。令牌仅在创建时显示。"
+
+msgid "Show token"
+msgstr "显示令牌"
+
+msgid "Hide token"
+msgstr "隐藏令牌"
+
+msgid "Copy connection configuration"
+msgstr "复制连接配置"
+
+msgid "Copy token"
+msgstr "复制令牌"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Identity and permissions"
+msgstr "当前身份与权限"
+
+msgid "Data access"
+msgstr "数据范围"
+
+msgid "Uses your Superset permissions"
+msgstr "沿用你的 Superset 权限"
+
+msgid "Connection address"
+msgstr "连接地址"
+
+msgid "Copy address"
+msgstr "复制地址"
+
+msgid "My connections"
+msgstr "我的连接"
+
+msgid "%s active connections"
+msgstr "%s 个有效"
+
+msgid "Create a connection to get started."
+msgstr "还没有连接。"
+
+msgid "Expiration date"
+msgstr "到期日期"
+
+msgid "Expired"
+msgstr "已过期"
+
+msgid "Revoked"
+msgstr "已撤销"
+
+msgid "Revoke"
+msgstr "撤销"
+
+msgid "Revoke %s"
+msgstr "撤销 %s"
+
+msgid "Revoke connection"
+msgstr "撤销连接"
+
+msgid "%s will lose access through this connection."
+msgstr "「%s」将无法继续使用此连接。"
+
+msgid "Connection revoked."
+msgstr "连接已撤销。"
+
+msgid "Copied."
+msgstr "已复制。"
+
+msgid "Clipboard unavailable. Select the text to copy it."
+msgstr "无法访问剪贴板，请手动复制。"
+
+msgid "Could not load connections. Refresh to retry."
+msgstr "连接列表加载失败，请刷新重试。"
+
+msgid "Could not create the connection. Try again."
+msgstr "创建失败，请重试。"
+
+msgid "Could not revoke the connection. Try again."
+msgstr "撤销失败，请重试。"

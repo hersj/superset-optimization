@@ -301,6 +301,9 @@ SQLGLOT_DIALECTS_EXTENSIONS: DialectExtensions | Callable[[], DialectExtensions]
 # The limit of queries fetched for query search
 QUERY_SEARCH_LIMIT = 1000
 
+# Enable personal MCP connection management in the web app and MCP server.
+MCP_SELF_SERVICE_ENABLED = False
+
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True
 

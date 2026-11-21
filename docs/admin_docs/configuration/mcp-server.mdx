@@ -146,6 +146,20 @@ All operations run as the configured user.
 Never use development mode in production. Always enable authentication for any internet-facing deployment.
 :::
 
+### Personal connections
+
+Enable `MCP_SELF_SERVICE_ENABLED = True` and `MCP_AUTH_ENABLED = True` in both the
+Superset web and MCP processes. Keep `MCP_RBAC_ENABLED = True` and run
+`superset db upgrade` before enabling the setting. Route `/mcp` on the Superset
+HTTPS origin to the MCP process. This mode supports the default auth provider
+without extra required scopes and can coexist with configured JWT credentials.
+
+Users can open **Connect AI Assistant** from their settings menu, create a
+connection, and copy its configuration into a client that supports custom
+HTTP headers. The token is displayed only when issued. It inherits its owner's
+live permissions and expires after 7, 30, or 90 days. Revoking a connection
+rejects subsequent requests with that token, including requests from connected clients.
+
 ### JWT Authentication
 
 For production, enable JWT-based authentication. The MCP server validates a Bearer token on every request.

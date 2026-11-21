@@ -116,6 +116,7 @@ export interface NavBarProps {
   user_is_anonymous: boolean;
   user_info_url: string;
   user_login_url: string;
+  mcp_connection_url?: string | null;
   user_logout_url: string;
   locale: string;
 }
