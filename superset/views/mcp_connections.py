@@ -43,7 +43,7 @@ mcp_connections = Blueprint(
 class CreateConnectionSchema(Schema):
     label = fields.String(required=True)
     days = fields.Integer(
-        required=True, strict=True, validate=validate.OneOf((7, 30, 90))
+        required=True, strict=True, validate=validate.OneOf((7, 30, 90, 180, 365))
     )
 
     @post_load

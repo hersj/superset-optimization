@@ -52,6 +52,12 @@ test('creates, copies and revokes a personal MCP connection', async () => {
   render(<McpConnections />, { useRedux: true });
 
   await screen.findByText('Create a connection to get started.');
+  const expiration = screen.getByRole('combobox', { name: 'Expires in' });
+  expect(expiration).toHaveValue('30');
+  expect(
+    within(expiration).getByRole('option', { name: '180 days' }),
+  ).toBeVisible();
+  await userEvent.selectOptions(expiration, '365');
   await userEvent.type(
     screen.getByRole('textbox', { name: 'Connection name' }),
     connection.label,
@@ -67,7 +73,7 @@ test('creates, copies and revokes a personal MCP connection', async () => {
   });
   expect(post).toHaveBeenCalledWith({
     endpoint: '/api/v1/mcp_connections/',
-    jsonPayload: { label: connection.label, days: 30 },
+    jsonPayload: { label: connection.label, days: 365 },
   });
   expect(JSON.parse(writeText.mock.calls[0][0]).mcpServers.superset).toEqual({
     url: new URL('/mcp', window.location.origin).href,
